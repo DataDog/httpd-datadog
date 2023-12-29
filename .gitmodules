@@ -1,0 +1,3 @@
+[submodule "dd-trace-cpp"]
+	path = dd-trace-cpp
+	url = https://github.com/DataDog/dd-trace-cpp.git

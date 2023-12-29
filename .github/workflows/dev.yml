@@ -1,0 +1,12 @@
+name: Development
+on: [push, workflow_dispatch]
+
+jobs:
+  format:
+    runs-on: ubuntu-22.04
+    container:
+      image: datadog/docker-library:dd-trace-cpp-ci
+    steps:
+      - uses: actions/checkout@v3
+      - run: ./scripts/codestyle.sh lint
+
