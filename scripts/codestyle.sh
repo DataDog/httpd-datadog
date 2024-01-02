@@ -47,4 +47,4 @@ if [[ -z "$CLANG_ARG" ]]; then
   exit 1
 fi
 
-find mod_ddtrace/ -type f \( -name '*.h' -o -name '*.cpp' \) -print0 | xargs -0 clang-format-14 ${CLANG_ARG} --style=file
+find mod_datadog/ -type f \( -name '*.h' -o -name '*.cpp' \) -print0 | xargs -0 clang-format-14 ${CLANG_ARG} --style=file
