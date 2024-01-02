@@ -22,6 +22,8 @@ target_include_directories(
   httpd
   INTERFACE
   ${HTTPD_BUILD_DIR}/include
+  ${HTTPD_DIR}/srclib/apr/include
+  ${HTTPD_DIR}/srclib/apr-util/include
 )
 
 # target_include_directories(

@@ -3,6 +3,7 @@
 #include "apr_errno.h"
 #include "apr_hash.h"
 #include "apr_pools.h"
+// #include "http_config.h"
 #include "http_core.h"
 #include "http_log.h"
 #include "http_protocol.h"
@@ -41,8 +42,6 @@ std::string make_httpd_version() {
 }
 
 namespace dd = datadog::tracing;
-
-inline constexpr char k_active_span_key[] = "DD_ACTIVE_SPANS";
 
 static dd::RuntimeID *k_runtime_id = nullptr;
 static std::unique_ptr<datadog::tracing::Tracer> tracer = nullptr;
@@ -173,6 +172,7 @@ const char *set_sampling_rate(cmd_parms *cmd, void * /* cfg */,
       cmd->server->module_config, &ddtrace_module);
 
   char *end = NULL;
+  // TODO: use strtol instead
   double rate = strtod(arg, &end);
   if (errno == ERANGE || end != 0) {
     // TODO: handle error
@@ -313,8 +313,13 @@ std::string protocol(int protocol_number) {
   }
 }
 
+// TODO: support internal redirection (r->prev until == NULL)
 int tracer_handler(request_rec *r) {
   if (tracer == nullptr)
+    return DECLINED;
+
+  // TODO: Trace subrequest
+  if (r->main)
     return DECLINED;
 
   DirectoryConf *dir_conf =
@@ -322,8 +327,7 @@ int tracer_handler(request_rec *r) {
   if (dir_conf == nullptr || !dir_conf->enabled)
     return DECLINED;
 
-  void *data = nullptr;
-  apr_pool_userdata_get(&data, k_active_span_key, r->pool);
+  void *data = ap_get_module_config(r->request_config, &ddtrace_module);
   if (data)
     return DECLINED;
 
@@ -355,13 +359,14 @@ int tracer_handler(request_rec *r) {
     options.tags.emplace("http.useragent", user_agent);
   }
 
-  request_rec *req = r->main ? r->main : r;
-
   // Register to the request pool to have the same lifecycle as
   // the request.
+  // TODO: use CRTP to avoid all that mess.
   auto *active_spans = new std::queue<datadog::tracing::Span>;
-  apr_pool_userdata_setn((void *)active_spans, "DD_ACTIVE_SPANS",
-                         delete_active_spans, req->pool);
+  ap_set_module_config(r->request_config, &ddtrace_module,
+                       (void *)active_spans);
+  apr_pool_cleanup_register(r->pool, (void *)active_spans, delete_active_spans,
+                            apr_pool_cleanup_null);
 
   dd::Span *span = nullptr;
 
@@ -389,10 +394,11 @@ int tracer_handler(request_rec *r) {
 int terminate_tracer(request_rec *r) {
   auto now = std::chrono::steady_clock::now();
 
-  request_rec *req = r->main ? r->main : r;
+  // TODO: handle subrequests
+  if (r->main)
+    return DECLINED;
 
-  void *data = nullptr;
-  apr_pool_userdata_get(&data, k_active_span_key, req->pool);
+  void *data = ap_get_module_config(r->request_config, &ddtrace_module);
   if (data == nullptr)
     return DECLINED;
 

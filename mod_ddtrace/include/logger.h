@@ -5,6 +5,7 @@
 
 #include <datadog/logger.h>
 
+#include <mutex>
 #include <sstream>
 
 class HttpdLogger final : public datadog::tracing::Logger {

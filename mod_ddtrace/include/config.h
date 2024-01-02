@@ -5,6 +5,7 @@
 
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 struct DirectoryConf final {
   bool enabled = true;
