@@ -31,7 +31,7 @@ set_target_properties(
     SUFFIX ".so"
 )
 
-target_include_directories(mod_ddtrace httpd)
+target_include_directories(mod_ddtrace PRIVATE httpd)
 target_link_libraries(mod_ddtrace dd_trace_cpp-objects httpd)
 
 if (APPLE)
