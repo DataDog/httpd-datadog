@@ -19,18 +19,17 @@ jobs:
       - uses: actions/checkout@v3
         with:
           submodules: true
-      - run: ls /httpd
-      # - name: Configure
-      #   run: cmake -B build -DHTTPD_SRC_DIR=httpd .
-      # - name: Build
-      #   run: |
-      #     cmake --build build -j
-      #     cmake --install build --prefix dist
-      # - name: Export library
-      #   uses:  actions/upload-artifact@v3
-      #   with:
-      #     name: mod_ddtrace_artifact
-      #     path: dist/lib/mod_ddtrace.so
+      - name: Configure
+        run: cmake -B build -DHTTPD_SRC_DIR=/httpd .
+      - name: Build
+        run: |
+          cmake --build build -j
+          cmake --install build --prefix dist
+      - name: Export library
+        uses:  actions/upload-artifact@v3
+        with:
+          name: mod_ddtrace_artifact
+          path: dist/lib/mod_ddtrace.so
 
   # test:
   #   needs: build
