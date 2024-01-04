@@ -11,7 +11,7 @@ jobs:
       - run: ./scripts/codestyle.sh lint
 
   build:
-    require: format
+    needs: format
     runs-on: ubuntu-22.04
     container:
       image: datadog/docker-library:httpd-datadog-ci-2.4
