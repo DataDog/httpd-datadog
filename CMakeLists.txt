@@ -13,27 +13,26 @@ if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE ReleaseWithDeb)
 endif ()
 
-if(NOT HTTPD_BUILD_DIR)
-  message(FATAL_ERROR "Missing nginx source directory. Use -DHTTPD_BUILD_DIR")
+if(NOT HTTPD_SRC_DIR)
+  message(FATAL_ERROR "Missing httpd source directory. Use -DHTTPD_SRC_DIR")
 endif()
 
 add_library(httpd INTERFACE)
 target_include_directories(
   httpd
   INTERFACE
-  ${HTTPD_BUILD_DIR}/include
-  ${HTTPD_DIR}/srclib/apr/include
-  ${HTTPD_DIR}/srclib/apr-util/include
+  ${HTTPD_SRC_DIR}/include
+  ${HTTPD_SRC_DIR}/srclib/apr/include
+  ${HTTPD_SRC_DIR}/srclib/apr-util/include
 )
 
-# target_include_directories(
-#   httpd
-#   INTERFACE
-#   ${HTTPD_DIR}/include
-#   ${HTTPD_DIR}/os/unix #<--- add condition
-#   ${HTTPD_DIR}/srclib/apr/include
-#   ${HTTPD_DIR}/srclib/apr-util/include
-# )
+if (UNIX)
+  target_include_directories(
+    httpd
+    INTERFACE
+    ${HTTPD_SRC_DIR}/os/unix
+  )
+endif (UNIX)
 
 add_subdirectory(dd-trace-cpp EXCLUDE_FROM_ALL)
 add_subdirectory(mod_ddtrace)

@@ -2,7 +2,7 @@
 
 ## `DatadogServiceName` directive
 
-   - **Description:** Set the service name
+   - **Description**: Set the service name
    - **Syntax:** DatadogServiceName *name*
    - **Mandatory:** Yes
    - **Context:** Server config
@@ -13,10 +13,10 @@ Overriden by the `DD_SERVICE` environment variable.
 
 ## `DatadogServiceVersion` directive
 
-   - Description: Set the service version
-   - Syntax: DatadogServiceVersion *version*
-   - Mandatory: No, but highly suggested
-   - Context: server config
+   - **Description**: Set the service version
+   - **Syntax**: DatadogServiceVersion *version*
+   - **Mandatory**: No, but highly suggested
+   - **Context**: Server config
 
 Set the application version.
 
@@ -25,10 +25,10 @@ Overriden by the `DD_VERSION` environment variable.
 Exemple values: `1.2.3`, `6c44da20`, `2020.02.13`.
 
 ## `DatadogServiceEnvironment` directive
-   - Description: Set the service environment
-   - Syntax: DatadogServiceEnvironment *env_name*
-   - Mandatory: No, but highly suggested
-   - Context: server config
+   - **Description**: Set the service environment
+   - **Syntax**: DatadogServiceEnvironment *env_name*
+   - **Mandatory**: No, but highly suggested
+   - **Context**: Server config
 
 Set the name of the environment within which `httpd` is running.
 Overriden by the `DD_ENV` environment variable.
@@ -36,11 +36,11 @@ Overriden by the `DD_ENV` environment variable.
 Example: `prod`, `pre-prod`, `staging`.
 
 ## `DatadogAgentUrl` directive
-   - Description: Set the datadog agent url
-   - Syntax: DatadogAgentUrl *url*
-   - Default: http://localhost:8126
-   - Mandatory: No
-   - Context: server config
+   - **Description**: Set the datadog agent url
+   - **Syntax**: DatadogAgentUrl *url*
+   - **Default**: http://localhost:8126
+   - **Mandatory**: No
+   - **Context**: Server config
 
 Set a URL at which the Datadog Agent can be reached.
 The following formats are supported:
@@ -56,21 +56,21 @@ Overriden by the `DD_TRACE_AGENT_URL` environment variable.
 
 ## `DatadogEnable` directive
 
-   - Description: Enable or disable the module
-   - Syntax: DatadogEnable *On\|Off*
-   - Default: On
-   - Mandatory: No
-   - Context: directory config
+   - **Description**: Enable or disable the module
+   - **Syntax**: DatadogEnable *On\|Off*
+   - **Default**: On
+   - **Mandatory**: No
+   - **Context**: Directory config
 
 Directive to enable or disable the module.
 
 ## `DatadogSamplingRate` directive
 
-   - description: Set the sampling rate
-   - syntax: DatadogEnable *rate*
-   - default: 1.0
-   - Mandatory: No
-   - Context: directory config
+   - **Description**: Set the sampling rate
+   - **Syntax**: DatadogEnable *rate*
+   - **Default**: 1.0
+   - **Mandatory**: No
+   - **Context**: Directory config
 
 Set the sampling rate on traces started from `httpd`. 
 
@@ -79,11 +79,11 @@ and `DD_TRACE_RATE_LIMIT` environment variables.
 
 ### `DatadogPropagationStyle`
 
-   - description: Set the propagation style
-   - syntax: DatadogPropagationStyle *style1* ... *styleN*
-   - default: datadog tracecontext
-   - Mandatory: No
-   - Context: directory config
+   - **Description**: Set the propagation style
+   - **Syntax**: DatadogPropagationStyle *style1* ... *styleN*
+   - **Default**: datadog tracecontext
+   - **Mandatory**: No
+   - **Context**: Directory config
 
 Set one or more trace propagation styles that will use to extract trace context from incoming requests and to inject trace context into outgoing requests.
 
@@ -98,11 +98,11 @@ The following styles are supported:
 
 ## `DatadogTrustInboundSpan` directive
 
-   - Description: Extract or not span from incoming requests
-   - Syntax: DatadogTrustInboundSpan *On|Off*
-   - Default: On
-   - Mandatory: No
-   - Context: directory config
+   - **Description**: Extract or not span from incoming requests
+   - **Syntax**: DatadogTrustInboundSpan *On|Off*
+   - **Default**: On
+   - **Mandatory**: No
+   - **Context**: Directory config
 
 If `on`, attempt to extract trace context from incoming requests. This way, nginx need not be the beginning of the trace — it can inherit a parent span from the incoming request.
 
@@ -110,9 +110,9 @@ If `off`, trace context will not be extracted from incoming requests. Nginx will
 
 ## `DatadogAddTag` directive
 
-   - Description: Add custom tag
-   - Syntax: DatadogAddTag *key* *value*
-   - Mandatory: No
-   - Context: directory config
+   - **Description**: Add custom tag
+   - **Syntax**: DatadogAddTag *key* *value*
+   - **Mandatory**: No
+   - **Context**: Directory config
 
 Add tag. TODO: behavior when merging with context.

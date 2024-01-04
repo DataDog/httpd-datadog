@@ -36,3 +36,12 @@ target_link_libraries(mod_ddtrace dd_trace_cpp-objects httpd)
 if (APPLE)
   target_link_options(mod_ddtrace PRIVATE -undefined dynamic_lookup)
 endif ()
+
+install(
+  TARGETS mod_ddtrace
+  DESTINATION lib
+  # Maybe
+  # LIBRARY lib
+  # FRAMEWORK lib
+  # RUNTIME lib
+)
