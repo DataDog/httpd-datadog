@@ -17,6 +17,8 @@ jobs:
       image: datadog/docker-library:httpd-datadog-ci-2.4
     steps:
       - uses: actions/checkout@v3
+        with:
+          submodules: true
       - name: Configure
         run: cmake -B build -DHTTPD_SRC_DIR=httpd .
       - name: Build
@@ -30,7 +32,7 @@ jobs:
           path: dist/lib/mod_ddtrace.so
 
   # test:
-  #   require: build
+  #   needs: build
   #   runs-on: ubuntu-22.04
   #   container:
   #     image: datadog/docker-library:dd-trace-cpp-ci
