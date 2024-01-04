@@ -15,7 +15,7 @@ target_compile_options(mod_ddtrace
   PRIVATE -Wall -Wextra
 )
 
-add_dependencies(mod_ddtrace dd_trace_cpp-objects)
+add_dependencies(mod_ddtrace dd_trace_cpp-objects httpd)
 
 target_include_directories(
   mod_ddtrace
