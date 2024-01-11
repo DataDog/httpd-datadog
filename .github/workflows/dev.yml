@@ -34,8 +34,6 @@ jobs:
   test:
     needs: build
     runs-on: ubuntu-22.04
-    container:
-      image: datadog/docker-library:dd-trace-cpp-ci
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
