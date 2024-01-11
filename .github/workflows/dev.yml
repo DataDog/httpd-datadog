@@ -21,9 +21,15 @@ jobs:
           submodules: true
       - name: Configure
         run: cmake -B build -DHTTPD_SRC_DIR=/httpd .
+      - name: Debug
+        run: ls /httpd/include
+      - name: Debug
+        run: ls /httpd/srclib/apr/include
+      - name: Debug
+        run: ls /httpd/srclib/apr-util/include
       - name: Build
         run: |
-          cmake --build build -j
+          cmake --build build -j --verbose
           cmake --install build --prefix dist
       - name: Export library
         uses:  actions/upload-artifact@v3
