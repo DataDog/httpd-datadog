@@ -7,7 +7,7 @@ jobs:
     container:
       image: datadog/docker-library:dd-trace-cpp-ci
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - run: ./scripts/codestyle.sh lint
 
   build:
@@ -16,17 +16,11 @@ jobs:
     container:
       image: datadog/docker-library:httpd-datadog-ci-2.4
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
       - name: Configure
         run: cmake -B build -DHTTPD_SRC_DIR=/httpd .
-      - name: Debug
-        run: ls /httpd/include
-      - name: Debug
-        run: ls /httpd/srclib/apr/include
-      - name: Debug
-        run: ls /httpd/srclib/apr-util/include
       - name: Build
         run: |
           cmake --build build -j --verbose
@@ -37,15 +31,21 @@ jobs:
           name: mod_ddtrace_artifact
           path: dist/lib/mod_ddtrace.so
 
-  # test:
-  #   needs: build
-  #   runs-on: ubuntu-22.04
-  #   container:
-  #     image: datadog/docker-library:dd-trace-cpp-ci
-  #   steps:
-  #     - name: Import library from build job
-  #       uses: actions/download-artifact@v3
-  #       with:
-  #         name: mod_ddtrace_artifact
-  #     - run: pytest test --junitxml=out.xml
+  test:
+    needs: build
+    runs-on: ubuntu-22.04
+    container:
+      image: datadog/docker-library:dd-trace-cpp-ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: Import library from build job
+        uses: actions/download-artifact@v3
+        with:
+          name: mod_ddtrace_artifact
+      - run: pytest test --junitxml=out.xml
 
