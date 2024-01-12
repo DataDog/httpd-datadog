@@ -1,0 +1,10 @@
+version: "3.2"
+services:
+  httpd:
+    image: httpd:2.4
+    ports:
+      - 8080:80
+    environment:
+      - DD_AGENT_HOST=agent
+    # volumes:
+    #   - ${MOD_DDTRACE_SO}:/datadog-tests/mod_ddtrace.so

@@ -7,7 +7,6 @@ project(httpd-datadog)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON) # does not produce the json file
-# set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE INTERNAL "") # works
 
 if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE ReleaseWithDeb)

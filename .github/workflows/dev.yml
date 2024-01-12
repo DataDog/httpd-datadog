@@ -45,5 +45,6 @@ jobs:
         uses: actions/download-artifact@v3
         with:
           name: mod_ddtrace_artifact
+          path: dist/lib
       - run: pytest test --junitxml=out.xml
 
