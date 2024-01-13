@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 import pytest
+import time
 import shutil
 import typing
 import subprocess
 import os
 from pathlib import Path
 import requests
+from datetime import datetime
 
 
 CWD_DOCKER_COMPOSE = Path(__file__).parent.parent
@@ -67,6 +69,26 @@ class Server:
         return False
 
 
+class Agent:
+    def __init__(self, host, port, proc) -> None:
+        self.host = host
+        self.port = port
+        self._proc = proc
+
+    def received_trace(self, timeout) -> bool:
+        # TODO: Use the session mechanism
+        beg = datetime.now()
+        while (datetime.now() - beg).total_seconds() < timeout:
+            r = requests.get(f"http://{self.host}:{self.port}/test/traces")
+            if r.status_code == 200 and len(r.json()) >= 1:
+                print(f"Received: {r.json()}")
+                return True
+
+            time.sleep(1)
+
+        return False
+
+
 def make_url(host: Server, path: str) -> str:
     url = f"http://{host.host}"
     if host.port:
@@ -82,6 +104,13 @@ server = Server(
     proc=DockerProc("httpd"),
     conf="/usr/local/apache2/conf/httpd.conf",
 )
+
+agent = Agent(
+    host="localhost",
+    port="8136",
+    proc=DockerProc("agent"),
+)
+
 
 # Working:
 # - docker compose up
@@ -108,4 +137,4 @@ def test_minimal_config():
 
     r = requests.get(make_url(server, "/"), timeout=2)
     assert r.status_code == 200
-    # assert agent.received_trace(timeout=10)
+    assert agent.received_trace(timeout=10)

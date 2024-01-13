@@ -6,5 +6,8 @@ services:
       - 8080:80
     environment:
       - DD_AGENT_HOST=agent
-    # volumes:
-    #   - ${MOD_DDTRACE_SO}:/datadog-tests/mod_ddtrace.so
+
+  agent:
+    image: ghcr.io/datadog/dd-apm-test-agent/ddapm-test-agent:latest
+    ports:
+      - 8136:8126
