@@ -3,8 +3,12 @@ import pytest
 import shutil
 import typing
 import subprocess
+import os
 from pathlib import Path
 import requests
+
+
+CWD_DOCKER_COMPOSE = Path(__file__).parent.parent
 
 
 class DockerProc:
@@ -18,6 +22,7 @@ class DockerProc:
             shell=True,
             check=True,
             capture_output=True,
+            cwd=CWD_DOCKER_COMPOSE,
         )
 
     def copyfile(self, src: str, dst: str) -> bool:
@@ -25,6 +30,7 @@ class DockerProc:
             f"docker compose cp {src} {self._name}:{dst}",
             shell=True,
             check=True,
+            cwd=CWD_DOCKER_COMPOSE,
         )
         return proc_res.returncode == 0
 
@@ -37,6 +43,7 @@ class Server:
         self._conf = conf
 
     def load_configuration(self, conf_path: str) -> bool:
+        conf_path = Path(__file__).parent / conf_path
         if not self._proc.copyfile(conf_path, "/tmp-httpd.conf"):
             return False
 
