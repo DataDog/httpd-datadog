@@ -12,6 +12,7 @@
 
 #include "config.h"
 #include "logger.h"
+#include "utils.h"
 
 #include <datadog/dict_reader.h>
 #include <datadog/dict_writer.h>
@@ -43,21 +44,23 @@ std::string make_httpd_version() {
 
 namespace dd = datadog::tracing;
 
-static dd::RuntimeID *k_runtime_id = nullptr;
-static std::unique_ptr<datadog::tracing::Tracer> tracer = nullptr;
+static std::unique_ptr<dd::RuntimeID> g_runtime_id = nullptr;
+static std::unique_ptr<dd::Tracer> g_tracer = nullptr;
+static std::unique_ptr<utils::HeaderTags> g_header_tags = nullptr;
 
 APLOG_USE_MODULE(ddtrace);
 
 // Hooks
 void init_tracer(apr_pool_t *, server_rec *s);
-int tracer_handler(request_rec *r);
-int terminate_tracer(request_rec *r);
+int start_root_span(request_rec *r);
+int terminate_root_span(request_rec *r);
 void register_hooks(apr_pool_t *);
 
 // Directives setter
 void *init_tracer_conf(apr_pool_t *pool, server_rec *svr);
 apr_status_t destroy_tracer_conf(void *ptr);
 
+// Configuration functions
 const char *set_agent_url(cmd_parms *cmd, void *cfg, const char *arg);
 const char *set_service_environment(cmd_parms *cmd, void *cfg, const char *arg);
 const char *set_service_version(cmd_parms *cmd, void *cfg, const char *arg);
@@ -102,10 +105,11 @@ module AP_MODULE_DECLARE_DATA ddtrace_module = {
 };
 
 void register_hooks(apr_pool_t *) {
-  k_runtime_id = new dd::RuntimeID(dd::RuntimeID::generate());
+  g_runtime_id = std::make_unique<dd::RuntimeID>(dd::RuntimeID::generate());
   ap_hook_child_init(init_tracer, NULL, NULL, APR_HOOK_MIDDLE);
-  ap_hook_fixups(tracer_handler, NULL, NULL, APR_HOOK_LAST);
-  ap_hook_log_transaction(terminate_tracer, NULL, NULL, APR_HOOK_REALLY_FIRST);
+  ap_hook_fixups(start_root_span, NULL, NULL, APR_HOOK_LAST);
+  ap_hook_log_transaction(terminate_root_span, NULL, NULL,
+                          APR_HOOK_REALLY_FIRST);
 }
 
 void *init_tracer_conf(apr_pool_t *pool, server_rec *s) {
@@ -120,7 +124,7 @@ void *init_tracer_conf(apr_pool_t *pool, server_rec *s) {
       {"httpd.version", make_httpd_version()},
       {"httpd.virtual_host", s->is_virtual ? "true" : "false"}};
   conf->logger = std::make_shared<HttpdLogger>(s, ddtrace_module.module_index);
-  conf->runtime_id = *k_runtime_id;
+  conf->runtime_id = *g_runtime_id;
   return (void *)conf;
 }
 
@@ -253,8 +257,11 @@ void init_tracer(apr_pool_t *, server_rec *s) {
     return;
   }
 
-  // TODO: destroy `tracer_config`
-  tracer = std::make_unique<datadog::tracing::Tracer>(*validated_config);
+  if (const char *value = std::getenv("DD_TRACE_HEADER_TAGS"); value) {
+    g_header_tags = std::make_unique<utils::HeaderTags>(value);
+  }
+
+  g_tracer = std::make_unique<datadog::tracing::Tracer>(*validated_config);
 }
 
 apr_status_t delete_active_spans(void *data) {
@@ -314,12 +321,12 @@ std::string protocol(int protocol_number) {
 }
 
 // TODO: support internal redirection (r->prev until == NULL)
-int tracer_handler(request_rec *r) {
-  if (tracer == nullptr)
+int start_root_span(request_rec *r) {
+  if (g_tracer == nullptr)
     return DECLINED;
 
   // TODO: Trace subrequest
-  if (r->main)
+  if (r->main != nullptr)
     return DECLINED;
 
   DirectoryConf *dir_conf =
@@ -339,9 +346,8 @@ int tracer_handler(request_rec *r) {
 
   datadog::tracing::SpanConfig options;
   options.name = "httpd.request";
-  if (r->proxyreq != PROXYREQ_NONE) {
-    options.name = "httpd.proxy";
-  }
+  options.name =
+      (r->proxyreq != PROXYREQ_NONE) ? "httpd.proxy" : "httpd.request";
   options.resource = resource_name;
   options.tags = std::unordered_map<std::string, std::string>{
       {"http.version", protocol(r->proto_num)},
@@ -374,15 +380,15 @@ int tracer_handler(request_rec *r) {
   // there is nothing we can do with it.
   if (dir_conf->trust_inbound_span) {
     auto extracted_span =
-        tracer->extract_or_create_span(HeaderReader(r->headers_in), options);
+        g_tracer->extract_or_create_span(HeaderReader(r->headers_in), options);
     if (auto error = extracted_span.if_error()) {
-      span = &active_spans->emplace(tracer->create_span(options));
+      span = &active_spans->emplace(g_tracer->create_span(options));
       span->set_error(error->message.c_str());
     } else {
       span = &active_spans->emplace(std::move(*extracted_span));
     }
   } else {
-    span = &active_spans->emplace(tracer->create_span(options));
+    span = &active_spans->emplace(g_tracer->create_span(options));
   }
 
   HeaderInjector header_injector(r->headers_in);
@@ -391,7 +397,7 @@ int tracer_handler(request_rec *r) {
   return DECLINED;
 }
 
-int terminate_tracer(request_rec *r) {
+int terminate_root_span(request_rec *r) {
   auto now = std::chrono::steady_clock::now();
 
   // TODO: handle subrequests
@@ -411,6 +417,21 @@ int terminate_tracer(request_rec *r) {
   span.set_end_time(now);
   span.set_tag("http.status_code", std::to_string(r->status));
   span.set_tag("http.response.content_length", std::to_string(r->bytes_sent));
+
+  if (g_header_tags) {
+    g_header_tags->process(
+        span,
+        [header_in = r->headers_in, header_out = r->headers_out](
+            std::string_view key) -> std::optional<std::string_view> {
+          if (const char *value = apr_table_get(header_in, key.data())) {
+            return value;
+          } else if (const char *value =
+                         apr_table_get(header_out, key.data())) {
+            return value;
+          }
+          return std::nullopt;
+        });
+  }
 
   active_spans->pop();
 

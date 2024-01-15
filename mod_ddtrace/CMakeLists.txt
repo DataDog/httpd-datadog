@@ -3,6 +3,7 @@ add_library(
   mod_ddtrace
   SHARED
   src/mod_ddtrace.cpp
+  src/utils.cpp
 )
 
 target_include_directories(

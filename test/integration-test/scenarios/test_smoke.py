@@ -112,18 +112,6 @@ agent = Agent(
 )
 
 
-# Working:
-# - docker compose up
-# - docker compose cp mod_ddtrace.so httpd:/mod_ddtrace.so
-# - pytest .
-
-# TODO: have a main pytest
-# - pass as param the .so and copy to docker container with
-#   docker compose cp ../build/mod_ddtrace/mod_ddtrace.so  httpd:/
-# - execution environment {"docker", "local"}
-# for docker find host and port using docker inspect
-
-
 def test_load_module():
     """
     Test the module can be loaded

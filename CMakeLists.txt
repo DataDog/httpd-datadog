@@ -33,5 +33,6 @@ if (UNIX)
   )
 endif (UNIX)
 
-add_subdirectory(dd-trace-cpp EXCLUDE_FROM_ALL)
+add_subdirectory(dd-trace-cpp)
 add_subdirectory(mod_ddtrace)
+# add_subdirectory(test/unit-test)
