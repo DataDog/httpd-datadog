@@ -21,7 +21,6 @@
 #include <datadog/tracer.h>
 #include <datadog/tracer_config.h>
 
-#include <queue>
 #include <stdio.h>
 #include <string>
 
@@ -52,8 +51,8 @@ APLOG_USE_MODULE(ddtrace);
 
 // Hooks
 void init_tracer(apr_pool_t *, server_rec *s);
-int start_root_span(request_rec *r);
-int terminate_root_span(request_rec *r);
+int start_span(request_rec *r);
+int terminate_span(request_rec *r);
 void register_hooks(apr_pool_t *);
 
 // Directives setter
@@ -107,9 +106,8 @@ module AP_MODULE_DECLARE_DATA ddtrace_module = {
 void register_hooks(apr_pool_t *) {
   g_runtime_id = std::make_unique<dd::RuntimeID>(dd::RuntimeID::generate());
   ap_hook_child_init(init_tracer, NULL, NULL, APR_HOOK_MIDDLE);
-  ap_hook_fixups(start_root_span, NULL, NULL, APR_HOOK_LAST);
-  ap_hook_log_transaction(terminate_root_span, NULL, NULL,
-                          APR_HOOK_REALLY_FIRST);
+  ap_hook_fixups(start_span, NULL, NULL, APR_HOOK_LAST);
+  ap_hook_log_transaction(terminate_span, NULL, NULL, APR_HOOK_REALLY_FIRST);
 }
 
 void *init_tracer_conf(apr_pool_t *pool, server_rec *s) {
@@ -261,9 +259,9 @@ void init_tracer(apr_pool_t *, server_rec *s) {
   g_tracer = std::make_unique<datadog::tracing::Tracer>(*validated_config);
 }
 
-apr_status_t delete_active_spans(void *data) {
-  auto active_spans = (std::queue<datadog::tracing::Span> *)data;
-  delete active_spans;
+apr_status_t delete_span(void *data) {
+  auto span = (datadog::tracing::Span *)data;
+  delete span;
 
   return 0;
 }
@@ -318,7 +316,7 @@ std::string protocol(int protocol_number) {
 }
 
 // TODO: support internal redirection (r->prev until == NULL)
-int start_root_span(request_rec *r) {
+int start_span(request_rec *r) {
   if (g_tracer == nullptr)
     return DECLINED;
 
@@ -362,31 +360,30 @@ int start_root_span(request_rec *r) {
     options.tags.emplace("http.useragent", user_agent);
   }
 
-  // Register to the request pool to have the same lifecycle as
-  // the request.
-  // TODO: use CRTP to avoid all that mess.
-  auto *active_spans = new std::queue<datadog::tracing::Span>;
-  ap_set_module_config(r->request_config, &ddtrace_module,
-                       (void *)active_spans);
-  apr_pool_cleanup_register(r->pool, (void *)active_spans, delete_active_spans,
-                            apr_pool_cleanup_null);
-
   dd::Span *span = nullptr;
 
-  // In case we fail to use the inbound span, then, start a new trace
-  // there is nothing we can do with it.
+  // In case we fail to use the inbound span, then, start a new trace ¯\_(ツ)_/¯
+  // There is nothing we can do with it.
   if (dir_conf->trust_inbound_span) {
     auto extracted_span =
         g_tracer->extract_or_create_span(HeaderReader(r->headers_in), options);
     if (auto error = extracted_span.if_error()) {
-      span = &active_spans->emplace(g_tracer->create_span(options));
+      span = new dd::Span(g_tracer->create_span(options));
       span->set_error(error->message.c_str());
     } else {
-      span = &active_spans->emplace(std::move(*extracted_span));
+      span = new dd::Span(std::move(*extracted_span));
     }
   } else {
-    span = &active_spans->emplace(g_tracer->create_span(options));
+    span = new dd::Span(g_tracer->create_span(options));
   }
+
+  assert(span != nullptr);
+
+  // Register to the request pool to have the same lifecycle as
+  // the request.
+  ap_set_module_config(r->request_config, &ddtrace_module, (void *)span);
+  apr_pool_cleanup_register(r->pool, (void *)span, delete_span,
+                            apr_pool_cleanup_null);
 
   HeaderInjector header_injector(r->headers_in);
   span->inject(header_injector);
@@ -394,7 +391,7 @@ int start_root_span(request_rec *r) {
   return DECLINED;
 }
 
-int terminate_root_span(request_rec *r) {
+int terminate_span(request_rec *r) {
   auto now = std::chrono::steady_clock::now();
 
   // TODO: handle subrequests
@@ -405,19 +402,18 @@ int terminate_root_span(request_rec *r) {
   if (data == nullptr)
     return DECLINED;
 
-  auto *active_spans = (std::queue<datadog::tracing::Span> *)data;
+  auto *span = (datadog::tracing::Span *)data;
 
-  if (!active_spans)
+  if (!span)
     return DECLINED;
 
-  auto &span = active_spans->front();
-  span.set_end_time(now);
-  span.set_tag("http.status_code", std::to_string(r->status));
-  span.set_tag("http.response.content_length", std::to_string(r->bytes_sent));
+  span->set_end_time(now);
+  span->set_tag("http.status_code", std::to_string(r->status));
+  span->set_tag("http.response.content_length", std::to_string(r->bytes_sent));
 
   if (g_header_tags) {
     g_header_tags->process(
-        span,
+        *span,
         [header_in = r->headers_in, header_out = r->headers_out](
             std::string_view key) -> std::optional<std::string_view> {
           if (const char *value = apr_table_get(header_in, key.data())) {
@@ -429,8 +425,6 @@ int terminate_root_span(request_rec *r) {
           return std::nullopt;
         });
   }
-
-  active_spans->pop();
 
   return DECLINED;
 }
