@@ -22,7 +22,7 @@ Download a gzippeed tarball from a recent release, extract it to wherever `httpd
 LoadModule ddtrace_module <MODULE_PATH>/mod_ddtrace.so
 ````
 
-Then run `httd -t` to test. You can find the ddtrace log.
+Then run `httd -t` to test the new configuration. You can find the ddtrace log.
 
 ````sh
 cat <LOG> | grep ddtrace
@@ -30,11 +30,12 @@ cat <LOG> | grep ddtrace
 
 ## Configuration
 Once the module is loaded, by default all request are traced and sent to the Datadog Agent.
-It is possible to configure the module as it suit you, to know more how to configure the module,
-check our [Configuration page.](./docs/configuration) 
+It is possible to change the module default behavior, to know more how check our [Configuration page.](./docs/configuration) 
 
 ## Contributing
 
-[Developer](./docs.dev)
+We welcome contribution, before doing so, please read our [developer documentation](./docs/dev.md).
 
 ## Licence
+
+TBD

@@ -257,10 +257,7 @@ void init_tracer(apr_pool_t *, server_rec *s) {
     return;
   }
 
-  if (const char *value = std::getenv("DD_TRACE_HEADER_TAGS"); value) {
-    g_header_tags = std::make_unique<utils::HeaderTags>(value);
-  }
-
+  g_header_tags = utils::make_header_tags();
   g_tracer = std::make_unique<datadog::tracing::Tracer>(*validated_config);
 }
 

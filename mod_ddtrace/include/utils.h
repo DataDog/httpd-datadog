@@ -22,4 +22,12 @@ private:
   parse_header_tags(std::string_view in);
 };
 
+inline std::unique_ptr<HeaderTags> make_header_tags() {
+  if (const char *value = std::getenv("DD_TRACE_HEADER_TAGS"); value) {
+    return std::make_unique<utils::HeaderTags>(value);
+  }
+
+  return nullptr;
+}
+
 } // namespace utils
