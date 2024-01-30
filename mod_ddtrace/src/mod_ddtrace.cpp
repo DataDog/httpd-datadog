@@ -115,10 +115,11 @@ void *init_tracer_conf(apr_pool_t *pool, server_rec *s) {
   apr_pool_cleanup_register(pool, (void *)conf, destroy_tracer_conf,
                             apr_pool_cleanup_null);
 
+  // NOTE: Could use s->process->short_name for the default service name.
   conf->defaults.service = "httpd";
   conf->defaults.service_type = "server";
   conf->defaults.tags = std::unordered_map<std::string, std::string>{
-      {"component", "http"},
+      {"component", "httpd"},
       {"httpd.version", make_httpd_version()},
       {"httpd.virtual_host", s->is_virtual ? "true" : "false"}};
   conf->logger = std::make_shared<HttpdLogger>(s, ddtrace_module.module_index);
