@@ -31,6 +31,8 @@
 *.out
 *.app
 
+.DS_Store
+
 .cache/
 .vscode/
 

@@ -388,8 +388,8 @@ int start_span(request_rec *r) {
   // TODO: find a way to automatically update the log format?
   apr_table_set(r->subprocess_env, "Datadog-Trace-ID",
                 span->trace_id().hex_padded().c_str());
-  apr_table_set(r->subprocess_env, "Datadog-Parent-ID",
-                std::to_string(span->parent_id().value_or(0)).c_str());
+  apr_table_set(r->subprocess_env, "Datadog-Span-ID",
+                std::to_string(span->id()).c_str());
 
   // Register to the request pool to have the same lifecycle as
   // the request.
