@@ -16,6 +16,8 @@ void HeaderTags::process(
   }
 }
 
+// TODO: Follow the RFC recommendation
+// <https://datadoghq.atlassian.net/wiki/spaces/APMINT/pages/2302444638/DD+TRACE+HEADER+TAGS>
 std::unordered_map<std::string, std::string>
 HeaderTags::parse_header_tags(std::string_view in) {
   std::unordered_map<std::string, std::string> res;

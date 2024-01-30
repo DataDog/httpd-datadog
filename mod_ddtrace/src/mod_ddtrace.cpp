@@ -320,24 +320,9 @@ std::string protocol(int protocol_number) {
   }
 }
 
-// TODO: support internal redirection (r->prev until == NULL)
-int start_span(request_rec *r) {
-  if (g_tracer == nullptr)
-    return DECLINED;
-
-  // TODO: Trace subrequest
-  if (r->main != nullptr)
-    return DECLINED;
-
-  DirectoryConf *dir_conf =
-      (DirectoryConf *)ap_get_module_config(r->per_dir_config, &ddtrace_module);
-  if (dir_conf == nullptr || !dir_conf->enabled)
-    return DECLINED;
-
-  void *data = ap_get_module_config(r->request_config, &ddtrace_module);
-  if (data)
-    return DECLINED;
-
+static dd::SpanConfig
+make_span_config(request_rec *r,
+                 std::unordered_map<std::string, std::string> default_tags) {
   std::string resource_name{r->method};
   resource_name += " ";
   resource_name += r->uri;
@@ -345,7 +330,6 @@ int start_span(request_rec *r) {
   resource_name += r->protocol;
 
   datadog::tracing::SpanConfig options;
-  options.name = "httpd.request";
   options.name =
       (r->proxyreq != PROXYREQ_NONE) ? "httpd.proxy" : "httpd.request";
   options.resource = resource_name;
@@ -356,7 +340,7 @@ int start_span(request_rec *r) {
       {"http.url", r->unparsed_uri},
       {"http.request.content_length", std::to_string(r->clength)},
   };
-  options.tags.merge(dir_conf->tags);
+  options.tags.merge(default_tags);
 
   if (r->useragent_ip)
     options.tags.emplace("http.client_ip", r->useragent_ip);
@@ -365,24 +349,71 @@ int start_span(request_rec *r) {
     options.tags.emplace("http.useragent", user_agent);
   }
 
+  return options;
+}
+
+int start_span(request_rec *r) {
+  if (g_tracer == nullptr)
+    return DECLINED;
+
   dd::Span *span = nullptr;
 
-  // In case we fail to use the inbound span, then, start a new trace ¯\_(ツ)_/¯
-  // There is nothing we can do with it.
-  if (dir_conf->trust_inbound_span) {
-    auto extracted_span =
-        g_tracer->extract_or_create_span(HeaderReader(r->headers_in), options);
-    if (auto error = extracted_span.if_error()) {
-      span = new dd::Span(g_tracer->create_span(options));
-      span->set_error(error->message.c_str());
-    } else {
-      span = new dd::Span(std::move(*extracted_span));
-    }
+  if (r->prev || r->main != nullptr) {
+    // Trace internal redirection or subrequests
+    // TODO: What if `per_dir_config` is not copied for each
+    //       subrequests/internal redirection?
+    request_rec *main_r = r->prev ? r->prev : r->main;
+
+    DirectoryConf *dir_conf = (DirectoryConf *)ap_get_module_config(
+        main_r->per_dir_config, &ddtrace_module);
+    if (dir_conf == nullptr || !dir_conf->enabled)
+      return DECLINED;
+
+    void *data = ap_get_module_config(main_r->request_config, &ddtrace_module);
+    if (!data)
+      return DECLINED;
+
+    dd::Span *parent_span = (dd::Span *)data;
+    dd::SpanConfig options = make_span_config(r, dir_conf->tags);
+    options.name = "httpd.subrequests";
+    span = new dd::Span(parent_span->create_child(options));
   } else {
-    span = new dd::Span(g_tracer->create_span(options));
+    // Trace request
+    DirectoryConf *dir_conf = (DirectoryConf *)ap_get_module_config(
+        r->per_dir_config, &ddtrace_module);
+    if (dir_conf == nullptr || !dir_conf->enabled)
+      return DECLINED;
+
+    void *data = ap_get_module_config(r->request_config, &ddtrace_module);
+    if (data)
+      return DECLINED; ///< `start_span` can not be called twice on the same
+                       ///< request
+
+    dd::SpanConfig options = make_span_config(r, dir_conf->tags);
+
+    // In case we fail to use the inbound span, then, start a new trace
+    // ¯\_(ツ)_/¯ There is nothing we can do about it.
+    if (dir_conf->trust_inbound_span) {
+      auto extracted_span = g_tracer->extract_or_create_span(
+          HeaderReader(r->headers_in), options);
+      if (auto error = extracted_span.if_error()) {
+        span = new dd::Span(g_tracer->create_span(options));
+        span->set_error(error->message.c_str());
+      } else {
+        span = new dd::Span(std::move(*extracted_span));
+      }
+    } else {
+      span = new dd::Span(g_tracer->create_span(options));
+    }
   }
 
   assert(span != nullptr);
+
+  // Register to the request pool to have the same lifecycle as
+  // the request.
+  ap_set_module_config(r->request_config, &ddtrace_module, (void *)span);
+  apr_pool_cleanup_register(r->pool, (void *)span, delete_span,
+                            apr_pool_cleanup_null);
 
   // Add environment variables for log injection
   // TODO: find a way to automatically update the log format?
@@ -391,12 +422,6 @@ int start_span(request_rec *r) {
   apr_table_set(r->subprocess_env, "Datadog-Span-ID",
                 std::to_string(span->id()).c_str());
 
-  // Register to the request pool to have the same lifecycle as
-  // the request.
-  ap_set_module_config(r->request_config, &ddtrace_module, (void *)span);
-  apr_pool_cleanup_register(r->pool, (void *)span, delete_span,
-                            apr_pool_cleanup_null);
-
   HeaderInjector header_injector(r->headers_in);
   span->inject(header_injector);
 
@@ -404,9 +429,6 @@ int start_span(request_rec *r) {
 }
 
 int terminate_span(request_rec *r) {
-  auto now = std::chrono::steady_clock::now();
-
-  // TODO: handle subrequests
   if (r->main)
     return DECLINED;
 
@@ -419,7 +441,6 @@ int terminate_span(request_rec *r) {
   if (!span)
     return DECLINED;
 
-  span->set_end_time(now);
   span->set_tag("http.status_code", std::to_string(r->status));
   span->set_tag("http.response.content_length", std::to_string(r->bytes_sent));
 
