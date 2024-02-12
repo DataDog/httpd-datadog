@@ -30,11 +30,11 @@ cat <LOG> | grep ddtrace
 
 ## Configuration
 Once the module is loaded, by default all request are traced and sent to the Datadog Agent.
-It is possible to change the module default behavior, to know more how check our [Configuration page.](./docs/configuration) 
+To change the module default behaviour, check our [Configuration page.](./docs/configuration) 
 
-## Contributing
+## Development / Contribution
 
-We welcome contribution, before doing so, please read our [developer documentation](./docs/dev.md).
+We welcome contribution, before doing so, please read our [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ## Licence
 
