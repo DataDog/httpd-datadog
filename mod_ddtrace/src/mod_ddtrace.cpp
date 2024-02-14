@@ -121,7 +121,8 @@ void *init_tracer_conf(apr_pool_t *pool, server_rec *s) {
   conf->defaults.tags = std::unordered_map<std::string, std::string>{
       {"component", "httpd"},
       {"httpd.version", make_httpd_version()},
-      {"httpd.virtual_host", s->is_virtual ? "true" : "false"}};
+      {"httpd.virtual_host", s->is_virtual ? "true" : "false"},
+      {"httpd.mpm", ap_show_mpm()}};
   conf->logger = std::make_shared<HttpdLogger>(s, ddtrace_module.module_index);
   conf->runtime_id = *g_runtime_id;
   return (void *)conf;

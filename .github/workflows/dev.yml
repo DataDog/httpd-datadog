@@ -46,5 +46,8 @@ jobs:
         with:
           name: mod_ddtrace_artifact
           path: dist/lib
-      - run: python test/integration-test dist/lib/mod_ddtrace.so
+      - name: Run Smoke Tests
+        run: pytest test/integration-test --module-path dist/lib/mod_ddtrace.so -m smoke
+      - name: Run Integration Tests
+        run: pytest test/integration-test --module-path dist/lib/mod_ddtrace.so -m "not smoke"
 

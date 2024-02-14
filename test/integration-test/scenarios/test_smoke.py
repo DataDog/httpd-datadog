@@ -1,128 +1,28 @@
 #!/usr/bin/env python3
 import pytest
-import time
-import shutil
-import typing
-import subprocess
-import os
-from pathlib import Path
 import requests
-from datetime import datetime
 
 
-CWD_DOCKER_COMPOSE = Path(__file__).parent.parent
+def relpath(p: str) -> str:
+    from pathlib import Path
+
+    return Path(__file__).parent / p
 
 
-class DockerProc:
-    def __init__(self, container_name: str) -> None:
-        self._name = container_name
-
-    # TODO: Fix typing
-    def run(self, cmd: str) -> typing.Any:
-        return subprocess.run(
-            f"docker compose exec {self._name} {cmd}",
-            shell=True,
-            check=True,
-            capture_output=True,
-            cwd=CWD_DOCKER_COMPOSE,
-        )
-
-    def copyfile(self, src: str, dst: str) -> bool:
-        proc_res = subprocess.run(
-            f"docker compose cp {src} {self._name}:{dst}",
-            shell=True,
-            check=True,
-            cwd=CWD_DOCKER_COMPOSE,
-        )
-        return proc_res.returncode == 0
-
-
-class Server:
-    def __init__(self, host, port, proc, conf) -> None:
-        self.host = host
-        self.port = port
-        self._proc = proc
-        self._conf = conf
-
-    def load_configuration(self, conf_path: str) -> bool:
-        conf_path = Path(__file__).parent / conf_path
-        if not self._proc.copyfile(conf_path, "/tmp-httpd.conf"):
-            return False
-
-        # TODO: use `with` statement
-        # TODO: get stdout and check for syntax ok?
-        if self._proc.run(f"apachectl -f /tmp-httpd.conf -t").returncode:
-            return False
-
-        self._proc.copyfile(conf_path, self._conf)
-        return self._proc.run("apachectl -k restart").returncode == 0
-
-    def is_module_loaded(self, module_name: str) -> bool:
-        res = self._proc.run("apachectl -t -D DUMP_MODULES")
-        if res.returncode != 0:
-            return False
-
-        for l in res.stdout.decode().split("\n"):
-            if module_name in l:
-                return True
-
-        return False
-
-
-class Agent:
-    def __init__(self, host, port, proc) -> None:
-        self.host = host
-        self.port = port
-        self._proc = proc
-
-    def received_trace(self, timeout) -> bool:
-        # TODO: Use the session mechanism
-        beg = datetime.now()
-        while (datetime.now() - beg).total_seconds() < timeout:
-            r = requests.get(f"http://{self.host}:{self.port}/test/traces")
-            if r.status_code == 200 and len(r.json()) >= 1:
-                print(f"Received: {r.json()}")
-                return True
-
-            time.sleep(1)
-
-        return False
-
-
-def make_url(host: Server, path: str) -> str:
-    url = f"http://{host.host}"
-    if host.port:
-        url += f":{host.port}"
-    url += path if path else "/"
-
-    return url
-
-
-server = Server(
-    host="localhost",
-    port="8080",
-    proc=DockerProc("httpd"),
-    conf="/usr/local/apache2/conf/httpd.conf",
-)
-
-agent = Agent(
-    host="localhost",
-    port="8136",
-    proc=DockerProc("agent"),
-)
-
-
-def test_load_module():
+@pytest.mark.smoke
+def test_load_module(server):
     """
     Test the module can be loaded
     """
-    assert server.load_configuration("conf/minimal.conf")
-    assert server.is_module_loaded("ddtrace_module")
+    assert server.load_configuration(relpath("conf/minimal.conf"))
+    assert server.module_loaded("ddtrace_module")
 
 
-def test_minimal_config():
-    assert server.load_configuration("conf/minimal.conf")
+@pytest.mark.smoke
+def test_minimal_config(server, agent):
+    assert server.load_configuration(relpath("conf/minimal.conf"))
+    assert server.module_loaded("ddtrace_module")
 
-    r = requests.get(make_url(server, "/"), timeout=2)
+    r = requests.get(server.make_url("/"), timeout=2)
     assert r.status_code == 200
     assert agent.received_trace(timeout=10)
