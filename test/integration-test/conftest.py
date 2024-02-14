@@ -123,6 +123,9 @@ class Agent:
         if token is None:
             token = str(uuid.uuid4())
 
+        print(
+            f"URL = http://{self.host}:{self.port}/test/session/start?test_session_token={token}"
+        )
         r = requests.get(
             f"http://{self.host}:{self.port}/test/session/start?test_session_token={token}"
         )
