@@ -16,6 +16,7 @@
 
 #include <datadog/dict_reader.h>
 #include <datadog/dict_writer.h>
+#include <datadog/injection_options.h>
 #include <datadog/span.h>
 #include <datadog/span_config.h>
 #include <datadog/tracer.h>
@@ -65,6 +66,7 @@ const char *set_service_environment(cmd_parms *cmd, void *cfg, const char *arg);
 const char *set_service_version(cmd_parms *cmd, void *cfg, const char *arg);
 const char *set_service_name(cmd_parms *cmd, void *cfg, const char *arg);
 const char *enable_ddog(cmd_parms *cmd, void *cfg, int value);
+const char *delegate_sampling(cmd_parms *, void *cfg, int value);
 const char *add_or_overwrite_tag(cmd_parms *cmd, void *cfg, const char *arg0,
                                  const char *arg1);
 const char *enable_inbound_span(cmd_parms *cmd, void *cfg, int value);
@@ -86,6 +88,7 @@ static const command_rec ddtrace_cmds[] = {
 
   // Directive scope
   AP_INIT_FLAG("DatadogEnable",                reinterpret_cast<cmd_func>(enable_ddog),             NULL, ACCESS_CONF, "Enable or disable Datadog tracing module"),
+  AP_INIT_FLAG("DatadogDelegateSampling",      reinterpret_cast<cmd_func>(delegate_sampling),       NULL, ACCESS_CONF, "Enable or disable Sampling Delegation"),
   AP_INIT_FLAG("DatadogTrustInboundSpan",      reinterpret_cast<cmd_func>(enable_inbound_span),     NULL, ACCESS_CONF, "Trust inbound span headers"),
   AP_INIT_ITERATE2("DatadogAddTag",            reinterpret_cast<cmd_func>(add_or_overwrite_tag),    NULL, ACCESS_CONF, "Append tags"),
 
@@ -125,6 +128,8 @@ void *init_tracer_conf(apr_pool_t *pool, server_rec *s) {
       {"httpd.mpm", ap_show_mpm()}};
   conf->logger = std::make_shared<HttpdLogger>(s, ddtrace_module.module_index);
   conf->runtime_id = *g_runtime_id;
+  conf->integration_name = "httpd";
+  conf->integration_version = "0.1.0";
   return (void *)conf;
 }
 
@@ -228,6 +233,12 @@ const char *set_propagation_style(cmd_parms *cmd, void * /* cfg */, int argc,
 const char *enable_ddog(cmd_parms * /* cmd */, void *cfg, int value) {
   DirectoryConf *dir_conf = (DirectoryConf *)cfg;
   dir_conf->enabled = (bool)value;
+  return NULL;
+}
+
+const char *delegate_sampling(cmd_parms * /* cmd */, void *cfg, int value) {
+  DirectoryConf *dir_conf = (DirectoryConf *)cfg;
+  dir_conf->delegate_sampling = (bool)value;
   return NULL;
 }
 
@@ -359,6 +370,7 @@ int start_span(request_rec *r) {
     return DECLINED;
 
   dd::Span *span = nullptr;
+  dd::InjectionOptions injection_opts;
 
   if (r->prev || r->main != nullptr) {
     // Trace internal redirection or subrequests
@@ -379,6 +391,7 @@ int start_span(request_rec *r) {
     dd::SpanConfig options = make_span_config(r, dir_conf->tags);
     options.name = "httpd.subrequests";
     span = new dd::Span(parent_span->create_child(options));
+    injection_opts.delegate_sampling_decision = dir_conf->delegate_sampling;
   } else {
     // Trace request
     DirectoryConf *dir_conf = (DirectoryConf *)ap_get_module_config(
@@ -407,6 +420,8 @@ int start_span(request_rec *r) {
     } else {
       span = new dd::Span(g_tracer->create_span(options));
     }
+
+    injection_opts.delegate_sampling_decision = dir_conf->delegate_sampling;
   }
 
   assert(span != nullptr);
@@ -425,7 +440,7 @@ int start_span(request_rec *r) {
                 std::to_string(span->id()).c_str());
 
   HeaderInjector header_injector(r->headers_in);
-  span->inject(header_injector);
+  span->inject(header_injector, injection_opts);
 
   return DECLINED;
 }
@@ -445,6 +460,13 @@ int terminate_span(request_rec *r) {
 
   span->set_tag("http.status_code", std::to_string(r->status));
   span->set_tag("http.response.content_length", std::to_string(r->bytes_sent));
+
+  HeaderReader reader(r->headers_out);
+  auto status = span->read_sampling_delegation_response(reader);
+  // TODO: handle error
+  // if (auto error = status.if_error()) {
+  //   std::cerr << error << "\n";
+  // }
 
   if (g_header_tags) {
     g_header_tags->process(

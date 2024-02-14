@@ -9,6 +9,7 @@
 
 struct DirectoryConf final {
   bool enabled = true;
+  bool delegate_sampling = false;
   bool trust_inbound_span = true;
   std::unordered_map<std::string, std::string> tags;
   std::string_view resource_name;
