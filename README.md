@@ -38,7 +38,7 @@ Then run `httpd -t <CONFIG_FILE>` to test the new configuration.
 
 ## Configuration
 Once the module is loaded, by default all requests are traced and sent to the Datadog Agent.
-To change the module default behaviour, check our [Configuration page.](./doc/configuration) 
+To change the module default behaviour, check our [Configuration page.](./doc/configuration.md) 
 
 ## Development / Contribution
 
