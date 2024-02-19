@@ -1,4 +1,7 @@
-# Configuring Datadog Tracing in Apache HTTP Server 
+# Configuring Datadog Tracing in Apache HTTP Server
+
+> [!TIP]
+> Server directives should be set only once per server or virtual server. On the other hand, directory configuration gives you the flexibility to fine-tune settings for each specific direction.
 
 ## `DatadogServiceName` directive
 
@@ -55,7 +58,6 @@ The port defaults to 8126 if it is not specified.
 Overriden by the `DD_TRACE_AGENT_URL` environment variable.
 
 ## `DatadogEnable` directive
-
    - **Description**: Enable or disable the module
    - **Syntax**: DatadogEnable *On\|Off*
    - **Default**: On
@@ -65,8 +67,7 @@ Overriden by the `DD_TRACE_AGENT_URL` environment variable.
 Directive to enable or disable the module.
 
 ## `DatadogSamplingRate` directive
-
-   - **Description**: Set the sampling rate
+   - **Description**: Set the trace sampling rate
    - **Syntax**: DatadogEnable *rate*
    - **Default**: 1.0
    - **Mandatory**: No
@@ -77,8 +78,7 @@ Set the sampling rate on traces started from `httpd`.
 Overriden by `DD_TRACE_SAMPLING_RULES`, `DD_TRACE_SAMPLE_RATE`
 and `DD_TRACE_RATE_LIMIT` environment variables.
 
-### `DatadogPropagationStyle`
-
+## `DatadogPropagationStyle` directive
    - **Description**: Set the propagation style
    - **Syntax**: DatadogPropagationStyle *style1* ... *styleN*
    - **Default**: datadog tracecontext
@@ -97,7 +97,6 @@ The following styles are supported:
    - `b3` is the Zipking multi-header style.
 
 ## `DatadogTrustInboundSpan` directive
-
    - **Description**: Extract or not span from incoming requests
    - **Syntax**: DatadogTrustInboundSpan *On|Off*
    - **Default**: On
@@ -109,10 +108,46 @@ If `on`, attempt to extract trace context from incoming requests. This way, ngin
 If `off`, trace context will not be extracted from incoming requests. Nginx will start a new trace. This might be desired if extracting trace information from untrusted clients is deemed a security concern.
 
 ## `DatadogAddTag` directive
-
    - **Description**: Add custom tag
    - **Syntax**: DatadogAddTag *key* *value*
    - **Mandatory**: No
    - **Context**: Directory config
 
-Add tag. TODO: behavior when merging with context.
+To enhance trace data, you can set key/value pairs that will serve as tags on all traces. Each invocation of `DatadogAddTag` adds the specified key/value pair to the current context.
+
+For clarity, consider the following example:
+
+````
+# Both tags will apply to the </hello> endpoint.
+<Location "/hello">
+   DatadogAddTag "foo" "bar"
+   DatadogAddTag "beep" "boop"
+</Location>
+
+# Only the "data=dog" tag will apply to the </world> endpoint.
+<Location "/world">
+   DatadogAddTag "data" "dog"
+</Location>
+````
+
+Additionally, tags inherit from the parent scope:
+
+````
+# In the httpd.conf file
+DatadogAddTag "team" "apm/proxy"
+<Location "/foo">
+   DatadogAddTag "location" "/foo"
+</Location>
+````
+
+When calling the `</foo>` endpoint, both the team and location tags will be added.
+
+## `DatadogDelegateSampling` directive
+   - **Description**: Add custom tag
+   - **Syntax**: DatadogDelegateSampling *On|Off*
+   - **Mandatory**: No
+   - **Context**: Directory config
+
+If `on`, and if `httpd` is making the trace sampling decision (i.e. if `httpd` is the first service in the trace), then delegate the sampling decision to the upstream service. nginx will make a provisional sampling decision, and convey it along with the intention to delegate to the upstream. The upstream service might then make its own sampling decision and convey that decision back in the response. If the upstream does so, then nginx will use the upstream's sampling decision instead of the provisional decision.
+
+Sampling delegation exists to allow `httpd` to act as a reverse proxy for multiple different services, where the trace sampling decision can be better made within the service than it can within `httpd`.

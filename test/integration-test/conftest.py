@@ -5,21 +5,8 @@ import time
 import uuid
 
 import requests
-from pathlib import Path
 from datetime import datetime
 import pytest
-
-# Fix issue on CI
-# Source: <https://github.com/psf/requests/issues/4937>
-import socket
-from urllib3.connection import HTTPConnection
-
-HTTPConnection.default_socket_options = HTTPConnection.default_socket_options + [
-    (socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1),
-    (socket.SOL_TCP, socket.TCP_KEEPIDLE, 45),
-    (socket.SOL_TCP, socket.TCP_KEEPINTVL, 10),
-    (socket.SOL_TCP, socket.TCP_KEEPCNT, 6),
-]
 
 CWD = os.path.dirname(__file__)
 CWD_DOCKER_COMPOSE = CWD

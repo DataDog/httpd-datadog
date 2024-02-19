@@ -7,30 +7,38 @@ This module adds distributed tracing to [Apache HTTP Server](https://httpd.apach
 ### Compatibility Requirements
 Only [Apache HTTP Server 2.4.x](https://httpd.apache.org) is supported.
 
-For a detail understanding of our release cycle and `httpd` support, read our [Release documentation.](./doc/release.md)
+For a detail understanding of our release cycle and Apache HTTPD support, read our [Release documentation.](./doc/release.md)
 
-### Install script
-
-````sh
-curl -sL https://github.com/DataDog/httpd-datadog/tree/main/scripts/install.sh | sh
-````
-
-### Manual
-
-Download a gzippeed tarball from a recent release, extract it to wherever `httpd` looks for modules and add the following line to the top of your configuration file:
-````sh
-LoadModule ddtrace_module <MODULE_PATH>/mod_ddtrace.so
-````
-
-Then run `httd -t` to test the new configuration. You can find the ddtrace log.
+### Automatic installation
 
 ````sh
-cat <LOG> | grep ddtrace
+# 1. Download install_moddatadog
+curl -LO https://github.com/DataDog/httpd-datadog/scripts/install_moddatadog
+
+# (Optional) Validate the binary
+curl -LO https://github.com/DataDog/httpd-datadogn/install_moddatadog.sha256
+echo "$(cat install_moddatadog.sha256) install_moddatadog" | sha256sum --check
+
+# 2. Execute install_moddatadog
+./install_moddatadog
 ````
+
+This script do:
+
+1. TBD
+
+### Manual installation
+
+Download a gzipped tarball compatible with your version of Apache HTTPD, extract it to wherever `httpd` looks for modules and add the following line to the top of your configuration file:
+````sh
+LoadModule datadog_module <MODULE_PATH>/mod_ddtrace.so
+````
+
+Then run `httpd -t <CONFIG_FILE>` to test the new configuration.
 
 ## Configuration
-Once the module is loaded, by default all request are traced and sent to the Datadog Agent.
-To change the module default behaviour, check our [Configuration page.](./docs/configuration) 
+Once the module is loaded, by default all requests are traced and sent to the Datadog Agent.
+To change the module default behaviour, check our [Configuration page.](./doc/configuration) 
 
 ## Development / Contribution
 

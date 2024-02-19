@@ -35,4 +35,4 @@ endif (UNIX)
 
 add_subdirectory(dd-trace-cpp)
 add_subdirectory(mod_ddtrace)
-# add_subdirectory(test/unit-test)
+add_subdirectory(test/unit-test)

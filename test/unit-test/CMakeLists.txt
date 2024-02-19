@@ -10,5 +10,5 @@ FetchContent_MakeAvailable(Catch2)
 
 add_executable(tests main.cpp test_utils.cpp)
 
-target_link_libraries(tests Catch2::Catch2 mod_ddtrace-obj httpd)
+target_link_libraries(tests Catch2::Catch2)
 

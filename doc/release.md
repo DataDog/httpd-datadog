@@ -9,7 +9,7 @@ We release at least one version by quarter. Nonetheless, we allow ourselves to r
 
 ## Compatibility Requirements
 
-Since this module is extending [Apache HTTP Server]() capabilities using the C interface, each version are tied to a specific version the webserver.
+Since this module is extending [Apache HTTP Server]() capabilities using the C interface, each versions are tied to a specific version the webserver.
 Each module version will receive support for the specified HTTPD version range until the respective HTTPD versions reach their end-of-life.
 
 The following table outlines the compatibility between module versions and HTTPD versions:
@@ -18,3 +18,8 @@ The following table outlines the compatibility between module versions and HTTPD
 | --------------------- | ------------------- | ------- |
 | 1.0                   | 2.4.0 - 2.4.54      | Current |
 
+## Artifacts
+Release artifact are generated through a Continuous Integration pipeline. Our CI infrastructure ensures cross-platform compatibility by compiling shared libraries for both Linux `x86_64` and `ARM64` architectures. It generates two kind of artifacts:
+
+- **Shared libaries** for each HTTPD version supported.
+- **Docker Image** as a convenient and ready to use means of deploying our module. The image is based on the offical Apache HTTPD image.

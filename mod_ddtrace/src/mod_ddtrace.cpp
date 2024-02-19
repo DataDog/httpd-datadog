@@ -25,6 +25,8 @@
 #include <stdio.h>
 #include <string>
 
+#define DD_MOD_VERSION "0.1.0"
+
 std::string make_httpd_version() {
   ap_version_t httpd_version;
   ap_get_server_revision(&httpd_version);
@@ -75,7 +77,7 @@ const char *set_propagation_style(cmd_parms *cmd, void *cfg, int argc,
                                   const char *arg[]);
 
 // clang-format off
-static const command_rec ddtrace_cmds[] = {
+static const command_rec dd_cmds[] = {
   // Server scope
   AP_INIT_TAKE1("DatadogServiceName",          reinterpret_cast<cmd_func>(set_service_name),        NULL, RSRC_CONF, "Set service name"),
   AP_INIT_TAKE1("DatadogServiceVersion",       reinterpret_cast<cmd_func>(set_service_version),     NULL, RSRC_CONF, "Set service version"),
@@ -96,13 +98,13 @@ static const command_rec ddtrace_cmds[] = {
 };
 // clang-format on
 
-module AP_MODULE_DECLARE_DATA ddtrace_module = {
+module AP_MODULE_DECLARE_DATA datadog_module = {
     STANDARD20_MODULE_STUFF,
     init_dir_conf,    /* Per-directory configuration handler */
     NULL,             /* Merge handler for per-directory configurations */
     init_tracer_conf, /* Per-server configuration handler */
     NULL,             /* Merge handler for per-server configurations */
-    ddtrace_cmds,     /* Any directives we may have for httpd */
+    dd_cmds,          /* Any directives we may have for httpd */
     register_hooks    /* Our hook registering function */
 };
 
@@ -129,7 +131,7 @@ void *init_tracer_conf(apr_pool_t *pool, server_rec *s) {
   conf->logger = std::make_shared<HttpdLogger>(s, ddtrace_module.module_index);
   conf->runtime_id = *g_runtime_id;
   conf->integration_name = "httpd";
-  conf->integration_version = "0.1.0";
+  conf->integration_version = DD_MOD_VERSION;
   return (void *)conf;
 }
 
