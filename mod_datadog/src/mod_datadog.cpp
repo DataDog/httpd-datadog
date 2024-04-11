@@ -354,21 +354,21 @@ make_span_config(request_rec *r,
   options.name =
       (r->proxyreq != PROXYREQ_NONE) ? "httpd.proxy" : "httpd.request";
   options.resource = resource_name;
-  options.tags = std::unordered_map<std::string, std::string>{
-      {"http.version", protocol(r->proto_num)},
-      {"http.host", r->hostname},
-      {"http.method", r->method},
-      {"http.url", r->unparsed_uri},
-      {"http.request.content_length", std::to_string(r->clength)},
-  };
-  options.tags.merge(default_tags);
-
-  if (r->useragent_ip)
-    options.tags.emplace("http.client_ip", r->useragent_ip);
-
-  if (auto user_agent = apr_table_get(r->headers_in, "User-Agent")) {
-    options.tags.emplace("http.useragent", user_agent);
-  }
+  // options.tags = std::unordered_map<std::string, std::string>{
+  //     {"http.version", protocol(r->proto_num)},
+  //     {"http.host", r->hostname},
+  //     {"http.method", r->method},
+  //     {"http.url", r->unparsed_uri},
+  //     {"http.request.content_length", std::to_string(r->clength)},
+  // };
+  // options.tags.merge(default_tags);
+  //
+  // if (r->useragent_ip)
+  //   options.tags.emplace("http.client_ip", r->useragent_ip);
+  //
+  // if (auto user_agent = apr_table_get(r->headers_in, "User-Agent")) {
+  //   options.tags.emplace("http.useragent", user_agent);
+  // }
 
   return options;
 }
