@@ -1,3 +1,4 @@
+add_subdirectory(rum)
 
 add_library(
   mod_datadog
@@ -16,7 +17,7 @@ target_compile_options(mod_datadog
   PRIVATE -Wall -Wextra
 )
 
-add_dependencies(mod_datadog dd_trace_cpp-objects httpd)
+add_dependencies(mod_datadog dd_trace_cpp-objects httpd rum_module)
 
 target_include_directories(
   mod_datadog
@@ -32,8 +33,8 @@ set_target_properties(
     SUFFIX ".so"
 )
 
-target_include_directories(mod_datadog PRIVATE httpd)
-target_link_libraries(mod_datadog dd_trace_cpp-objects httpd)
+target_include_directories(mod_datadog PRIVATE httpd rum_module)
+target_link_libraries(mod_datadog dd_trace_cpp-objects httpd rum_module)
 
 if (APPLE)
   target_link_options(mod_datadog PRIVATE -undefined dynamic_lookup)

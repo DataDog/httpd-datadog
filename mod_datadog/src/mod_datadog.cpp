@@ -14,6 +14,9 @@
 #include "logger.h"
 #include "utils.h"
 
+#include "rum/configuration.h"
+#include "rum/filter.h"
+
 #include <datadog/dict_reader.h>
 #include <datadog/dict_writer.h>
 #include <datadog/injection_options.h>
@@ -89,10 +92,12 @@ static const command_rec dd_cmds[] = {
   AP_INIT_TAKE_ARGV("DatadogPropagationStyle", reinterpret_cast<cmd_func>(set_propagation_style),   NULL, RSRC_CONF, "Set propagation style"),
 
   // Directive scope
-  AP_INIT_FLAG("DatadogEnable",                reinterpret_cast<cmd_func>(enable_ddog),             NULL, ACCESS_CONF, "Enable or disable Datadog tracing module"),
+  AP_INIT_FLAG("DatadogEnable",                reinterpret_cast<cmd_func>(enable_ddog),             NULL, RSRC_CONF | ACCESS_CONF, "Enable or disable Datadog tracing module"),
   AP_INIT_FLAG("DatadogDelegateSampling",      reinterpret_cast<cmd_func>(delegate_sampling),       NULL, ACCESS_CONF, "Enable or disable Sampling Delegation"),
   AP_INIT_FLAG("DatadogTrustInboundSpan",      reinterpret_cast<cmd_func>(enable_inbound_span),     NULL, ACCESS_CONF, "Trust inbound span headers"),
   AP_INIT_ITERATE2("DatadogAddTag",            reinterpret_cast<cmd_func>(add_or_overwrite_tag),    NULL, ACCESS_CONF, "Append tags"),
+
+  RUM_MODULE_CMDS
 
   {NULL}
 };
@@ -108,11 +113,19 @@ module AP_MODULE_DECLARE_DATA datadog_module = {
     register_hooks    /* Our hook registering function */
 };
 
+static void insert_datadog_filters(request_rec *r) {
+  ap_add_output_filter(rum_filter_name, NULL, r, r->connection);
+}
+
 void register_hooks(apr_pool_t *) {
   g_runtime_id = std::make_unique<dd::RuntimeID>(dd::RuntimeID::generate());
   ap_hook_child_init(init_tracer, NULL, NULL, APR_HOOK_MIDDLE);
   ap_hook_fixups(start_span, NULL, NULL, APR_HOOK_LAST);
   ap_hook_log_transaction(terminate_span, NULL, NULL, APR_HOOK_REALLY_FIRST);
+
+  ap_hook_insert_filter(insert_datadog_filters, NULL, NULL, APR_HOOK_MIDDLE);
+  ap_register_output_filter(rum_filter_name, rum_output_filter, NULL,
+                            AP_FTYPE_RESOURCE);
 }
 
 void *init_tracer_conf(apr_pool_t *pool, server_rec *s) {
@@ -377,6 +390,9 @@ int start_span(request_rec *r) {
   if (g_tracer == nullptr)
     return DECLINED;
 
+  // TODO: improve -> will not work if datadog disabled
+  bool inject_rum_header = false;
+
   dd::Span *span = nullptr;
   dd::InjectionOptions injection_opts;
 
@@ -391,6 +407,9 @@ int start_span(request_rec *r) {
     if (dir_conf == nullptr || !dir_conf->enabled)
       return DECLINED;
 
+    // RUM
+    inject_rum_header = dir_conf->rum_enabled;
+
     void *data = ap_get_module_config(main_r->request_config, &datadog_module);
     if (!data)
       return DECLINED;
@@ -400,12 +419,16 @@ int start_span(request_rec *r) {
     options.name = "httpd.subrequests";
     span = new dd::Span(parent_span->create_child(options));
     injection_opts.delegate_sampling_decision = dir_conf->delegate_sampling;
+
   } else {
     // Trace request
     DirectoryConf *dir_conf = (DirectoryConf *)ap_get_module_config(
         r->per_dir_config, &datadog_module);
     if (dir_conf == nullptr || !dir_conf->enabled)
       return DECLINED;
+
+    // RUM
+    inject_rum_header = dir_conf->rum_enabled;
 
     void *data = ap_get_module_config(r->request_config, &datadog_module);
     if (data)
@@ -449,6 +472,10 @@ int start_span(request_rec *r) {
 
   HeaderInjector header_injector(r->headers_in);
   span->inject(header_injector, injection_opts);
+
+  if (inject_rum_header) {
+    apr_table_set(r->headers_in, "x-datadog-sdk-injection", "1");
+  }
 
   return DECLINED;
 }
