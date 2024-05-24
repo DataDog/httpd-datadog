@@ -7,8 +7,12 @@ FetchContent_Declare(
 )
 
 FetchContent_GetProperties(fmt)
-if(NOT rapidjson_POPULATED)
+if(NOT fmt_POPULATED)
   FetchContent_Populate(fmt)
+
+  set(BUILD_SHARED_LIBS OFF)
+  set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
   add_subdirectory(${fmt_SOURCE_DIR} EXCLUDE_FROM_ALL)
 endif()
 
