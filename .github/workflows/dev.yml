@@ -36,16 +36,23 @@ jobs:
     runs-on: ubuntu-22.04
     container:
       image: datadog/docker-library:httpd-datadog-ci-2.4
+    env:
+      DD_ENV: ci
+      DD_API_KEY: ${{ secrets.DD_API_KEY_CI_APP }}
+      DD_SERVICE: httpd-tests
+      DD_CIVISIBILITY_AGENTLESS_ENABLED: true
     steps:
       - uses: actions/checkout@v4
-      - run: pip install -r requirements.txt
+      - run: |
+        pip install -r requirements.txt
+        pip install ddtrace
       - name: Import library from build job
         uses: actions/download-artifact@v3
         with:
           name: mod_datadog_artifact
           path: dist/lib
       - name: Run Smoke Tests
-        run: pytest test/integration-test --module-path dist/lib/mod_datadog.so --bin-path /httpd/httpd-build/bin/apachectl --log-dir $(pwd)/logs -m smoke
+        run: pytest --ddtrace test/integration-test --module-path dist/lib/mod_datadog.so --bin-path /httpd/httpd-build/bin/apachectl --log-dir $(pwd)/logs -m smoke
       - name: Run Integration Tests
-        run: pytest test/integration-test --module-path dist/lib/mod_datadog.so --bin-path /httpd/httpd-build/bin/apachectl --log-dir $(pwd)/logs -m ci
+        run: pytest --ddtrace test/integration-test --module-path dist/lib/mod_datadog.so --bin-path /httpd/httpd-build/bin/apachectl --log-dir $(pwd)/logs -m ci
 
