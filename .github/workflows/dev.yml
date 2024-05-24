@@ -44,8 +44,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: |
-        pip install -r requirements.txt
-        pip install ddtrace
+          pip install -r requirements.txt
+          pip install ddtrace
       - name: Import library from build job
         uses: actions/download-artifact@v3
         with:
