@@ -20,7 +20,7 @@ jobs:
         with:
           submodules: true
       - name: Configure
-        run: cmake -B build -DHTTPD_SRC_DIR=/httpd .
+        run: cmake -B build -DHTTPD_SRC_DIR=/httpd . #-DHTTPD_DATADOG_ENABLE_COVERAGE=1 .
       - name: Build
         run: |
           cmake --build build -j --verbose
@@ -55,4 +55,9 @@ jobs:
         run: pytest --ddtrace test/integration-test --module-path dist/lib/mod_datadog.so --bin-path /httpd/httpd-build/bin/apachectl --log-dir $(pwd)/logs -m smoke
       - name: Run Integration Tests
         run: pytest --ddtrace test/integration-test --module-path dist/lib/mod_datadog.so --bin-path /httpd/httpd-build/bin/apachectl --log-dir $(pwd)/logs -m ci
+      # - name: Upload coverage reports to Codecov
+      #   uses: codecov/codecov-action@v4.0.1
+      #   with:
+      #     token: ${{ secrets.CODECOV_TOKEN }}
+      #     slug: DataDog/httpd-datadog
 

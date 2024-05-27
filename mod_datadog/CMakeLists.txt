@@ -42,6 +42,20 @@ target_link_libraries(mod_datadog
     fmt
 )
 
+if (HTTPD_DATADOG_ENABLE_COVERAGE)
+  target_compile_options(mod_datadog
+    PRIVATE
+      -ftest-coverage
+      -g
+      -O0
+      -fprofile-arcs
+  )
+  target_link_libraries(mod_datadog
+    PRIVATE
+     -fprofile-arcs
+  )
+endif ()
+
 if (APPLE)
   target_link_options(mod_datadog PRIVATE -undefined dynamic_lookup)
 endif ()

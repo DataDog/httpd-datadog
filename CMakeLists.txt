@@ -8,6 +8,8 @@ project(httpd-datadog)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+option(HTTPD_DATADOG_ENABLE_COVERAGE OFF)
+
 if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE ReleaseWithDeb)
 endif ()
