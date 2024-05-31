@@ -42,6 +42,8 @@ static void init_rum_context(ap_filter_t *f, std::string_view json_content) {
         return 0;
       },
       apr_pool_cleanup_null);
+  ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r,
+                "RUM module is correctly initialized.");
 }
 
 /* TODO:
@@ -57,6 +59,13 @@ int rum_output_filter(ap_filter_t *f, apr_bucket_brigade *bb) {
       (DirectoryConf *)ap_get_module_config(r->per_dir_config, &datadog_module);
 
   if (!dir_conf->rum_enabled) {
+    return ap_pass_brigade(f->next, bb);
+  }
+
+  if (dir_conf->rum_json_configuration_content.empty()) {
+    ap_log_rerror(
+        APLOG_MARK, APLOG_WARNING, 0, r,
+        "RUM SDK Injection is enabled but no JSON configuration found");
     return ap_pass_brigade(f->next, bb);
   }
 
@@ -96,12 +105,8 @@ int rum_output_filter(ap_filter_t *f, apr_bucket_brigade *bb) {
       // TODO: Handle metadata bucket like flush
     } else if (apr_bucket_read(b, &buffer, &bytes, APR_BLOCK_READ) ==
                APR_SUCCESS) {
-      ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "[dmehala]: %s", buffer);
-
       InjectorResult result =
           injector_write(ctx->injector, (const uint8_t *)buffer, bytes);
-      ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "[dmehala] found %d slices",
-                    result.slices_length);
 
       size_t offset = 0;
       for (size_t i = 0; i < result.slices_length; i++) {
@@ -116,11 +121,6 @@ int rum_output_filter(ap_filter_t *f, apr_bucket_brigade *bb) {
           apr_bucket_split(b, offset);
           APR_BUCKET_INSERT_AFTER(b, b_snippet);
           offset += slice->length;
-
-          ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r, "[dmehala] offset: %d",
-                        (int)offset);
-          ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r,
-                        "[dmehala] to insert: %s", slice->start);
         }
       }
       if (result.injected) {

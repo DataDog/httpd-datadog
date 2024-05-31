@@ -92,7 +92,7 @@ static const command_rec dd_cmds[] = {
   AP_INIT_TAKE_ARGV("DatadogPropagationStyle", reinterpret_cast<cmd_func>(set_propagation_style),   NULL, RSRC_CONF, "Set propagation style"),
 
   // Directive scope
-  AP_INIT_FLAG("DatadogEnable",                reinterpret_cast<cmd_func>(enable_ddog),             NULL, RSRC_CONF | ACCESS_CONF, "Enable or disable Datadog tracing module"),
+  AP_INIT_FLAG("DatadogTracingEnable",                reinterpret_cast<cmd_func>(enable_ddog),             NULL, RSRC_CONF | ACCESS_CONF, "Enable or disable Datadog tracing module"),
   AP_INIT_FLAG("DatadogDelegateSampling",      reinterpret_cast<cmd_func>(delegate_sampling),       NULL, ACCESS_CONF, "Enable or disable Sampling Delegation"),
   AP_INIT_FLAG("DatadogTrustInboundSpan",      reinterpret_cast<cmd_func>(enable_inbound_span),     NULL, ACCESS_CONF, "Trust inbound span headers"),
   AP_INIT_ITERATE2("DatadogAddTag",            reinterpret_cast<cmd_func>(add_or_overwrite_tag),    NULL, ACCESS_CONF, "Append tags"),
@@ -274,6 +274,8 @@ const char *enable_inbound_span(cmd_parms * /* cmd */, void *cfg, int value) {
 }
 
 void init_tracer(apr_pool_t *, server_rec *s) {
+  ap_log_error(APLOG_MARK, APLOG_INFO, 0, s, "Datadog module is loaded");
+
   datadog::tracing::TracerConfig *config =
       (datadog::tracing::TracerConfig *)ap_get_module_config(s->module_config,
                                                              &datadog_module);
@@ -386,6 +388,12 @@ make_span_config(request_rec *r,
   return options;
 }
 
+static void handle_rum(request_rec *r, bool inject) {
+  if (inject) {
+    apr_table_set(r->headers_in, "x-datadog-sdk-injection", "1");
+  }
+}
+
 int start_span(request_rec *r) {
   if (g_tracer == nullptr)
     return DECLINED;
@@ -404,15 +412,19 @@ int start_span(request_rec *r) {
 
     DirectoryConf *dir_conf = (DirectoryConf *)ap_get_module_config(
         main_r->per_dir_config, &datadog_module);
-    if (dir_conf == nullptr || !dir_conf->enabled)
+    if (dir_conf == nullptr || !dir_conf->enabled) {
+      handle_rum(r, dir_conf->rum_enabled);
       return DECLINED;
+    }
 
     // RUM
     inject_rum_header = dir_conf->rum_enabled;
 
     void *data = ap_get_module_config(main_r->request_config, &datadog_module);
-    if (!data)
+    if (!data) {
+      handle_rum(r, dir_conf->rum_enabled);
       return DECLINED;
+    }
 
     dd::Span *parent_span = (dd::Span *)data;
     dd::SpanConfig options = make_span_config(r, dir_conf->tags);
@@ -424,16 +436,17 @@ int start_span(request_rec *r) {
     // Trace request
     DirectoryConf *dir_conf = (DirectoryConf *)ap_get_module_config(
         r->per_dir_config, &datadog_module);
-    if (dir_conf == nullptr || !dir_conf->enabled)
+    if (dir_conf == nullptr || !dir_conf->enabled) {
+      handle_rum(r, dir_conf->rum_enabled);
       return DECLINED;
-
-    // RUM
-    inject_rum_header = dir_conf->rum_enabled;
+    }
 
     void *data = ap_get_module_config(r->request_config, &datadog_module);
-    if (data)
+    if (data) {
+      handle_rum(r, dir_conf->rum_enabled);
       return DECLINED; ///< `start_span` can not be called twice on the same
                        ///< request
+    }
 
     dd::SpanConfig options = make_span_config(r, dir_conf->tags);
 
@@ -473,9 +486,7 @@ int start_span(request_rec *r) {
   HeaderInjector header_injector(r->headers_in);
   span->inject(header_injector, injection_opts);
 
-  if (inject_rum_header) {
-    apr_table_set(r->headers_in, "x-datadog-sdk-injection", "1");
-  }
+  handle_rum(r, inject_rum_header);
 
   return DECLINED;
 }
