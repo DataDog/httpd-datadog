@@ -2,6 +2,8 @@ add_library(rum_module OBJECT)
 
 add_dependencies(rum_module httpd inject-browser-sdk)
 
+set_property(TARGET rum_module PROPERTY POSITION_INDEPENDENT_CODE ON)
+
 target_sources(rum_module
   PRIVATE
     src/filter.cpp
