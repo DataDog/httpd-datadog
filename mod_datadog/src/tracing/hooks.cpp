@@ -61,11 +61,11 @@ static SpanConfig make_span_config(
       {"httpd.version", httpd_version},
       {"httpd.virtual_host", r->server->is_virtual ? "true" : "false"},
       {"httpd.mpm", ap_show_mpm()},
-      {"http.version", protocol(r->proto_num)},
-      {"http.host", r->hostname},
-      {"http.method", r->method},
-      {"http.url", r->unparsed_uri},
-      {"http.request.content_length", std::to_string(r->clength)},
+      // {"http.version", protocol(r->proto_num)},
+      // {"http.host", r->hostname},
+      // {"http.method", r->method},
+      // {"http.url", r->unparsed_uri},
+      // {"http.request.content_length", std::to_string(r->clength)},
   };
   options.tags.merge(default_tags);
 
