@@ -20,7 +20,7 @@
 Once you got a valid `python` installation, install all the dependencies with
 
 ````shell
-pip install -r requirement.txt
+pip install -r requirements.txt
 ````
 
 Finally, you need HTTPD source code available. Use [scripts/setup-httpd.py](./scripts/setup-httpd.py) script:
