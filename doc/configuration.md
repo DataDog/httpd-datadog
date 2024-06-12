@@ -7,7 +7,7 @@
 
    - **Description**: Set the service name
    - **Syntax:** DatadogServiceName *name*
-   - **Mandatory:** Yes
+   - **Mandatory:** No, but highly recommended
    - **Context:** Server config
 
 Set the application name. 
@@ -30,7 +30,7 @@ Exemple values: `1.2.3`, `6c44da20`, `2020.02.13`.
 ## `DatadogServiceEnvironment` directive
    - **Description**: Set the service environment
    - **Syntax**: DatadogServiceEnvironment *env_name*
-   - **Mandatory**: No, but highly suggested
+   - **Mandatory**: No, but highly recommended
    - **Context**: Server config
 
 Set the name of the environment within which `httpd` is running.

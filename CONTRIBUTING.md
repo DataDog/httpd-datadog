@@ -15,7 +15,6 @@
 | `clang` or `gcc` | 14+ or 11.4+ | |
 | `python` | 3.0+ | |
 | `cmake` | 3.12+ | |
-| `docker` |  | For testing purpose |
 
 Once you got a valid `python` installation, install all the dependencies with
 
@@ -28,13 +27,15 @@ Finally, you need HTTPD source code available. Use [scripts/setup-httpd.py](./sc
 ````shell
 python scripts/setup-httpd.py
 
-usage: Download HTTPD and dependencies source code [-h] [-o OUTPUT] version
+usage: Download Apache HTTP Server and its dependencies [-h] [-v VERBOSE] [-o OUTPUT] version
 
 positional arguments:
   version               HTTPD version to download
 
 options:
   -h, --help            show this help message and exit
+  -v VERBOSE, --verbose VERBOSE
+                        Increase verbosity level
   -o OUTPUT, --output OUTPUT
                         Directory where HTTPD will be extracted
 ````
