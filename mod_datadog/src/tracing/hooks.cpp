@@ -7,24 +7,12 @@
 #include <datadog/tracer.h>
 #include <fmt/core.h>
 
+#include "../utils.h"
 #include "common_conf.h"
 #include "utils.h"
 
 namespace datadog::tracing {
 namespace {
-
-std::string make_httpd_version() {
-  ap_version_t httpd_version;
-  ap_get_server_revision(&httpd_version);
-
-  if (httpd_version.add_string) {
-    return fmt::format("{}.{}.{}-{}", httpd_version.major, httpd_version.minor,
-                       httpd_version.patch, httpd_version.add_string);
-  }
-
-  return fmt::format("{}.{}.{}", httpd_version.major, httpd_version.minor,
-                     httpd_version.patch);
-}
 
 std::string protocol(int protocol_number) {
   switch (protocol_number) {
@@ -45,7 +33,7 @@ std::string protocol(int protocol_number) {
 
 static SpanConfig make_span_config(
     request_rec* r, std::unordered_map<std::string, std::string> default_tags) {
-  static const std::string httpd_version = make_httpd_version();
+  static const std::string httpd_version = common::utils::make_httpd_version();
   std::string resource_name{r->method};
   resource_name += " ";
   resource_name += r->uri;

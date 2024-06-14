@@ -3,6 +3,7 @@ add_library(
   mod_datadog
   SHARED
   src/mod_datadog.cpp
+  src/common_conf.cpp
   src/tracing/conf.cpp
   src/tracing/hooks.cpp
 )

@@ -20,6 +20,7 @@ static std::unique_ptr<dd::RuntimeID> g_runtime_id = nullptr;
 static std::unique_ptr<dd::Tracer> g_tracer = nullptr;
 
 APLOG_USE_MODULE(datadog);
+#define DD_MOD_VERSION "0.1.0"
 
 void* init_module_conf(apr_pool_t*, server_rec*);
 apr_status_t destroy_module_conf(void*);
@@ -62,7 +63,6 @@ static const command_rec datadog_commands[] = {
 };
 // clang-format on
 
-// todo: use extern module ap... datadog_module in header;
 module AP_MODULE_DECLARE_DATA datadog_module = {
     STANDARD20_MODULE_STUFF,
     datadog::conf::init_dir_conf,  /* Per-directory configuration handler */
@@ -184,7 +184,7 @@ const char* set_propagation_style(cmd_parms* cmd, void* /* cfg */, int argc,
 
   for (int i = 0; i < argc; ++i) {
     std::string arg{args[i]};
-    utils::to_lower(arg);
+    datadog::common::utils::to_lower(arg);
 
     if (arg == "datadog") {
       propagation.emplace_back(dd::PropagationStyle::DATADOG);
@@ -252,7 +252,7 @@ void init_tracer(datadog::tracing::TracerConfig& tracer_conf) {
 
   if (!is_service_set) {
     // Trick: change the service name origin to default as "httpd" is the
-    // default value when no service name has beem provided.
+    // default value when no service name has been provided.
     auto& service_name_metadata =
         validated_config->metadata[datadog::tracing::ConfigName::SERVICE_NAME];
     service_name_metadata.origin =
