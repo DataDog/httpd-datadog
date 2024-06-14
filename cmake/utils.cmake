@@ -8,7 +8,7 @@ function(split_debug_info target_name)
         COMMAND ${CMAKE_OBJCOPY} --add-gnu-debuglink=${debug_file} $<TARGET_FILE:${target_name}>
         COMMENT "Created debug symbol ${debug_file}"
     )
-
+  install(FILES ${debug_file} DESTINATION lib)
   elseif (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     find_program(DSYMUTIL_PROGRAM dsymutil)
     if (NOT DSYMUTIL_PROGRAM)
@@ -18,6 +18,7 @@ function(split_debug_info target_name)
         COMMAND ${DSYMUTIL_PROGRAM} $<TARGET_FILE:${target_name}> --out ${debug_file}
         COMMENT "Created debug symbol ${debug_file}"
       )
+      install(FILES ${debug_file} DESTINATION lib)
     endif()
   endif()
 endfunction()
