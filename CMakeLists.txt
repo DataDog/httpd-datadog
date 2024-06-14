@@ -18,6 +18,7 @@ if(NOT HTTPD_SRC_DIR)
   message(FATAL_ERROR "Missing httpd source directory. Use -DHTTPD_SRC_DIR")
 endif()
 
+include(cmake/utils.cmake)
 include(cmake/deps/fmt.cmake)
 
 add_library(httpd INTERFACE)
