@@ -1,0 +1,4 @@
+Component,Origin,License,Copyright
+vendored,dd-trace-cpp,Apache 2.0,Copyright 2022 Datadog Inc.
+vendored,nlohmann/json,MIT,Copyright (c) 2013-2018 Niels Lohmann <http://nlohmann.me>
+build,cmake,BSD-3-Clause,Copyright 2000-2018 Kitware Inc and Contributors

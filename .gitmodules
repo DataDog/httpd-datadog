@@ -1,0 +1,3 @@
+[submodule "deps/dd-trace-cpp"]
+	path = deps/dd-trace-cpp
+	url = ../dd-trace-cpp.git

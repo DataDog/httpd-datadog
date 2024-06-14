@@ -31,10 +31,14 @@
 *.out
 *.app
 
+.DS_Store
+
 .cache/
 .vscode/
 
 build/
 httpd-*/
+__pycache__/
+venv/
 
 compile_commands.json
