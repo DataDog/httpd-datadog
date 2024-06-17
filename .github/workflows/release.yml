@@ -17,7 +17,12 @@ jobs:
           cmake --build build -j --verbose
           cmake --install build --prefix dist
       - name: Export library
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: mod_ddtrace_artifact
-          path: dist/lib/mod_ddtrace.so
+          name: mod_datadog_artifact
+          path: dist/lib/mod_datadog.so
+      - name: Export library (debug symbol)
+        uses: actions/upload-artifact@v4
+        with:
+          name: mod_datadog_artifact-debug
+          path: dist/lib/mod_datadog.so.debug
