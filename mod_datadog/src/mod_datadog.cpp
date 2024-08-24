@@ -10,8 +10,12 @@
 #include <string>
 
 #include "common_conf.h"
+#if defined(HTTPD_DD_RUM)
 #include "rum/config.h"
 #include "rum/filter.h"
+#else
+#define RUM_MODULE_CMDS
+#endif
 #include "tracing/conf.h"
 #include "tracing/hooks.h"
 #include "utils.h"
@@ -78,9 +82,11 @@ module AP_MODULE_DECLARE_DATA datadog_module = {
     register_hooks    /* Our hook registering function */
 };
 
+#if defined(HTTPD_DD_RUM)
 static void insert_datadog_filters(request_rec* r) {
   ap_add_output_filter(rum_filter_name, NULL, r, r->connection);
 }
+#endif
 
 void register_hooks(apr_pool_t*) {
   g_runtime_id = std::make_unique<dd::RuntimeID>(dd::RuntimeID::generate());
@@ -88,9 +94,12 @@ void register_hooks(apr_pool_t*) {
   ap_hook_fixups(on_fixups, NULL, NULL, APR_HOOK_LAST);
   ap_hook_log_transaction(on_log_transaction, NULL, NULL,
                           APR_HOOK_REALLY_FIRST);
+
+#if defined(HTTPD_DD_RUM)
   ap_hook_insert_filter(insert_datadog_filters, NULL, NULL, APR_HOOK_MIDDLE);
   ap_register_output_filter(rum_filter_name, rum_output_filter, NULL,
                             AP_FTYPE_RESOURCE);
+#endif
 }
 
 void* init_module_conf(apr_pool_t* pool, server_rec* s) {
