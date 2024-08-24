@@ -1,8 +1,12 @@
-# Configuring Datadog Tracing in Apache HTTP Server
+# Configuring the Datadog module for Apache HTTP Server
 
 > [!TIP]
 > Server directives should be set only once per server or virtual server. On the other hand, directory configuration gives you the flexibility to fine-tune settings for each specific direction.
 
+- [Tracing](#configuring-tracing)
+- [Real User Monitoring (RUM)](#configuring-real-user-monitoring)
+
+# Configuring Tracing
 ## `DatadogServiceName` directive
 
    - **Description**: Set the service name
@@ -151,3 +155,96 @@ When calling the `</foo>` endpoint, both the team and location tags will be adde
 If `on`, and if `httpd` is making the trace sampling decision (i.e. if `httpd` is the first service in the trace), then delegate the sampling decision to the upstream service. nginx will make a provisional sampling decision, and convey it along with the intention to delegate to the upstream. The upstream service might then make its own sampling decision and convey that decision back in the response. If the upstream does so, then nginx will use the upstream's sampling decision instead of the provisional decision.
 
 Sampling delegation exists to allow `httpd` to act as a reverse proxy for multiple different services, where the trace sampling decision can be better made within the service than it can within `httpd`.
+
+# Configuring Real User Monitoring
+
+> [!IMPORTANT]
+> 🚧 RUM SDK Injection is currently in Private Beta! 🚧
+>
+> Interested in early access? [Apply to join the beta program today!](https://www.datadoghq.com/private-beta/rum-sdk-auto-injection/)
+
+## `DatadogRum` directive
+   - **Description**: Enable or disable the RUM Injection
+   - **Syntax:** DatadogRum *On\|Off*
+   - **Default:** On
+   - **Context:** Server and Directory
+
+Directive to enable or disable RUM SDK Injection.
+
+## `DatadogRumIncludeConfiguration` directive
+
+   - **Description**: Path of the JSON configuration
+   - **Syntax:** DatadogRumIncludeConfiguration *Path*
+   - **Mandatory:** Yes
+   - **Context:** Server and Directory
+
+Set the path of the configuration file in JSON. The format of the JSON file is as follow:
+
+```json
+{
+  "majorVersion": 5,
+  "rum": {
+    "applicationId": "<DATADOG_APPLICATION_ID>",
+    "clientToken": "<DATADOG_CLIENT_TOKEN>",
+    "site": "<DATADOG_SITE>",
+    ...
+  }
+}
+```
+## RUM Configuration Example
+`httpd.conf`
+```
+LoadModule status_module mod_status.so
+LoadModule datadog_module mod_datadog.so
+
+DatadogRum On
+DatadogRumIncludeConfiguration "/my-site/rum-config.json"
+
+<Location "/proxy">
+    DatadogRumIncludeConfiguration "/my-site/rum-proxy-config.json"
+    ProxyPass "http://localhost:8081/"
+</Location>
+
+<Location "/health">
+    DatadogRum Off
+    SetHandler server-status
+</Location>
+```
+
+`rum-config.json`
+```
+{
+  "majorVersion": 5,
+  "rum": {
+    "applicationId": "<DATADOG_APPLICATION_ID>",
+    "clientToken": "<DATADOG_CLIENT_TOKEN>",
+    "site": "<DATADOG_SITE>",
+    "service": "my-web-application",
+    "env": "production",
+    "version": "1.0.0",
+    "sessionSampleRate": 10,
+    "sessionReplaySampleRate": 100,
+    "trackResources": true,
+    "trackLongTasks": true,
+    "trackUserInteractions": true
+  }
+}
+```
+
+`rum-proxy-config.json`
+```
+{
+  "majorVersion": 5,
+  "rum": {
+    "applicationId": "<DATADOG_APPLICATION_ID>",
+    "clientToken": "<DATADOG_CLIENT_TOKEN>",
+    "site": "<DATADOG_SITE>",
+    "service": "proxied-website",
+    "env": "dev",
+    "version": "0.2.0",
+    "sessionSampleRate": 100,
+    "trackResources": true,
+    "trackUserInteractions": true
+  }
+}
+```
