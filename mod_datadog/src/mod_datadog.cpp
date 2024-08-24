@@ -10,6 +10,8 @@
 #include <string>
 
 #include "common_conf.h"
+#include "rum/config.h"
+#include "rum/filter.h"
 #include "tracing/conf.h"
 #include "tracing/hooks.h"
 #include "utils.h"
@@ -59,6 +61,8 @@ static const command_rec datadog_commands[] = {
   AP_INIT_FLAG("DatadogTrustInboundSpan",      reinterpret_cast<cmd_func>(enable_inbound_span),     NULL, RSRC_CONF | ACCESS_CONF, "Trust inbound span headers"),
   AP_INIT_ITERATE2("DatadogAddTag",            reinterpret_cast<cmd_func>(add_or_overwrite_tag),    NULL, RSRC_CONF | ACCESS_CONF, "Append tags"),
 
+  RUM_MODULE_CMDS
+
   {NULL}
 };
 // clang-format on
@@ -74,12 +78,19 @@ module AP_MODULE_DECLARE_DATA datadog_module = {
     register_hooks    /* Our hook registering function */
 };
 
+static void insert_datadog_filters(request_rec* r) {
+  ap_add_output_filter(rum_filter_name, NULL, r, r->connection);
+}
+
 void register_hooks(apr_pool_t*) {
   g_runtime_id = std::make_unique<dd::RuntimeID>(dd::RuntimeID::generate());
   ap_hook_child_init(on_child_init, NULL, NULL, APR_HOOK_MIDDLE);
   ap_hook_fixups(on_fixups, NULL, NULL, APR_HOOK_LAST);
   ap_hook_log_transaction(on_log_transaction, NULL, NULL,
                           APR_HOOK_REALLY_FIRST);
+  ap_hook_insert_filter(insert_datadog_filters, NULL, NULL, APR_HOOK_MIDDLE);
+  ap_register_output_filter(rum_filter_name, rum_output_filter, NULL,
+                            AP_FTYPE_RESOURCE);
 }
 
 void* init_module_conf(apr_pool_t* pool, server_rec* s) {

@@ -20,6 +20,7 @@ endif()
 
 include(cmake/utils.cmake)
 include(cmake/deps/fmt.cmake)
+include(cmake/deps/corrosion.cmake)
 
 add_library(httpd INTERFACE)
 target_include_directories(

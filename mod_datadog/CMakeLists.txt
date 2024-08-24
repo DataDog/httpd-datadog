@@ -6,6 +6,8 @@ add_library(
   src/common_conf.cpp
   src/tracing/conf.cpp
   src/tracing/hooks.cpp
+  src/rum/config.cpp
+  src/rum/filter.cpp
 )
 
 target_include_directories(
@@ -41,6 +43,7 @@ target_link_libraries(mod_datadog
     dd_trace_cpp-objects 
     httpd 
     fmt
+    injectbrowsersdk
 )
 
 if (HTTPD_DATADOG_ENABLE_COVERAGE)
