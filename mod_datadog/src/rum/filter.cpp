@@ -9,6 +9,7 @@
 #include "common_conf.h"
 #include "config.h"
 #include "http_log.h"
+#include "telemetry.h"
 #include "util_filter.h"
 
 APLOG_USE_MODULE(datadog);
@@ -59,14 +60,14 @@ std::string make_rum_json_config(
 }
 }  // namespace
 
-static void init_rum_context(
-    ap_filter_t* f,
-    const std::unordered_map<std::string, std::string>& rum_config) {
+using namespace datadog::rum;
+
+static void init_rum_context(ap_filter_t* f, Directory& dir) {
   request_rec* r = f->r;
   f->ctx = apr_pcalloc(r->pool, sizeof(rum_filter_ctx));
   auto* ctx = (rum_filter_ctx*)f->ctx;
 
-  const auto json_config = make_rum_json_config("v5", rum_config);
+  const auto json_config = make_rum_json_config("v5", dir.rum_config);
   if (json_config.empty()) {
     ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r,
                   "failed to generate the RUM SDK script");
@@ -76,11 +77,18 @@ static void init_rum_context(
 
   Snippet* snippet = snippet_create_from_json(json_config.c_str());
   if (snippet->error_code != 0) {
+    telemetry::configuration_failed_invalid_json.inc();
     ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r,
                   "failed to initial RUM SDK injector: %s",
                   snippet->error_message);
+
     ctx->state = InjectionState::error;
     return;
+  }
+
+  if (!dir.is_valid_rum_config) {
+    dir.is_valid_rum_config = true;
+    telemetry::configuration_succeed.inc();
   }
 
   ctx->state = InjectionState::pending;
@@ -104,6 +112,8 @@ static void init_rum_context(
       apr_pool_cleanup_null);
   ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r,
                 "RUM module is correctly initialized.");
+
+  ctx->beg = std::chrono::steady_clock::now();
 }
 
 /* TODO:
@@ -131,7 +141,7 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
 
   // First time the filter is being called -> Init the context
   if (f->ctx == nullptr) {
-    init_rum_context(f, dir_conf->rum_config);
+    init_rum_context(f, *dir_conf);
   }
 
   auto* ctx = static_cast<rum_filter_ctx*>(f->ctx);
@@ -144,14 +154,18 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
       apr_table_get(r->headers_out, k_injected_header.data());
   if (already_injected && std::string_view(already_injected) == "1") {
     ctx->state = InjectionState::done;
+    telemetry::injection_skip::already_injected.inc();
     return ap_pass_brigade(f->next, bb);
   }
 
   const char* const content_type =
       apr_table_get(r->headers_out, "Content-Type");
   if (content_type && std::string_view(content_type) != "text/html") {
+    telemetry::injection_skip::invalid_content_type.inc();
     return ap_pass_brigade(f->next, bb);
   }
+
+  telemetry::response_size.set(static_cast<uint64_t>(r->clength));
 
   size_t bytes;
   const char* buffer;
@@ -160,6 +174,13 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
        b = APR_BUCKET_NEXT(b)) {
     if (APR_BUCKET_IS_EOS(b)) {
       injector_end(ctx->injector);
+      telemetry::injection_failed.inc();
+
+      const auto end = std::chrono::steady_clock::now();
+      const uint64_t duration =
+          std::chrono::duration_cast<std::chrono::nanoseconds>(end - ctx->beg)
+              .count();
+      telemetry::injection_duration.set(duration);
     } else if (APR_BUCKET_IS_METADATA(b)) {
       // TODO: Handle metadata bucket like flush
     } else if (apr_bucket_read(b, &buffer, &bytes, APR_BLOCK_READ) ==
@@ -186,6 +207,13 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
         ctx->state = InjectionState::done;
         apr_table_set(r->headers_out, k_injected_header.data(), "1");
 
+        telemetry::injection_succeed.inc();
+
+        const auto end = std::chrono::steady_clock::now();
+        const uint64_t duration =
+            std::chrono::duration_cast<std::chrono::nanoseconds>(end - ctx->beg)
+                .count();
+        telemetry::injection_duration.set(duration);
         return ap_pass_brigade(f->next, bb);
       }
     }

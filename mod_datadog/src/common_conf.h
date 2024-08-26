@@ -23,6 +23,7 @@ struct Directory final {
 
   // RUM
   bool rum_enabled = false;
+  bool is_valid_rum_config = false;
   std::unordered_map<std::string, std::string> rum_config;
 };
 

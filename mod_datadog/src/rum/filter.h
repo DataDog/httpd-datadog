@@ -9,6 +9,7 @@ struct rum_filter_ctx final {
   Snippet* snippet = nullptr;
   Injector* injector = nullptr;
   InjectionState state = InjectionState::init;
+  std::chrono::steady_clock::time_point beg;
 };
 
 // Output Filter for injecting the RUM SDK
