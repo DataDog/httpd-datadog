@@ -22,6 +22,7 @@ endif ()
 include(cmake/utils.cmake)
 include(cmake/deps/fmt.cmake)
 include(cmake/deps/corrosion.cmake)
+include(cmake/deps/rapidjson.cmake)
 
 add_library(httpd INTERFACE)
 target_include_directories(

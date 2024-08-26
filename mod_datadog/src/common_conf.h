@@ -22,8 +22,8 @@ struct Directory final {
   std::unordered_map<std::string, std::string> tags;
 
   // RUM
-  bool rum_enabled = true;
-  std::string rum_json_configuration_content;
+  bool rum_enabled = false;
+  std::unordered_map<std::string, std::string> rum_config;
 };
 
 void* init_dir_conf(apr_pool_t* pool, char*);

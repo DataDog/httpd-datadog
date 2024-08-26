@@ -26,6 +26,7 @@ if (HTTPD_DATADOG_ENABLE_RUM)
     mod_datadog
     PRIVATE
       injectbrowsersdk
+      rapidjson
   )
 endif ()
 

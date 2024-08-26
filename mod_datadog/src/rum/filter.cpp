@@ -1,5 +1,9 @@
 #include "rum/filter.h"
 
+#include <rapidjson/document.h>
+#include <rapidjson/stringbuffer.h>
+#include <rapidjson/writer.h>
+
 #include <string_view>
 
 #include "common_conf.h"
@@ -13,12 +17,64 @@ using namespace datadog::conf;
 
 constexpr std::string_view k_injected_header = "x-datadog-sdk-injected";
 
-static void init_rum_context(ap_filter_t* f, std::string_view json_content) {
+namespace {
+std::string make_rum_json_config(
+    std::string_view config_version,
+    const std::unordered_map<std::string, std::string>& config) {
+  rapidjson::Document doc;
+  doc.SetObject();
+
+  rapidjson::Document::AllocatorType& allocator = doc.GetAllocator();
+  doc.AddMember("majorVersion",
+                rapidjson::Value(std::stoi(config_version.data() + 1)),
+                allocator);
+
+  rapidjson::Value rum(rapidjson::kObjectType);
+  for (const auto& [key, value] : config) {
+    if (key == "majorVersion") {
+      continue;
+    } else if (key == "sessionSampleRate" || key == "sessionReplaySampleRate") {
+      rum.AddMember(rapidjson::Value(key.c_str(), allocator).Move(),
+                    rapidjson::Value(std::stod(value)).Move(), allocator);
+    } else if (key == "trackResources" || key == "trackLongTasks" ||
+               key == "trackUserInteractions") {
+      auto b = (value == "true" ? true : false);
+      rum.AddMember(rapidjson::Value(key.c_str(), allocator).Move(),
+                    rapidjson::Value(b).Move(), allocator);
+    } else {
+      rum.AddMember(rapidjson::Value(key.c_str(), allocator).Move(),
+                    rapidjson::Value(value.c_str(), allocator).Move(),
+                    allocator);
+    }
+  }
+
+  doc.AddMember("rum", rum, allocator);
+
+  // Convert the document to a JSON string
+  rapidjson::StringBuffer buffer;
+  rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+  doc.Accept(writer);
+
+  return buffer.GetString();
+}
+}  // namespace
+
+static void init_rum_context(
+    ap_filter_t* f,
+    const std::unordered_map<std::string, std::string>& rum_config) {
   request_rec* r = f->r;
   f->ctx = apr_pcalloc(r->pool, sizeof(rum_filter_ctx));
   auto* ctx = (rum_filter_ctx*)f->ctx;
 
-  Snippet* snippet = snippet_create_from_json(json_content.data());
+  const auto json_config = make_rum_json_config("v5", rum_config);
+  if (json_config.empty()) {
+    ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r,
+                  "failed to generate the RUM SDK script");
+    ctx->state = InjectionState::error;
+    return;
+  }
+
+  Snippet* snippet = snippet_create_from_json(json_config.c_str());
   if (snippet->error_code != 0) {
     ap_log_rerror(APLOG_MARK, APLOG_ERR, 0, r,
                   "failed to initial RUM SDK injector: %s",
@@ -66,7 +122,7 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
     return ap_pass_brigade(f->next, bb);
   }
 
-  if (dir_conf->rum_json_configuration_content.empty()) {
+  if (dir_conf->rum_config.empty()) {
     ap_log_rerror(
         APLOG_MARK, APLOG_WARNING, 0, r,
         "RUM SDK Injection is enabled but no JSON configuration found");
@@ -75,10 +131,10 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
 
   // First time the filter is being called -> Init the context
   if (f->ctx == nullptr) {
-    init_rum_context(f, dir_conf->rum_json_configuration_content);
+    init_rum_context(f, dir_conf->rum_config);
   }
 
-  auto* ctx = (rum_filter_ctx*)f->ctx;
+  auto* ctx = static_cast<rum_filter_ctx*>(f->ctx);
 
   if (ctx->state != InjectionState::pending) {
     return ap_pass_brigade(f->next, bb);

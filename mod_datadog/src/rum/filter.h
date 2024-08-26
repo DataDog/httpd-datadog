@@ -8,7 +8,6 @@ enum class InjectionState : char { init, pending, error, done };
 struct rum_filter_ctx final {
   Snippet* snippet = nullptr;
   Injector* injector = nullptr;
-
   InjectionState state = InjectionState::init;
 };
 
