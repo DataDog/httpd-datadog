@@ -21,8 +21,11 @@ endif ()
 
 include(cmake/utils.cmake)
 include(cmake/deps/fmt.cmake)
-include(cmake/deps/corrosion.cmake)
-include(cmake/deps/rapidjson.cmake)
+
+if (HTTPD_DATADOG_ENABLE_RUM)
+  include(cmake/deps/corrosion.cmake)
+  include(cmake/deps/rapidjson.cmake)
+endif ()
 
 add_library(httpd INTERFACE)
 target_include_directories(
