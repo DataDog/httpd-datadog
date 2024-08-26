@@ -171,26 +171,45 @@ Sampling delegation exists to allow `httpd` to act as a reverse proxy for multip
 
 Directive to enable or disable RUM SDK Injection.
 
-## `DatadogRumIncludeConfiguration` directive
+## `DatadogRumSetting` directive
 
-   - **Description**: Path of the JSON configuration
-   - **Syntax:** DatadogRumIncludeConfiguration *Path*
-   - **Mandatory:** Yes
+- **Description**: Set options on the RUM SDK
+   - **Syntax:** DatadogRumSetting *key* *value*
+   - **Mandatory:** Depends. See table below.
    - **Context:** Server and Directory
 
-Set the path of the configuration file in JSON. The format of the JSON file is as follow:
+Set options on the RUM SDK that will be injected. As of now, here is the list of settings supported:
 
-```json
-{
-  "majorVersion": 5,
-  "rum": {
-    "applicationId": "<DATADOG_APPLICATION_ID>",
-    "clientToken": "<DATADOG_CLIENT_TOKEN>",
-    "site": "<DATADOG_SITE>",
-    ...
-  }
-}
+| Setting | Description | Mandatory | Example |
+| ------- | ----------- | --------- | ------- |
+| `applicationId` | RUM Application ID. Defined in the Datadog UI. | Yes | |
+| `clientToken` | Datadog Client Token. Defined in the Datadog UI. | Yes | |
+| `site` | Datadog site parameter for your organization. | Yes | `datadoghq.com` |
+| `service` | Service name for your application | No | `my-web-application` |
+| `env` | Application's environment | No | `prod`, `pre-prod`, `staging` |
+| `version` | Application's version | No | `1.2.3`, `6c44da20`, `2020.02.13` |
+| `trackUserInteractions` | Enables autonatic collection of users actions. | No | `true` or `false` |
+| `trackResources` | Enables collection of resource events. | No | `true` or `false` |
+| `trackLongTasks` | Enables collection of long task events. | No | `true` or `false` |
+| `defaultPrivacyLevel` | See Session reaply Privacy Options. | No | `true` or `false` |
+| `sessionSampleRate` | The percentage of sessions to track: `100` for all, `0` for none. | No | `100`, `50`, `0` |
+| `sessionReplaySampleRate` | The percentage of tracked sessions to capture: `100` for all, `0` for none. | No | `100`, `50`, `0` |
+
+Example:
 ```
+DatadogRumSetting "applicationId" "<APP-ID>"
+DatadogRumSetting "clientToken" "<CLIENT-TOKEN>"
+DatadogRumSetting "site" "datadoghq.com"
+DatadogRumSetting "service" "httpd-injection"
+DatadogRumSetting "env" "demo"
+DatadogRumSetting "version" "1.0.0"
+DatadogRumSetting "sessionSampleRate" "100"
+DatadogRumSetting "sessionReplaySampleRate" "100"
+DatadogRumSetting "trackResources" "true"
+DatadogRumSetting "trackLongTasks" "true"
+DatadogRumSetting "trackUserInteractions" "true"
+```
+
 ## RUM Configuration Example
 `httpd.conf`
 ```
@@ -198,10 +217,28 @@ LoadModule status_module mod_status.so
 LoadModule datadog_module mod_datadog.so
 
 DatadogRum On
-DatadogRumIncludeConfiguration "/my-site/rum-config.json"
+DatadogRumSetting "applicationId" "<DATADOG_APPLICATION_ID>"
+DatadogRumSetting "clientToken" "<DATADOG_CLIENT_TOKEN>"
+DatadogRumSetting "site" "<DATADOG_SITE>"
+DatadogRumSetting "service" "my-web-application"
+DatadogRumSetting "env" "production"
+DatadogRumSetting "version" "1.0.0"
+DatadogRumSetting "sessionSampleRate" 10
+DatadogRumSetting "sessionReplaySampleRate" 100
+DatadogRumSetting "trackResources" true
+DatadogRumSetting "trackLongTasks" true
+DatadogRumSetting "trackUserInteractions" true
 
 <Location "/proxy">
-    DatadogRumIncludeConfiguration "/my-site/rum-proxy-config.json"
+    DatadogRumSetting "applicationId" "<DATADOG_APPLICATION_ID>"
+    DatadogRumSetting "clientToken" "<DATADOG_CLIENT_TOKEN>"
+    DatadogRumSetting "site" "<DATADOG_SITE>"
+    DatadogRumSetting "service" "proxied-website"
+    DatadogRumSetting "env" "dev"
+    DatadogRumSetting "version" "0.2.0"
+    DatadogRumSetting "sessionSampleRate" "100"
+    DatadogRumSetting "trackResources" "true"
+    DatadogRumSetting "trackUserInteractions" "true"
     ProxyPass "http://localhost:8081/"
 </Location>
 
@@ -209,42 +246,4 @@ DatadogRumIncludeConfiguration "/my-site/rum-config.json"
     DatadogRum Off
     SetHandler server-status
 </Location>
-```
-
-`rum-config.json`
-```
-{
-  "majorVersion": 5,
-  "rum": {
-    "applicationId": "<DATADOG_APPLICATION_ID>",
-    "clientToken": "<DATADOG_CLIENT_TOKEN>",
-    "site": "<DATADOG_SITE>",
-    "service": "my-web-application",
-    "env": "production",
-    "version": "1.0.0",
-    "sessionSampleRate": 10,
-    "sessionReplaySampleRate": 100,
-    "trackResources": true,
-    "trackLongTasks": true,
-    "trackUserInteractions": true
-  }
-}
-```
-
-`rum-proxy-config.json`
-```
-{
-  "majorVersion": 5,
-  "rum": {
-    "applicationId": "<DATADOG_APPLICATION_ID>",
-    "clientToken": "<DATADOG_CLIENT_TOKEN>",
-    "site": "<DATADOG_SITE>",
-    "service": "proxied-website",
-    "env": "dev",
-    "version": "0.2.0",
-    "sessionSampleRate": 100,
-    "trackResources": true,
-    "trackUserInteractions": true
-  }
-}
 ```

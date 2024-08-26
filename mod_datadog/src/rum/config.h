@@ -12,5 +12,5 @@ const char* set_rum_setting(cmd_parms* cmd, void* cfg, const char* value,
 // clang-format off
 #define RUM_MODULE_CMDS \
   AP_INIT_FLAG("DatadogRum", reinterpret_cast<cmd_func>(enable_rum_ddog), NULL, RSRC_CONF | ACCESS_CONF, "Enable or disable Datadog RUM module"), \
-  AP_INIT_TAKE2("DatadogRumSetting", reinterpret_cast<cmd_func>(set_rum_setting), NULL, RSRC_CONF | ACCESS_CONF, "Set RUM JSON configuration"),
+  AP_INIT_TAKE2("DatadogRumSetting", reinterpret_cast<cmd_func>(set_rum_setting), NULL, RSRC_CONF | ACCESS_CONF, "Set options on the RUM SDK"),
 // clang-format on
