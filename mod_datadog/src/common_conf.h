@@ -20,6 +20,10 @@ struct Directory final {
   bool delegate_sampling = false;
   bool trust_inbound_span = true;
   std::unordered_map<std::string, std::string> tags;
+
+  // RUM
+  bool rum_enabled = false;
+  std::unordered_map<std::string, std::string> rum_config;
 };
 
 void* init_dir_conf(apr_pool_t* pool, char*);

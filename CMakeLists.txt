@@ -9,17 +9,23 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(HTTPD_DATADOG_ENABLE_COVERAGE OFF)
+option(HTTPD_DATADOG_ENABLE_RUM OFF)
 
 if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE ReleaseWithDeb)
 endif ()
 
-if(NOT HTTPD_SRC_DIR)
+if (NOT HTTPD_SRC_DIR)
   message(FATAL_ERROR "Missing httpd source directory. Use -DHTTPD_SRC_DIR")
-endif()
+endif ()
 
 include(cmake/utils.cmake)
 include(cmake/deps/fmt.cmake)
+
+if (HTTPD_DATADOG_ENABLE_RUM)
+  include(cmake/deps/corrosion.cmake)
+  include(cmake/deps/rapidjson.cmake)
+endif ()
 
 add_library(httpd INTERFACE)
 target_include_directories(

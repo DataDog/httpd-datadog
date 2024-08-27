@@ -1,8 +1,12 @@
-# Configuring Datadog Tracing in Apache HTTP Server
+# Configuring the Datadog module for Apache HTTP Server
 
 > [!TIP]
 > Server directives should be set only once per server or virtual server. On the other hand, directory configuration gives you the flexibility to fine-tune settings for each specific direction.
 
+- [Tracing](#configuring-tracing)
+- [Real User Monitoring (RUM)](#configuring-real-user-monitoring)
+
+# Configuring Tracing
 ## `DatadogServiceName` directive
 
    - **Description**: Set the service name
@@ -151,3 +155,95 @@ When calling the `</foo>` endpoint, both the team and location tags will be adde
 If `on`, and if `httpd` is making the trace sampling decision (i.e. if `httpd` is the first service in the trace), then delegate the sampling decision to the upstream service. nginx will make a provisional sampling decision, and convey it along with the intention to delegate to the upstream. The upstream service might then make its own sampling decision and convey that decision back in the response. If the upstream does so, then nginx will use the upstream's sampling decision instead of the provisional decision.
 
 Sampling delegation exists to allow `httpd` to act as a reverse proxy for multiple different services, where the trace sampling decision can be better made within the service than it can within `httpd`.
+
+# Configuring Real User Monitoring
+
+> [!IMPORTANT]
+> 🚧 RUM SDK Injection is currently in Private Beta! 🚧
+>
+> Interested in early access? [Apply to join the beta program today!](https://www.datadoghq.com/private-beta/rum-sdk-auto-injection/)
+
+## `DatadogRum` directive
+   - **Description**: Enable or disable the RUM Injection
+   - **Syntax:** DatadogRum *On\|Off*
+   - **Default:** Off
+   - **Context:** Server and Directory
+
+Directive to enable or disable RUM SDK Injection.
+
+## `DatadogRumSetting` directive
+
+- **Description**: Set options on the RUM SDK
+   - **Syntax:** DatadogRumSetting *key* *value*
+   - **Mandatory:** Depends. See table below.
+   - **Context:** Server and Directory
+
+Set options on the RUM SDK that will be injected. As of now, here is the list of settings supported:
+
+| Setting | Description | Mandatory | Example |
+| ------- | ----------- | --------- | ------- |
+| `applicationId` | RUM Application ID. Defined in the Datadog UI. | Yes | |
+| `clientToken` | Datadog Client Token. Defined in the Datadog UI. | Yes | |
+| `site` | Datadog site parameter for your organization. | Yes | `datadoghq.com` |
+| `service` | Service name for your application | No | `my-web-application` |
+| `env` | Application's environment | No | `prod`, `pre-prod`, `staging` |
+| `version` | Application's version | No | `1.2.3`, `6c44da20`, `2020.02.13` |
+| `trackUserInteractions` | Enables autonatic collection of users actions. | No | `true` or `false` |
+| `trackResources` | Enables collection of resource events. | No | `true` or `false` |
+| `trackLongTasks` | Enables collection of long task events. | No | `true` or `false` |
+| `defaultPrivacyLevel` | See Session reaply Privacy Options. | No | `true` or `false` |
+| `sessionSampleRate` | The percentage of sessions to track: `100` for all, `0` for none. | No | `100`, `50`, `0` |
+| `sessionReplaySampleRate` | The percentage of tracked sessions to capture: `100` for all, `0` for none. | No | `100`, `50`, `0` |
+
+Example:
+```
+DatadogRumSetting "applicationId" "<APP-ID>"
+DatadogRumSetting "clientToken" "<CLIENT-TOKEN>"
+DatadogRumSetting "site" "datadoghq.com"
+DatadogRumSetting "service" "httpd-injection"
+DatadogRumSetting "env" "demo"
+DatadogRumSetting "version" "1.0.0"
+DatadogRumSetting "sessionSampleRate" "100"
+DatadogRumSetting "sessionReplaySampleRate" "100"
+DatadogRumSetting "trackResources" "true"
+DatadogRumSetting "trackLongTasks" "true"
+DatadogRumSetting "trackUserInteractions" "true"
+```
+
+## RUM Configuration Example
+`httpd.conf`
+```
+LoadModule status_module mod_status.so
+LoadModule datadog_module mod_datadog.so
+
+DatadogRum On
+DatadogRumSetting "applicationId" "<DATADOG_APPLICATION_ID>"
+DatadogRumSetting "clientToken" "<DATADOG_CLIENT_TOKEN>"
+DatadogRumSetting "site" "<DATADOG_SITE>"
+DatadogRumSetting "service" "my-web-application"
+DatadogRumSetting "env" "production"
+DatadogRumSetting "version" "1.0.0"
+DatadogRumSetting "sessionSampleRate" 10
+DatadogRumSetting "sessionReplaySampleRate" 100
+DatadogRumSetting "trackResources" true
+DatadogRumSetting "trackLongTasks" true
+DatadogRumSetting "trackUserInteractions" true
+
+<Location "/proxy">
+    DatadogRumSetting "applicationId" "<DATADOG_APPLICATION_ID>"
+    DatadogRumSetting "clientToken" "<DATADOG_CLIENT_TOKEN>"
+    DatadogRumSetting "site" "<DATADOG_SITE>"
+    DatadogRumSetting "service" "proxied-website"
+    DatadogRumSetting "env" "dev"
+    DatadogRumSetting "version" "0.2.0"
+    DatadogRumSetting "sessionSampleRate" "100"
+    DatadogRumSetting "trackResources" "true"
+    DatadogRumSetting "trackUserInteractions" "true"
+    ProxyPass "http://localhost:8081/"
+</Location>
+
+<Location "/health">
+    DatadogRum Off
+    SetHandler server-status
+</Location>
+```
