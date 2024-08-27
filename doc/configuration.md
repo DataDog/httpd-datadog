@@ -166,7 +166,7 @@ Sampling delegation exists to allow `httpd` to act as a reverse proxy for multip
 ## `DatadogRum` directive
    - **Description**: Enable or disable the RUM Injection
    - **Syntax:** DatadogRum *On\|Off*
-   - **Default:** On
+   - **Default:** Off
    - **Context:** Server and Directory
 
 Directive to enable or disable RUM SDK Injection.
