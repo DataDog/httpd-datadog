@@ -1,5 +1,7 @@
 #pragma once
 
+#include <chrono>
+
 #include "httpd.h"
 #include "injectbrowsersdk.h"
 

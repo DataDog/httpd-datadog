@@ -1,6 +1,5 @@
 #include "telemetry.h"
 
-#include <format>
 #include <string_view>
 
 namespace datadog {
