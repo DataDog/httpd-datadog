@@ -32,36 +32,41 @@ std::string protocol(int protocol_number) {
 }
 
 static SpanConfig make_span_config(
-    request_rec* r, std::unordered_map<std::string, std::string> default_tags) {
+    request_rec* r, std::unordered_map<std::string, std::string> tags) {
   static const std::string httpd_version = common::utils::make_httpd_version();
+
   std::string resource_name{r->method};
   resource_name += " ";
   resource_name += r->uri;
   resource_name += " ";
   resource_name += r->protocol;
 
+  tags.emplace("component", "httpd");
+  tags.emplace("httpd.version", httpd_version);
+  tags.emplace("httpd.virtual_host", r->server->is_virtual ? "true" : "false");
+  tags.emplace("http.version", protocol(r->proto_num));
+  tags.emplace("http.request.content_length", std::to_string(r->clength));
+  tags.emplace("http.method", r->method);
+
+  if (r->hostname != nullptr) tags.emplace("http.host", r->hostname);
+  if (r->unparsed_uri != nullptr) tags.emplace("http.url", r->unparsed_uri);
+  if (r->useragent_ip != nullptr)
+    tags.emplace("http.client_ip", r->useragent_ip);
+
+  if (auto mpm_name = ap_show_mpm(); mpm_name != nullptr) {
+    tags.emplace("httpd.mpm", mpm_name);
+  }
+
+  if (auto user_agent = apr_table_get(r->headers_in, "User-Agent");
+      user_agent != nullptr) {
+    tags.emplace("http.useragent", user_agent);
+  }
+
   datadog::tracing::SpanConfig options;
   options.name =
       (r->proxyreq != PROXYREQ_NONE) ? "httpd.proxy" : "httpd.request";
   options.resource = resource_name;
-  options.tags = std::unordered_map<std::string, std::string>{
-      {"component", "httpd"},
-      {"httpd.version", httpd_version},
-      {"httpd.virtual_host", r->server->is_virtual ? "true" : "false"},
-      {"httpd.mpm", ap_show_mpm()},
-      {"http.version", protocol(r->proto_num)},
-      {"http.host", r->hostname},
-      {"http.method", r->method},
-      {"http.url", r->unparsed_uri},
-      {"http.request.content_length", std::to_string(r->clength)},
-  };
-  options.tags.merge(default_tags);
-
-  if (r->useragent_ip) options.tags.emplace("http.client_ip", r->useragent_ip);
-
-  if (auto user_agent = apr_table_get(r->headers_in, "User-Agent")) {
-    options.tags.emplace("http.useragent", user_agent);
-  }
+  options.tags = std::move(tags);
 
   return options;
 }
