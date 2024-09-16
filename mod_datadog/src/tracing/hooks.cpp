@@ -118,8 +118,8 @@ int on_fixups(request_rec* r, Tracer& g_tracer, module* datadog_module) {
     // In case we fail to use the inbound span, then, start a new trace
     // ¯\_(ツ)_/¯ There is nothing we can do about it.
     if (dir_conf->trust_inbound_span) {
-      auto extracted_span = g_tracer.extract_or_create_span(
-          utils::HeaderReader(r->headers_in), options);
+      auto extracted_span =
+          g_tracer.extract_span(utils::HeaderReader(r->headers_in), options);
       if (auto error = extracted_span.if_error()) {
         span = new Span(g_tracer.create_span(options));
         span->set_error(error->message.c_str());
