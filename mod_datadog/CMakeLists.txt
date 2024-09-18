@@ -40,7 +40,7 @@ target_compile_options(mod_datadog
   PRIVATE -Wall -Wextra
 )
 
-add_dependencies(mod_datadog dd_trace_cpp-objects httpd fmt)
+add_dependencies(mod_datadog dd_trace_cpp-static httpd fmt)
 
 target_include_directories(
   mod_datadog
@@ -60,7 +60,7 @@ target_include_directories(mod_datadog PRIVATE httpd)
 
 target_link_libraries(mod_datadog 
   PRIVATE
-    dd_trace_cpp-objects 
+    dd_trace_cpp-static 
     httpd 
     fmt
 )
