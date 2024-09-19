@@ -26,7 +26,7 @@ static std::unique_ptr<dd::RuntimeID> g_runtime_id = nullptr;
 static std::unique_ptr<dd::Tracer> g_tracer = nullptr;
 
 APLOG_USE_MODULE(datadog);
-#define DD_MOD_VERSION "1.0.1"
+#define DD_MOD_VERSION "1.0.2"
 
 void* init_module_conf(apr_pool_t*, server_rec*);
 apr_status_t destroy_module_conf(void*);
