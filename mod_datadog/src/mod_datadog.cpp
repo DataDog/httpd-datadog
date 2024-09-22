@@ -16,6 +16,8 @@
 #else
 #define RUM_MODULE_CMDS
 #endif
+#include "crash-tracker/conf.h"
+#include "crash-tracker/hook.h"
 #include "tracing/conf.h"
 #include "tracing/hooks.h"
 #include "utils.h"
@@ -66,6 +68,7 @@ static const command_rec datadog_commands[] = {
   AP_INIT_ITERATE2("DatadogAddTag",            reinterpret_cast<cmd_func>(add_or_overwrite_tag),    NULL, RSRC_CONF | ACCESS_CONF, "Append tags"),
 
   RUM_MODULE_CMDS
+  CRASH_TRACKER_MODULE_CMDS
 
   {NULL}
 };
@@ -88,18 +91,30 @@ static void insert_datadog_filters(request_rec* r) {
 }
 #endif
 
+int on_handler(request_rec* r) {
+  if (std::string_view(r->handler) == "datadog-crash-handler") {
+    return on_crash_handler(r);
+  }
+
+  return DECLINED;
+}
+
 void register_hooks(apr_pool_t*) {
   g_runtime_id = std::make_unique<dd::RuntimeID>(dd::RuntimeID::generate());
+
   ap_hook_child_init(on_child_init, NULL, NULL, APR_HOOK_MIDDLE);
   ap_hook_fixups(on_fixups, NULL, NULL, APR_HOOK_LAST);
   ap_hook_log_transaction(on_log_transaction, NULL, NULL,
                           APR_HOOK_REALLY_FIRST);
+  ap_hook_handler(on_handler, NULL, NULL, APR_HOOK_LAST);
 
 #if defined(HTTPD_DD_RUM)
   ap_hook_insert_filter(insert_datadog_filters, NULL, NULL, APR_HOOK_MIDDLE);
   ap_register_output_filter(rum_filter_name, rum_output_filter, NULL,
                             AP_FTYPE_RESOURCE);
 #endif
+
+  ap_hook_fatal_exception(on_fatal_exception, NULL, NULL, APR_HOOK_MIDDLE);
 }
 
 void* init_module_conf(apr_pool_t* pool, server_rec* s) {
