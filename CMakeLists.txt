@@ -44,6 +44,14 @@ if (UNIX)
   )
 endif (UNIX)
 
+if (WINDOWS)
+  target_include_directories(
+    httpd
+    INTERFACE
+    ${HTTPD_SRC_DIR}/os/win32
+  )
+endif (WINDOWS)
+
 add_subdirectory(deps)
 add_subdirectory(mod_datadog)
 add_subdirectory(test/unit-test)

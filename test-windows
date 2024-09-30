@@ -1,0 +1,57 @@
+# Utiliser une image de base officielle Ubuntu
+FROM datadog/docker-library:httpd-datadog-ci-2.4
+# Définir l'option non interactive pour éviter les prompts
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Mettre à jour les paquets et installer MinGW et les outils nécessaires
+RUN apt-get update && \
+    apt-get install -y mingw-w64 && \
+    apt-get clean
+
+RUN export TARGET=x86_64-w64-mingw32 
+
+RUN git clone --branch 1.7.4 --depth 1 https://github.com/apache/apr.git
+
+WORKDIR /apr
+RUN mv /apr /httpd/srclib/apr
+WORKDIR /httpd/srclib/apr
+RUN ./buildconf
+RUN ./configure --host=$TARGET --prefix=/install/apr
+RUN make -j12 
+RUN make install
+
+WORKDIR /
+
+RUN git clone --branch 1.6.3 --depth 1 https://github.com/apache/apr-util.git
+RUN mv /apr-util /httpd/srclib/apr-util
+WORKDIR /httpd/srclib/apr-util
+RUN ./buildconf
+RUN ./configure --host=$TARGET --prefix=/install/apr-util --with-apr=/install/apr
+RUN make -j12 
+RUN make install
+
+WORKDIR /
+
+RUN wget https://sourceforge.net/projects/pcre/files/pcre/8.45/pcre-8.45.tar.gz
+RUN tar -xzf pcre-8.45.tar.gz
+RUN rm pcre-8.45.tar.gz
+WORKDIR /pcre-8.45
+RUN ./configure --host=$TARGET --prefix=/install/pcre --enable-utf8 --enable-unicode-properties
+RUN make -j12
+RUN make install
+
+WORKDIR /httpd
+RUN ./configure --host=$TARGET --prefix=$(pwd)/httpd-build --enable-mpms-shared="all" \
+    --with-apr=/install/apr --with-apr-util=/install/apr-util --with-pcre=/install/pcre
+
+COPY . /httpd-datadog
+WORKDIR /httpd-datadog
+# RUN pip install -r requirements.txt
+RUN cmake -B build -DCMAKE_BUILD_TYPE=Release -DHTTPD_SRC_DIR=/httpd -DWINDOWS=1 \
+    -DCMAKE_SYSTEM_NAME=Windows -DCMAKE_SYSTEM_PROCESSOR=x86_64 \ 
+    -DCMAKE_C_COMPILER=/usr/bin/x86_64-w64-mingw32-gcc-posix \
+    -DMSC_VER=1 \
+    -DCMAKE_CXX_COMPILER=/usr/bin/x86_64-w64-mingw32-g++-posix .
+
+RUN _MSC_VER=1 cmake --build build -j8 
+RUN cmake --install build --prefix dist
