@@ -40,13 +40,27 @@ options:
                         Directory where HTTPD will be extracted
 ````
 
-### Compiling
+## Compiling
+
+### Build httpd
+
+In order to build the module you have to build httpd first:
+```sh
+cd httpd 
+./configure --with-included-apr --prefix=$(pwd)/httpd-build --enable-mpms-shared="all" 
+make -j8 
+make install
+```
+
+### Build the module
+
 CMake is our build system. If you are not familiar with CMake, read [the tutorial.](https://cmake.org/cmake/help/latest/guide/tutorial/index.html)
 
 Configure and compile all targets in release:
 
 ````sh
-cmake -B build -DCMAKE_BUILD_TYPE=Release -DHTTPD_SRC_DIR=httpd-2.4 .
+git submodule update --init --recursive
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DHTTPD_SRC_DIR=httpd .
 cmake --build build -j
 ````
 
