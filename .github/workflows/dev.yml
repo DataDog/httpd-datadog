@@ -60,6 +60,10 @@ jobs:
         run: pytest --ddtrace test/integration-test --module-path dist/lib/mod_datadog.so --bin-path /httpd/httpd-build/bin/apachectl --log-dir $(pwd)/logs -m smoke
       - name: Run Integration Tests
         run: pytest --ddtrace test/integration-test --module-path dist/lib/mod_datadog.so --bin-path /httpd/httpd-build/bin/apachectl --log-dir $(pwd)/logs -m ci
+    # In order to compute the correct coverage we need the .gnco and .gcda files
+    # The .gnco files are created during the build job therefore we export/import them.
+    # Otherwise they would be lost after the end of the build job. The .gcda files
+    # are automatically created after tests execution
       - name: Import GNCO files
         uses: actions/download-artifact@v3
         with: 
