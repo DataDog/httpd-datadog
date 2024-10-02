@@ -20,7 +20,7 @@ jobs:
         with:
           submodules: true
       - name: Configure
-        run: cmake -B build -DHTTPD_SRC_DIR=/httpd . #-DHTTPD_DATADOG_ENABLE_COVERAGE=1 .
+        run: cmake -B build -DHTTPD_SRC_DIR=/httpd -DHTTPD_DATADOG_ENABLE_COVERAGE=1 .
       - name: Build
         run: |
           cmake --build build -j --verbose
@@ -30,6 +30,11 @@ jobs:
         with:
           name: mod_datadog_artifact
           path: dist/lib/mod_datadog.so
+      - name: Export GNCO files
+        uses: actions/upload-artifact@v3
+        with:
+          name: gcno-artifacts
+          path: build/mod_datadog/CMakeFiles/mod_datadog.dir/src/**/*.gcno
 
   test:
     needs: build
@@ -55,9 +60,22 @@ jobs:
         run: pytest --ddtrace test/integration-test --module-path dist/lib/mod_datadog.so --bin-path /httpd/httpd-build/bin/apachectl --log-dir $(pwd)/logs -m smoke
       - name: Run Integration Tests
         run: pytest --ddtrace test/integration-test --module-path dist/lib/mod_datadog.so --bin-path /httpd/httpd-build/bin/apachectl --log-dir $(pwd)/logs -m ci
-      # - name: Upload coverage reports to Codecov
-      #   uses: codecov/codecov-action@v4.0.1
-      #   with:
-      #     token: ${{ secrets.CODECOV_TOKEN }}
-      #     slug: DataDog/httpd-datadog
+    # In order to compute the correct coverage we need the .gnco and .gcda files
+    # The .gnco files are created during the build job therefore we export/import them.
+    # Otherwise they would be lost after the end of the build job. The .gcda files
+    # are automatically created after tests execution
+      - name: Import GNCO files
+        uses: actions/download-artifact@v3
+        with: 
+          name: gcno-artifacts
+          path: build/mod_datadog/CMakeFiles/mod_datadog.dir/src
+      - name: Generate code coverage
+        run: lcov --capture --directory build/mod_datadog/CMakeFiles/mod_datadog.dir/src --output-file coverage.lcov
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4.0.1
+        with:
+          files: coverage.lcov
+          name: github-actions
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: DataDog/httpd-datadog
 

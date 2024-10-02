@@ -1,4 +1,5 @@
 # Datadog Apache HTTPD Module
+[![codecov](https://codecov.io/github/DataDog/httpd-datadog/graph/badge.svg?branch=main)](https://codecov.io/github/DataDog/httpd-datadog?branch=main)
 
 This module adds distributed tracing to [Apache HTTP Server](https://httpd.apache.org/). Leveraging [Datadog's tracing library](https://github.com/DataDog/dd-trace-cpp/), it provides access to Datadog-specific functionality.
 
