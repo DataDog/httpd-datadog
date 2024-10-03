@@ -2,6 +2,11 @@
 
 ## Fork, Clone, Branch and Create your PR
 
+When cloning the repo, you have to initialize the submodules:
+```sh
+git submodule update --init --recursive
+```
+
 ### Rules
 - **Follow the pattern of what you already see in the code.**
 - Follow the coding style.
@@ -42,14 +47,14 @@ options:
 
 ## Compiling
 
-### Build httpd
+### Setup `httpd`
 
-In order to build the module you have to build httpd first:
+In order to build the module you have to configure httpd first:
 ```sh
+python scripts/setup-httpd.py -o httpd $HTTPD_VERSION
 cd httpd 
+
 ./configure --with-included-apr --prefix=$(pwd)/httpd-build --enable-mpms-shared="all" 
-make -j8 
-make install
 ```
 
 ### Build the module
@@ -58,11 +63,10 @@ CMake is our build system. If you are not familiar with CMake, read [the tutoria
 
 Configure and compile all targets in release:
 
-````sh
-git submodule update --init --recursive
+```sh
 cmake -B build -DCMAKE_BUILD_TYPE=Release -DHTTPD_SRC_DIR=httpd .
 cmake --build build -j
-````
+```
 
 ### Testing
 For now there are only integration tests. `docker-compose` orchestrate a runtime environment and the test suite interact with
