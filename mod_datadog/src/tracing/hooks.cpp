@@ -122,7 +122,9 @@ int on_fixups(request_rec* r, Tracer& g_tracer, module* datadog_module) {
           g_tracer.extract_span(utils::HeaderReader(r->headers_in), options);
       if (auto error = extracted_span.if_error()) {
         span = new Span(g_tracer.create_span(options));
-        span->set_error(error->message.c_str());
+        if (error->code != Error::NO_SPAN_TO_EXTRACT) {
+          span->set_error(error->message.c_str());
+        }
       } else {
         span = new Span(std::move(*extracted_span));
       }
