@@ -81,6 +81,12 @@ apr_status_t delete_span(void* data) {
 }  // namespace
 
 int on_fixups(request_rec* r, Tracer& g_tracer, module* datadog_module) {
+  // NOTE(@dmehala): do not trace `mod_status` handler.
+  if (r->handler != nullptr &&
+      std::string_view(r->handler) == "server-status") {
+    return DECLINED;
+  }
+
   Span* span = nullptr;
   InjectionOptions injection_opts;
 
