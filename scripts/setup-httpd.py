@@ -18,6 +18,7 @@ def download_http_source(version: str, output_dir: str, verbose: bool) -> bool:
                 "shell": True,
                 "stdout": pipe,
                 "stderr": pipe,
+                "check": True,
             },
             {
                 "args": "git clone --branch 1.7.4 --depth 1 https://github.com/apache/apr.git",
@@ -25,6 +26,7 @@ def download_http_source(version: str, output_dir: str, verbose: bool) -> bool:
                 "shell": True,
                 "stdout": pipe,
                 "stderr": pipe,
+                "check": True,
             },
             {
                 "args": "git clone --branch 1.6.3 --depth 1 https://github.com/apache/apr-util.git",
@@ -32,6 +34,7 @@ def download_http_source(version: str, output_dir: str, verbose: bool) -> bool:
                 "shell": True,
                 "stdout": pipe,
                 "stderr": pipe,
+                "check": True,
             },
         ]
         for cmd in cmds:
@@ -46,8 +49,11 @@ def download_http_source(version: str, output_dir: str, verbose: bool) -> bool:
             if not subprocess.run(**cmd):
                 return False
 
-        shutil.move(dir, output_dir)
+        shutil.move(os.path.join(dir, "httpd"), output_dir)
     return True
+
+
+DEFAULT_OUTPUT_DIR = os.path.join(os.getcwd(), "httpd")
 
 
 def main():
@@ -56,11 +62,16 @@ def main():
         "-v", "--verbose", help="Increase verbosity level", default=False
     )
     parser.add_argument(
-        "-o", "--output", help="Directory where HTTPD will be extracted"
+        "-o",
+        "--output",
+        help=f"Directory where HTTPD will be extracted. Default is {DEFAULT_OUTPUT_DIR}",
+        default=DEFAULT_OUTPUT_DIR,
     )
     parser.add_argument("version", help="HTTPD version to download")
 
     args = parser.parse_args()
+
+    args.output = os.path.abspath(args.output)
 
     if not subprocess.run("git -v", shell=True, stdout=subprocess.DEVNULL):
         print("git command must be available")
@@ -72,7 +83,11 @@ def main():
 
     pipe = subprocess.STDOUT if args.verbose else subprocess.DEVNULL
     if not subprocess.run(
-        "./buildconf", cwd=os.path.join(args.output, "httpd"), stdout=pipe, stderr=pipe
+        "./buildconf",
+        cwd=args.output,
+        stdout=pipe,
+        stderr=pipe,
+        check=True,
     ):
         print("Error while configuring Apache HTTP Server")
         return 1
