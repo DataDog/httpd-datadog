@@ -14,13 +14,13 @@ jobs:
     needs: format
     runs-on: ubuntu-22.04
     container:
-      image: datadog/docker-library:httpd-datadog-ci-2.4
+      image: datadog/docker-library:httpd-datadog-ci-2.4-e5dd7ac
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: true
       - name: Configure
-        run: cmake -B build -DHTTPD_SRC_DIR=/httpd -DHTTPD_DATADOG_ENABLE_COVERAGE=1 .
+        run: cmake -B build -DCMAKE_TOOLCHAIN_FILE=/sysroot/x86_64-none-linux-musl/Toolchain.cmake -DHTTPD_SRC_DIR=/httpd -DHTTPD_DATADOG_ENABLE_COVERAGE=1 -DCMAKE_BUILD_TYPE=Debug .
       - name: Build
         run: |
           cmake --build build -j --verbose
@@ -30,27 +30,24 @@ jobs:
         with:
           name: mod_datadog_artifact
           path: dist/lib/mod_datadog.so
-      - name: Export GNCO files
-        uses: actions/upload-artifact@v3
-        with:
-          name: gcno-artifacts
-          path: build/mod_datadog/CMakeFiles/mod_datadog.dir/src/**/*.gcno
+          if-no-files-found: error
 
   test:
     needs: build
     runs-on: ubuntu-22.04
     container:
-      image: datadog/docker-library:httpd-datadog-ci-2.4
+      image: datadog/docker-library:httpd-datadog-ci-2.4-e5dd7ac
     env:
       DD_ENV: ci
       DD_API_KEY: ${{ secrets.DD_API_KEY_CI_APP }}
       DD_SERVICE: httpd-tests
       DD_CIVISIBILITY_AGENTLESS_ENABLED: true
+      LLVM_PROFILE_FILE: /tmp/httpd.%p-%m.profraw
     steps:
       - uses: actions/checkout@v4
       - run: |
-          pip install -r requirements.txt
-          pip install ddtrace
+          pip install -r requirements.txt --break-system-packages
+          pip install ddtrace --break-system-packages
       - name: Import library from build job
         uses: actions/download-artifact@v3
         with:
@@ -60,17 +57,10 @@ jobs:
         run: pytest --ddtrace test/integration-test --module-path dist/lib/mod_datadog.so --bin-path /httpd/httpd-build/bin/apachectl --log-dir $(pwd)/logs -m smoke
       - name: Run Integration Tests
         run: pytest --ddtrace test/integration-test --module-path dist/lib/mod_datadog.so --bin-path /httpd/httpd-build/bin/apachectl --log-dir $(pwd)/logs -m ci
-    # In order to compute the correct coverage we need the .gnco and .gcda files
-    # The .gnco files are created during the build job therefore we export/import them.
-    # Otherwise they would be lost after the end of the build job. The .gcda files
-    # are automatically created after tests execution
-      - name: Import GNCO files
-        uses: actions/download-artifact@v3
-        with: 
-          name: gcno-artifacts
-          path: build/mod_datadog/CMakeFiles/mod_datadog.dir/src
       - name: Generate code coverage
-        run: lcov --capture --directory build/mod_datadog/CMakeFiles/mod_datadog.dir/src --output-file coverage.lcov
+        run: |
+          llvm-profdata merge -sparse /tmp/*.profraw -o /tmp/default.profdata 
+          llvm-cov export dist/lib/mod_datadog.so -format=lcov -instr-profile=/tmp/default.profdata -ignore-filename-regex=/httpd/ > coverage.lcov
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v4.0.1
         with:
@@ -78,4 +68,6 @@ jobs:
           name: github-actions
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: DataDog/httpd-datadog
+          os: alpine
+          fail_ci_if_error: true
 

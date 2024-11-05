@@ -5,13 +5,13 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     container:
-      image: datadog/docker-library:httpd-datadog-ci-2.4
+      image: datadog/docker-library:httpd-datadog-ci-2.4-e5dd7ac
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: true
       - name: Configure
-        run: cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DHTTPD_SRC_DIR=/httpd .
+        run: cmake -B build -DCMAKE_TOOLCHAIN_FILE=/sysroot/x86_64-none-linux-musl/Toolchain.cmake -DHTTPD_SRC_DIR=/httpd -DCMAKE_BUILD_TYPE=RelWithDebInfo -DHTTPD_DATADOG_PATCH_AWAY_LIBC=1 .
       - name: Build
         run: |
           cmake --build build -j --verbose

@@ -8,8 +8,11 @@ project(httpd-datadog)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-option(HTTPD_DATADOG_ENABLE_COVERAGE OFF)
-option(HTTPD_DATADOG_ENABLE_RUM OFF)
+set(ZLIB_USE_STATIC_LIBS ON)
+
+option(HTTPD_DATADOG_ENABLE_RUM "Enable RUM product" OFF)
+option(HTTPD_DATADOG_ENABLE_COVERAGE "Enable code coverage instrumentation" OFF)
+option(HTTPD_DATADOG_PATCH_AWAY_LIBC "Patch away libc dependency" OFF)
 
 if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE ReleaseWithDeb)
