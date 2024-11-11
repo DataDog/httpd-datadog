@@ -6,16 +6,16 @@
 #
 # To publish:
 #  docker buildx build --platform linux/amd64,linux/arm64 --output=type=image,name=datadog/docker-library:build-httpd-2.4,push=true .
-FROM datadog/docker-library:dd-trace-cpp-ci
+FROM public.ecr.aws/b1o7r7e0/nginx_musl_toolchain:latest
 
-ADD scripts/setup-httpd.sh setup-httpd.sh
+ADD scripts/setup-httpd.py setup-httpd.py
 
-RUN apt update \
- && apt install -y libpcre3 libpcre3-dev expat libexpat-dev autoconf libtool libtool-bin
+RUN apk update \
+ && apk add --no-cache expat expat-dev autoconf libtool py-pip gpg gpg-agent
 
-RUN python3 ./scripts/setup-httpd.py -o httpd 2.4.58 \
+RUN python3 ./setup-httpd.py -o httpd 2.4.58 \
  && cd httpd \
  && ./configure --with-included-apr --prefix=$(pwd)/httpd-build --enable-mpms-shared="all" \
- && make \
- && make install
+ && make -j \
+ && make -j install
 
