@@ -10,28 +10,32 @@
 #include <string>
 
 #include "common_conf.h"
+#include "version.h"
 #if defined(HTTPD_DD_RUM)
 #include "rum/config.h"
 #include "rum/filter.h"
 #else
 #define RUM_MODULE_CMDS
 #endif
+#include <datadog/version.h>
+
 #include "tracing/conf.h"
 #include "tracing/hooks.h"
 #include "utils.h"
 
 namespace dd = datadog::tracing;
 
+static std::atomic<bool> g_log_module_status = true;
 static std::unique_ptr<dd::RuntimeID> g_runtime_id = nullptr;
 static std::unique_ptr<dd::Tracer> g_tracer = nullptr;
 
 APLOG_USE_MODULE(datadog);
-#define DD_MOD_VERSION "1.0.2"
 
 void* init_module_conf(apr_pool_t*, server_rec*);
 apr_status_t destroy_module_conf(void*);
 
 // Hooks
+int on_post_config(apr_pool_t*, apr_pool_t*, apr_pool_t*, server_rec*);
 void on_child_init(apr_pool_t*, server_rec*);
 int on_fixups(request_rec*);
 int on_log_transaction(request_rec*);
@@ -90,6 +94,7 @@ static void insert_datadog_filters(request_rec* r) {
 
 void register_hooks(apr_pool_t*) {
   g_runtime_id = std::make_unique<dd::RuntimeID>(dd::RuntimeID::generate());
+  ap_hook_post_config(on_post_config, NULL, NULL, APR_HOOK_MIDDLE);
   ap_hook_child_init(on_child_init, NULL, NULL, APR_HOOK_MIDDLE);
   ap_hook_fixups(on_fixups, NULL, NULL, APR_HOOK_LAST);
   ap_hook_log_transaction(on_log_transaction, NULL, NULL,
@@ -102,6 +107,21 @@ void register_hooks(apr_pool_t*) {
 #endif
 }
 
+int on_post_config(apr_pool_t*, apr_pool_t*, apr_pool_t*, server_rec* s) {
+  if (!g_log_module_status) {
+    return OK;
+  }
+
+  g_log_module_status = false;
+  ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s, "httpd-datadog status: enabled");
+  ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s, "httpd-datadog version: %s",
+               mod_datadog_version.data());
+  ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s, "httpd-datadog products:");
+  ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s, "- tracing: dd-trace-cpp@%s",
+               datadog::tracing::tracer_version);
+  return OK;
+}
+
 void* init_module_conf(apr_pool_t* pool, server_rec* s) {
   auto* module_conf = new datadog::conf::Module;
   auto* opaque_ptr = static_cast<void*>(module_conf);
@@ -110,6 +130,7 @@ void* init_module_conf(apr_pool_t* pool, server_rec* s) {
 
   datadog::tracing::conf::init(module_conf->tracing, *g_runtime_id, s,
                                &datadog_module);
+
   return opaque_ptr;
 }
 
