@@ -77,14 +77,12 @@ if(HTTPD_DATADOG_ENABLE_COVERAGE)
         -fcoverage-mapping 
         -mllvm 
         -runtime-counter-relocation=true
-        -enable-name-compression=false
     )
     target_link_options(mod_datadog
       PRIVATE
         -fprofile-instr-generate 
         -mllvm 
         -runtime-counter-relocation=true
-        -enable-name-compression=false
     )
   endif()
 endif ()
