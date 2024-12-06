@@ -7,13 +7,14 @@
 #include <string_view>
 
 #include "common_conf.h"
-#include "config.h"
 #include "http_log.h"
 #include "util_filter.h"
+#include "utils.h"
 
 APLOG_USE_MODULE(datadog);
 
 using namespace datadog::conf;
+using namespace std::literals;
 
 constexpr std::string_view k_injected_header = "x-datadog-sdk-injected";
 
@@ -106,6 +107,33 @@ static void init_rum_context(
                 "RUM module is correctly initialized.");
 }
 
+bool should_inject(rum_filter_ctx& ctx, request_rec& r) {
+  if (ctx.state != InjectionState::pending) {
+    return false;
+  }
+
+  const char* const already_injected =
+      apr_table_get(r.headers_out, k_injected_header.data());
+  if (already_injected && std::string_view(already_injected) == "1") {
+    ctx.state = InjectionState::done;
+    return false;
+  }
+
+  const char* const content_type = apr_table_get(r.headers_out, "Content-Type");
+  if (content_type && datadog::common::utils::contains(
+                          std::string_view(content_type), "text/html"sv)) {
+    return false;
+  }
+
+  const char* const content_encoding =
+      apr_table_get(r.headers_out, "Content-Encoding");
+  if (content_encoding) {
+    return false;
+  }
+
+  return true;
+}
+
 /* TODO:
  *   - use AddOutputFilterByType. In theory the scanner can be run on
  *     everything.
@@ -136,20 +164,7 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
 
   auto* ctx = static_cast<rum_filter_ctx*>(f->ctx);
 
-  if (ctx->state != InjectionState::pending) {
-    return ap_pass_brigade(f->next, bb);
-  }
-
-  const char* const already_injected =
-      apr_table_get(r->headers_out, k_injected_header.data());
-  if (already_injected && std::string_view(already_injected) == "1") {
-    ctx->state = InjectionState::done;
-    return ap_pass_brigade(f->next, bb);
-  }
-
-  const char* const content_type =
-      apr_table_get(r->headers_out, "Content-Type");
-  if (content_type && std::string_view(content_type) != "text/html") {
+  if (!should_inject(*ctx, *r)) {
     return ap_pass_brigade(f->next, bb);
   }
 
