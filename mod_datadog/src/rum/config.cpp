@@ -4,11 +4,9 @@
 #include <rapidjson/stringbuffer.h>
 #include <rapidjson/writer.h>
 
-#include <optional>
 #include <string>
 #include <string_view>
 
-#include "apr_file_io.h"
 #include "apr_strings.h"
 #include "common_conf.h"
 #include "mod_datadog.h"
@@ -59,7 +57,7 @@ std::string make_rum_json_config(
 
 const char* enable_rum_ddog(cmd_parms* /* cmd */, void* cfg, int value) {
   auto* dir_conf = static_cast<Directory*>(cfg);
-  dir_conf->rum_enabled = (bool)value;
+  dir_conf->rum.enabled = (bool)value;
   return NULL;
 }
 
@@ -74,8 +72,8 @@ const char* set_rum_option(cmd_parms* cmd, void* cfg, const char* key,
   }
 
   auto* dir_conf = static_cast<Directory*>(cfg);
+  dir_conf->rum.config.emplace(key, value);
 
-  dir_conf->rum_config.emplace(key, value);
   return NULL;
 }
 
@@ -95,7 +93,7 @@ const char* datadog_rum_settings_section(cmd_parms* cmd, void* cfg,
 
   auto& dir_conf = *static_cast<Directory*>(cfg);
 
-  const auto json_config = make_rum_json_config("v5", dir_conf.rum_config);
+  const auto json_config = make_rum_json_config("v5", dir_conf.rum.config);
   if (json_config.empty()) {
     return "failed to generate the RUM SDK script";
   }
@@ -106,15 +104,17 @@ const char* datadog_rum_settings_section(cmd_parms* cmd, void* cfg,
                         snippet->error_message);
   }
 
-  // TODO(@dmehala): cleanup
-  dir_conf.snippet = snippet;
-  /*apr_pool_cleanup_register(*/
-  /*    cmd->pool, (void*)ctx->snippet,*/
-  /*    [](void* p) -> apr_status_t {*/
-  /*      snippet_cleanup((Snippet*)p);*/
-  /*      return 0;*/
-  /*    },*/
-  /*    apr_pool_cleanup_null);*/
+  dir_conf.rum.snippet = snippet;
 
   return NULL;
 }
+
+namespace datadog::rum::conf {
+
+void merge_directory_configuration(Directory& out, const Directory& parent,
+                                   const Directory& child) {
+  out.enabled = child.enabled || parent.enabled;
+  out.snippet = child.snippet ? child.snippet : parent.snippet;
+  return;
+}
+}  // namespace datadog::rum::conf

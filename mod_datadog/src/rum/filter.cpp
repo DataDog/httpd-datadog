@@ -39,16 +39,18 @@ static void init_rum_context(ap_filter_t* f, Snippet* snippet) {
  *   - create snippet when the directive is created.
  */
 int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
+  assert(bb != nullptr);
+
   request_rec* r = f->r;
 
   auto* dir_conf = static_cast<Directory*>(
       ap_get_module_config(r->per_dir_config, &datadog_module));
 
-  if (!dir_conf->rum_enabled) {
+  if (!dir_conf->rum.enabled) {
     return ap_pass_brigade(f->next, bb);
   }
 
-  if (dir_conf->rum_config.empty()) {
+  if (dir_conf->rum.config.empty()) {
     ap_log_rerror(
         APLOG_MARK, APLOG_WARNING, 0, r,
         "RUM SDK Injection is enabled but no JSON configuration found");
@@ -57,7 +59,7 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
 
   // First time the filter is being called -> Init the context
   if (f->ctx == nullptr) {
-    init_rum_context(f, dir_conf->snippet);
+    init_rum_context(f, dir_conf->rum.snippet);
   }
 
   auto* ctx = static_cast<rum_filter_ctx*>(f->ctx);

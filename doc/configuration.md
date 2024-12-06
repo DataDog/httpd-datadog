@@ -171,12 +171,26 @@ Sampling delegation exists to allow `httpd` to act as a reverse proxy for multip
 
 Directive to enable or disable RUM SDK Injection.
 
-## `DatadogRumSetting` directive
+## `DatadogRumSettings` section
+- **Description**: Container for Datadog RUM settings
+   - **Syntax:**:
+   ```xml
+   <DatadogRumSettings>
+     DatadogRumOption "applicationId" "my-app-id"
+     ...
+     DatadogRumOption "sessionSampleRate" "100"
+   </DatadogRumSettings>
+   ```
+
+## `DatadogRumOption` directive
+
+> [!NOTE]
+> `DatadogRumOption` must be set only in `DatadogRumSettings` sections.
 
 - **Description**: Set options on the RUM SDK
-   - **Syntax:** DatadogRumSetting *key* *value*
+   - **Syntax:** DatadogRumOption *key* *value*
    - **Mandatory:** Depends. See table below.
-   - **Context:** Server and Directory
+   - **Context:** DatadogRumSettings
 
 Set options on the RUM SDK that will be injected. As of now, here is the list of settings supported:
 
@@ -197,17 +211,19 @@ Set options on the RUM SDK that will be injected. As of now, here is the list of
 
 Example:
 ```
-DatadogRumSetting "applicationId" "<APP-ID>"
-DatadogRumSetting "clientToken" "<CLIENT-TOKEN>"
-DatadogRumSetting "site" "datadoghq.com"
-DatadogRumSetting "service" "httpd-injection"
-DatadogRumSetting "env" "demo"
-DatadogRumSetting "version" "1.0.0"
-DatadogRumSetting "sessionSampleRate" "100"
-DatadogRumSetting "sessionReplaySampleRate" "100"
-DatadogRumSetting "trackResources" "true"
-DatadogRumSetting "trackLongTasks" "true"
-DatadogRumSetting "trackUserInteractions" "true"
+<DatadogRumSettings>
+    DatadogRumOption "applicationId" "<APP-ID>"
+    DatadogRumOption "clientToken" "<CLIENT-TOKEN>"
+    DatadogRumOption "site" "datadoghq.com"
+    DatadogRumOption "service" "httpd-injection"
+    DatadogRumOption "env" "demo"
+    DatadogRumOption "version" "1.0.0"
+    DatadogRumOption "sessionSampleRate" "100"
+    DatadogRumOption "sessionReplaySampleRate" "100"
+    DatadogRumOption "trackResources" "true"
+    DatadogRumOption "trackLongTasks" "true"
+    DatadogRumOption "trackUserInteractions" "true"
+</DatadogRumSettings>
 ```
 
 ## RUM Configuration Example
@@ -217,28 +233,32 @@ LoadModule status_module mod_status.so
 LoadModule datadog_module mod_datadog.so
 
 DatadogRum On
-DatadogRumSetting "applicationId" "<DATADOG_APPLICATION_ID>"
-DatadogRumSetting "clientToken" "<DATADOG_CLIENT_TOKEN>"
-DatadogRumSetting "site" "<DATADOG_SITE>"
-DatadogRumSetting "service" "my-web-application"
-DatadogRumSetting "env" "production"
-DatadogRumSetting "version" "1.0.0"
-DatadogRumSetting "sessionSampleRate" 10
-DatadogRumSetting "sessionReplaySampleRate" 100
-DatadogRumSetting "trackResources" true
-DatadogRumSetting "trackLongTasks" true
-DatadogRumSetting "trackUserInteractions" true
+<DatadogRumSettings>
+    DatadogRumOption "applicationId" "<DATADOG_APPLICATION_ID>"
+    DatadogRumOption "clientToken" "<DATADOG_CLIENT_TOKEN>"
+    DatadogRumOption "site" "<DATADOG_SITE>"
+    DatadogRumOption "service" "my-web-application"
+    DatadogRumOption "env" "production"
+    DatadogRumOption "version" "1.0.0"
+    DatadogRumOption "sessionSampleRate" 10
+    DatadogRumOption "sessionReplaySampleRate" 100
+    DatadogRumOption "trackResources" true
+    DatadogRumOption "trackLongTasks" true
+    DatadogRumOption "trackUserInteractions" true
+</DatadogRumSettings>
 
 <Location "/proxy">
-    DatadogRumSetting "applicationId" "<DATADOG_APPLICATION_ID>"
-    DatadogRumSetting "clientToken" "<DATADOG_CLIENT_TOKEN>"
-    DatadogRumSetting "site" "<DATADOG_SITE>"
-    DatadogRumSetting "service" "proxied-website"
-    DatadogRumSetting "env" "dev"
-    DatadogRumSetting "version" "0.2.0"
-    DatadogRumSetting "sessionSampleRate" "100"
-    DatadogRumSetting "trackResources" "true"
-    DatadogRumSetting "trackUserInteractions" "true"
+    <DatadogRumSettings>
+        DatadogRumOption "applicationId" "<DATADOG_APPLICATION_ID>"
+        DatadogRumOption "clientToken" "<DATADOG_CLIENT_TOKEN>"
+        DatadogRumOption "site" "<DATADOG_SITE>"
+        DatadogRumOption "service" "proxied-website"
+        DatadogRumOption "env" "dev"
+        DatadogRumOption "version" "0.2.0"
+        DatadogRumOption "sessionSampleRate" "100"
+        DatadogRumOption "trackResources" "true"
+        DatadogRumOption "trackUserInteractions" "true"
+    </DatadogRumSettings>
     ProxyPass "http://localhost:8081/"
 </Location>
 

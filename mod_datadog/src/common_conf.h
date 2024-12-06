@@ -3,13 +3,10 @@
 #include <datadog/tracer_config.h>
 
 #include <string>
-#include <string_view>
 #include <unordered_map>
 
-#include "apr_poll.h"
-#include "httpd.h"
 #if defined(HTTPD_DD_RUM)
-#include "injectbrowsersdk.h"
+#include "rum/config.h"
 #endif
 
 namespace datadog::conf {
@@ -26,9 +23,7 @@ struct Directory final {
 
   // RUM
 #if defined(HTTPD_DD_RUM)
-  bool rum_enabled = false;
-  Snippet* snippet = nullptr;
-  std::unordered_map<std::string, std::string> rum_config;
+  rum::conf::Directory rum;
 #endif
 };
 
