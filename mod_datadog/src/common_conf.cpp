@@ -27,7 +27,9 @@ void* merge_dir_conf(apr_pool_t* pool, void* base, void* add) {
   auto tmp = parent->tags;
   conf->tags.merge(tmp);
 
+#if defined(HTTPD_DD_RUM)
   rum::conf::merge_directory_configuration(conf->rum, parent->rum, child->rum);
+#endif
 
   return final_ptr;
 }

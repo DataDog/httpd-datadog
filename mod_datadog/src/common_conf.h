@@ -5,6 +5,8 @@
 #include <string>
 #include <unordered_map>
 
+#include "apr_poll.h"
+
 #if defined(HTTPD_DD_RUM)
 #include "rum/config.h"
 #endif
