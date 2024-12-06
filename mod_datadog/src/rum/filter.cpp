@@ -29,7 +29,7 @@ static void init_rum_context(ap_filter_t* f, Snippet* snippet) {
       },
       apr_pool_cleanup_null);
   ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r,
-                "RUM module is correctly initialized.");
+                "RUM injector is correctly initialized.");
 }
 
 /* TODO:
@@ -47,13 +47,6 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
       ap_get_module_config(r->per_dir_config, &datadog_module));
 
   if (!dir_conf->rum.enabled) {
-    return ap_pass_brigade(f->next, bb);
-  }
-
-  if (dir_conf->rum.config.empty()) {
-    ap_log_rerror(
-        APLOG_MARK, APLOG_WARNING, 0, r,
-        "RUM SDK Injection is enabled but no JSON configuration found");
     return ap_pass_brigade(f->next, bb);
   }
 
