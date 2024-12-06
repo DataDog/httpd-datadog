@@ -3,11 +3,13 @@
 #include <datadog/tracer_config.h>
 
 #include <string>
-#include <string_view>
 #include <unordered_map>
 
 #include "apr_poll.h"
-#include "httpd.h"
+
+#if defined(HTTPD_DD_RUM)
+#include "rum/config.h"
+#endif
 
 namespace datadog::conf {
 
@@ -22,8 +24,9 @@ struct Directory final {
   std::unordered_map<std::string, std::string> tags;
 
   // RUM
-  bool rum_enabled = false;
-  std::unordered_map<std::string, std::string> rum_config;
+#if defined(HTTPD_DD_RUM)
+  rum::conf::Directory rum;
+#endif
 };
 
 void* init_dir_conf(apr_pool_t* pool, char*);
