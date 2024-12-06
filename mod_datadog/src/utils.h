@@ -4,6 +4,7 @@
 #include <httpd.h>
 
 #include <string>
+#include <string_view>
 
 namespace datadog::common::utils {
 
@@ -23,6 +24,10 @@ inline std::string make_httpd_version() {
 
   return fmt::format("{}.{}.{}", httpd_version.major, httpd_version.minor,
                      httpd_version.patch);
+}
+
+inline bool contains(std::string_view text, std::string_view pattern) {
+  return text.find(pattern) != text.npos;
 }
 
 }  // namespace datadog::common::utils
