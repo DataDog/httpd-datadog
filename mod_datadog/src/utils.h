@@ -25,4 +25,8 @@ inline std::string make_httpd_version() {
                      httpd_version.patch);
 }
 
+inline bool contains(std::string_view text, std::string_view pattern) {
+  return text.find(pattern) != text.npos;
+}
+
 }  // namespace datadog::common::utils
