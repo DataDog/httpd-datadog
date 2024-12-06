@@ -8,6 +8,9 @@
 
 #include "apr_poll.h"
 #include "httpd.h"
+#if defined(HTTPD_DD_RUM)
+#include "injectbrowsersdk.h"
+#endif
 
 namespace datadog::conf {
 
@@ -22,8 +25,11 @@ struct Directory final {
   std::unordered_map<std::string, std::string> tags;
 
   // RUM
+#if defined(HTTPD_DD_RUM)
   bool rum_enabled = false;
+  Snippet* snippet = nullptr;
   std::unordered_map<std::string, std::string> rum_config;
+#endif
 };
 
 void* init_dir_conf(apr_pool_t* pool, char*);
