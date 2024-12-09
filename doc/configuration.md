@@ -188,7 +188,7 @@ Directive to enable or disable RUM SDK Injection.
 > `DatadogRumOption` must be set only in `DatadogRumSettings` sections.
 
 - **Description**: Set options on the RUM SDK
-   - **Syntax:** DatadogRumOption *key* *value*
+   - **Syntax:** DatadogRumOption *key* *value1* ... *valueN*
    - **Mandatory:** Depends. See table below.
    - **Context:** DatadogRumSettings
 
@@ -208,6 +208,7 @@ Set options on the RUM SDK that will be injected. As of now, here is the list of
 | `defaultPrivacyLevel` | See Session reaply Privacy Options. | No | `true` or `false` |
 | `sessionSampleRate` | The percentage of sessions to track: `100` for all, `0` for none. | No | `100`, `50`, `0` |
 | `sessionReplaySampleRate` | The percentage of tracked sessions to capture: `100` for all, `0` for none. | No | `100`, `50`, `0` |
+| `allowedTracingUrls` | A list of request URLs used to inject tracing headers. For more information, see [Connect RUM and Traces](https://docs.datadoghq.com/real_user_monitoring/platform/connect_rum_and_traces/?tab=browserrum). | No | "https://api.example.com" "https:\/\/.*\.my-api-domain\.com/" |
 
 Example:
 ```
@@ -223,6 +224,7 @@ Example:
     DatadogRumOption "trackResources" "true"
     DatadogRumOption "trackLongTasks" "true"
     DatadogRumOption "trackUserInteractions" "true"
+    DatadogRumOption "allowedTracingUrls" "https://api.example.com" "https://backend.example.org" "https://staging.backend.example.org"
 </DatadogRumSettings>
 ```
 

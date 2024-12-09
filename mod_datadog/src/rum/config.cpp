@@ -1,5 +1,6 @@
 #include "rum/config.h"
 
+#include <fmt/format.h>
 #include <rapidjson/document.h>
 #include <rapidjson/stringbuffer.h>
 #include <rapidjson/writer.h>
@@ -10,10 +11,23 @@
 #include "apr_strings.h"
 #include "common_conf.h"
 #include "mod_datadog.h"
+#include "utils.h"
 
 using namespace datadog::conf;
 
 namespace {
+std::vector<std::string> split(const std::string& str,
+                               const std::string& delimiter = ",") {
+  std::vector<std::string> result;
+  size_t start = 0, end;
+  while ((end = str.find(delimiter, start)) != std::string::npos) {
+    result.push_back(str.substr(start, end - start));
+    start = end + delimiter.length();
+  }
+  result.push_back(str.substr(start));
+  return result;
+}
+
 std::string make_rum_json_config(
     std::string_view config_version,
     const std::unordered_map<std::string, std::string>& config) {
@@ -27,9 +41,8 @@ std::string make_rum_json_config(
 
   rapidjson::Value rum(rapidjson::kObjectType);
   for (const auto& [key, value] : config) {
-    if (key == "majorVersion") {
-      continue;
-    } else if (key == "sessionSampleRate" || key == "sessionReplaySampleRate") {
+    auto value_is_array = datadog::common::utils::contains(value, ",");
+    if (key == "sessionSampleRate" || key == "sessionReplaySampleRate") {
       rum.AddMember(rapidjson::Value(key.c_str(), allocator).Move(),
                     rapidjson::Value(std::stod(value)).Move(), allocator);
     } else if (key == "trackResources" || key == "trackLongTasks" ||
@@ -37,6 +50,14 @@ std::string make_rum_json_config(
       auto b = (value == "true" ? true : false);
       rum.AddMember(rapidjson::Value(key.c_str(), allocator).Move(),
                     rapidjson::Value(b).Move(), allocator);
+    } else if (value_is_array) {
+      rapidjson::Value array(rapidjson::kArrayType);
+      for (const auto& e : split(value, ",")) {
+        array.PushBack(rapidjson::Value(e.c_str(), allocator).Move(),
+                       allocator);
+      }
+      rum.AddMember(rapidjson::Value(key.c_str(), allocator).Move(),
+                    array.Move(), allocator);
     } else {
       rum.AddMember(rapidjson::Value(key.c_str(), allocator).Move(),
                     rapidjson::Value(value.c_str(), allocator).Move(),
@@ -61,8 +82,8 @@ const char* enable_rum_ddog(cmd_parms* /* cmd */, void* cfg, int value) {
   return NULL;
 }
 
-const char* set_rum_option(cmd_parms* cmd, void* cfg, const char* key,
-                           const char* value) {
+const char* set_rum_option(cmd_parms* cmd, void* cfg, int argc,
+                           const char* argv[]) {
   if (cmd->directive->parent == nullptr ||
       std::string_view(cmd->directive->parent->directive) !=
           "<DatadogRumSettings") {
@@ -74,6 +95,17 @@ const char* set_rum_option(cmd_parms* cmd, void* cfg, const char* key,
   auto* dir_conf = static_cast<Directory*>(cfg);
   dir_conf->rum.config.emplace(key, value);
 
+  if (argc < 2) {
+    return "DatadogRumOption requires at least 2 arguments.";
+  }
+
+  // NOTE(@dmehala): Workaround -> For argv > 2 join all values with ","
+  std::string value = argv[1];
+  for (int i = 2; i < argc; ++i) {
+    value += fmt::format(",{}", argv[i]);
+  }
+
+  dir_conf->rum.config.emplace(argv[0], value);
   return NULL;
 }
 
