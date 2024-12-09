@@ -93,6 +93,7 @@ const char* set_rum_option(cmd_parms* cmd, void* cfg, int argc,
   }
 
   auto* dir_conf = static_cast<Directory*>(cfg);
+  dir_conf->rum.config.emplace(key, value);
 
   if (argc < 2) {
     return "DatadogRumOption requires at least 2 arguments.";
