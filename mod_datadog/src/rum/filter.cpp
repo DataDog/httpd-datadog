@@ -4,12 +4,14 @@
 
 #include "common_conf.h"
 #include "http_log.h"
+#include "telemetry.h"
 #include "util_filter.h"
 #include "utils.h"
 
 APLOG_USE_MODULE(datadog);
 
 using namespace datadog::conf;
+using namespace datadog::rum;
 using namespace std::literals;
 
 constexpr std::string_view k_injected_header = "x-datadog-sdk-injected";
@@ -41,6 +43,7 @@ bool should_inject(rum_filter_ctx& ctx, request_rec& r) {
   const char* const already_injected =
       apr_table_get(r.headers_out, k_injected_header.data());
   if (already_injected && std::string_view(already_injected) == "1") {
+    telemetry::injection_skip::already_injected->inc();
     ctx.state = InjectionState::done;
     return false;
   }
@@ -52,12 +55,14 @@ bool should_inject(rum_filter_ctx& ctx, request_rec& r) {
         APLOG_MARK, APLOG_DEBUG, 0, &r,
         "[RUM] Skip injection: \"Content-Type: %s\" does not match text/html.",
         content_type);
+    telemetry::injection_skip::invalid_content_type->inc();
     return false;
   }
 
   const char* const content_encoding =
       apr_table_get(r.headers_out, "Content-Encoding");
   if (content_encoding) {
+    telemetry::injection_skip::compressed_html->inc();
     return false;
   }
 
@@ -85,6 +90,11 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
   // First time the filter is being called -> Init the context
   if (f->ctx == nullptr) {
     init_rum_context(f, dir_conf->rum.snippet);
+    const char* const csp_header =
+        apr_table_get(r->headers_out, "Content-Security-Policy");
+    if (csp_header && !std::string_view(csp_header).empty()) {
+      telemetry::content_security_policy->inc();
+    }
   }
 
   auto* ctx = static_cast<rum_filter_ctx*>(f->ctx);
@@ -100,6 +110,7 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
        b = APR_BUCKET_NEXT(b)) {
     if (APR_BUCKET_IS_EOS(b)) {
       injector_end(ctx->injector);
+      telemetry::injection_failed->inc();
     } else if (APR_BUCKET_IS_METADATA(b)) {
       // TODO: Handle metadata bucket like flush
     } else if (apr_bucket_read(b, &buffer, &bytes, APR_BLOCK_READ) ==
@@ -128,6 +139,7 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
 
         ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r,
                       "[RUM] successfully injected the browser SDK.");
+        telemetry::injection_succeed->inc();
 
         return ap_pass_brigade(f->next, bb);
       }
