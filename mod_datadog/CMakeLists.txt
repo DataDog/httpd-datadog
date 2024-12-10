@@ -22,6 +22,7 @@ if (HTTPD_DATADOG_ENABLE_RUM)
     PRIVATE
       src/rum/config.cpp
       src/rum/filter.cpp
+      src/rum/telemetry.cpp
   )
 
   target_link_libraries(

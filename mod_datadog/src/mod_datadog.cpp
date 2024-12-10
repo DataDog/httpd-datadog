@@ -14,6 +14,7 @@
 #if defined(HTTPD_DD_RUM)
 #include "rum/config.h"
 #include "rum/filter.h"
+#include "rum/telemetry.h"
 #else
 #define RUM_MODULE_CMDS
 #endif
@@ -284,6 +285,29 @@ void init_tracer(datadog::tracing::TracerConfig& tracer_conf) {
     // NOTE: Could use s->process->short_name for the default service name.
     tracer_conf.service = "httpd";
   }
+
+#if defined(HTTPD_DD_RUM)
+  tracer_conf.additional_metrics.push_back(
+      datadog::rum::telemetry::configuration_failed_invalid_json);
+  tracer_conf.additional_metrics.push_back(
+      datadog::rum::telemetry::injection_skip::already_injected);
+  tracer_conf.additional_metrics.push_back(
+      datadog::rum::telemetry::injection_skip::invalid_content_type);
+  tracer_conf.additional_metrics.push_back(
+      datadog::rum::telemetry::injection_skip::no_content);
+  tracer_conf.additional_metrics.push_back(
+      datadog::rum::telemetry::injection_skip::compressed_html);
+  tracer_conf.additional_metrics.push_back(
+      datadog::rum::telemetry::injection_succeed);
+  tracer_conf.additional_metrics.push_back(
+      datadog::rum::telemetry::injection_failed);
+  tracer_conf.additional_metrics.push_back(
+      datadog::rum::telemetry::configuration_succeed);
+  tracer_conf.additional_metrics.push_back(
+      datadog::rum::telemetry::configuration_failed_invalid_json);
+  tracer_conf.additional_metrics.push_back(
+      datadog::rum::telemetry::content_security_policy);
+#endif
 
   auto validated_config = datadog::tracing::finalize_config(tracer_conf);
   if (auto error = validated_config.if_error()) {

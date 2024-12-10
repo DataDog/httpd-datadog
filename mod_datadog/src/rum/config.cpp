@@ -11,6 +11,7 @@
 #include "apr_strings.h"
 #include "common_conf.h"
 #include "mod_datadog.h"
+#include "telemetry.h"
 #include "utils.h"
 
 using namespace datadog::conf;
@@ -154,11 +155,13 @@ const char* datadog_rum_settings_section(cmd_parms* cmd, void* cfg,
 
   Snippet* snippet = snippet_create_from_json(json_config.c_str());
   if (snippet->error_code != 0) {
+    datadog::rum::telemetry::configuration_failed_invalid_json->inc();
     return apr_psprintf(cmd->pool, "Failed to initialize RUM SDK injection: %s",
                         snippet->error_message);
   }
 
   dir_conf.rum.snippet = snippet;
+  datadog::rum::telemetry::configuration_succeed->inc();
 
   return NULL;
 }
