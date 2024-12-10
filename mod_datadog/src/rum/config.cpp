@@ -92,9 +92,6 @@ const char* set_rum_option(cmd_parms* cmd, void* cfg, int argc,
                        NULL);
   }
 
-  auto* dir_conf = static_cast<Directory*>(cfg);
-  dir_conf->rum.config.emplace(key, value);
-
   if (argc < 2) {
     return "DatadogRumOption requires at least 2 arguments.";
   }
@@ -105,6 +102,7 @@ const char* set_rum_option(cmd_parms* cmd, void* cfg, int argc,
     value += fmt::format(",{}", argv[i]);
   }
 
+  auto* dir_conf = static_cast<Directory*>(cfg);
   dir_conf->rum.config.emplace(argv[0], value);
   return NULL;
 }
