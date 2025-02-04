@@ -49,7 +49,7 @@ jobs:
           pip install -r requirements.txt --break-system-packages
           pip install ddtrace --break-system-packages
       - name: Import library from build job
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: mod_datadog_artifact
           path: dist/lib
