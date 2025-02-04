@@ -107,6 +107,25 @@ const char* set_rum_option(cmd_parms* cmd, void* cfg, int argc,
   return NULL;
 }
 
+const char* set_rum_version(cmd_parms* cmd, void* cfg, int argc,
+                            const char* argv[]) {
+    if (cmd->directive->parent == nullptr ||
+      std::string_view(cmd->directive->parent->directive) !=
+          "<DatadogRumSettings") {
+    return apr_pstrcat(cmd->pool, cmd->cmd->name,
+                       " cannot occur outside <DatadogRumSettings> section",
+                       NULL);
+  }
+
+  if (argc != 1) {
+    return "DatadogRumVersion requires exactly 1 argument.";
+  }
+
+  auto* dir_conf = static_cast<Directory*>(cfg);
+  dir_conf->rum.version = argv[0];
+  return NULL;
+}
+
 const char* datadog_rum_settings_section(cmd_parms* cmd, void* cfg,
                                          const char* arg) {
   const char* endp = ap_strrchr_c(arg, '>');
@@ -123,7 +142,7 @@ const char* datadog_rum_settings_section(cmd_parms* cmd, void* cfg,
 
   auto& dir_conf = *static_cast<Directory*>(cfg);
 
-  const auto json_config = make_rum_json_config("v5", dir_conf.rum.config);
+  const auto json_config = make_rum_json_config("v" + dir_conf.rum.version, dir_conf.rum.config);
   if (json_config.empty()) {
     return "failed to generate the RUM SDK script";
   }
