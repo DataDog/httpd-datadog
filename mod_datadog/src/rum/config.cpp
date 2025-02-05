@@ -107,25 +107,6 @@ const char* set_rum_option(cmd_parms* cmd, void* cfg, int argc,
   return NULL;
 }
 
-const char* set_rum_version(cmd_parms* cmd, void* cfg, int argc,
-                            const char* argv[]) {
-  if (cmd->directive->parent == nullptr ||
-      std::string_view(cmd->directive->parent->directive) !=
-          "<DatadogRumSettings") {
-    return apr_pstrcat(cmd->pool, cmd->cmd->name,
-                       " cannot occur outside <DatadogRumSettings> section",
-                       NULL);
-  }
-
-  if (argc != 1) {
-    return "DatadogRumVersion requires exactly 1 argument.";
-  }
-
-  auto* dir_conf = static_cast<Directory*>(cfg);
-  dir_conf->rum.version = argv[0];
-  return NULL;
-}
-
 const char* datadog_rum_settings_section(cmd_parms* cmd, void* cfg,
                                          const char* arg) {
   const char* endp = ap_strrchr_c(arg, '>');
@@ -134,16 +115,46 @@ const char* datadog_rum_settings_section(cmd_parms* cmd, void* cfg,
                        "> directive missing closing '>'", nullptr);
   }
 
+  std::string version = "v6";
+  const char* version_start = arg;
+  while (*version_start && isspace(*version_start)) version_start++;
+
+  const char* quote_start = strchr(version_start, '"');
+  if (quote_start) {
+    version_start = quote_start + 1;
+    std::string parsed_version;
+    while (*version_start && *version_start != '"') {
+      parsed_version += *version_start;
+      version_start++;
+    }
+    if (!*version_start) {
+      return apr_pstrcat(cmd->pool, cmd->cmd->name,
+                         "> version missing closing double quote '\"'",
+                         nullptr);
+    }
+    if (!parsed_version.empty()) {
+      version = parsed_version;
+    }
+  }
+
+  if (version.length() < 2 ||
+      !std::all_of(version.begin() + 1, version.end(),
+                   [](char c) { return std::isdigit(c); })) {
+    return apr_pstrcat(cmd->pool, cmd->cmd->name, "> version format error",
+                       nullptr);
+  }
+
+  auto& dir_conf = *static_cast<Directory*>(cfg);
+  dir_conf.rum.version = version;
+
   const char* err =
       ap_walk_config(cmd->directive->first_child, cmd, cmd->context);
   if (err != nullptr) {
     return err;
   }
 
-  auto& dir_conf = *static_cast<Directory*>(cfg);
-
   const auto json_config =
-      make_rum_json_config("v" + dir_conf.rum.version, dir_conf.rum.config);
+      make_rum_json_config(dir_conf.rum.version, dir_conf.rum.config);
   if (json_config.empty()) {
     return "failed to generate the RUM SDK script";
   }
