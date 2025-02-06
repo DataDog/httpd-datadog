@@ -115,15 +115,39 @@ const char* datadog_rum_settings_section(cmd_parms* cmd, void* cfg,
                        "> directive missing closing '>'", nullptr);
   }
 
+  std::string version = "v6";
+  const char* left_quote = ap_strchr_c(arg, '"');
+  if (left_quote) {
+    const char* right_quote = ap_strchr_c(left_quote + 1, '"');
+    if (!right_quote) {
+      return apr_pstrcat(
+          cmd->pool, cmd->cmd->name,
+          "> version missing opening or closing double quote '\"'", nullptr);
+    }
+
+    std::string parsed_version(left_quote + 1, right_quote - left_quote - 1);
+    if (!parsed_version.empty()) {
+      version = parsed_version;
+    }
+  }
+
+  if (version.length() < 2 ||
+      !std::all_of(version.begin() + 1, version.end(),
+                   [](char c) { return std::isdigit(c); })) {
+    return apr_pstrcat(cmd->pool, cmd->cmd->name, "> version format error",
+                       nullptr);
+  }
+
+  auto& dir_conf = *static_cast<Directory*>(cfg);
+  dir_conf.rum.version = version;
   const char* err =
       ap_walk_config(cmd->directive->first_child, cmd, cmd->context);
   if (err != nullptr) {
     return err;
   }
 
-  auto& dir_conf = *static_cast<Directory*>(cfg);
-
-  const auto json_config = make_rum_json_config("v5", dir_conf.rum.config);
+  const auto json_config =
+      make_rum_json_config(dir_conf.rum.version, dir_conf.rum.config);
   if (json_config.empty()) {
     return "failed to generate the RUM SDK script";
   }

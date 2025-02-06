@@ -175,12 +175,14 @@ Directive to enable or disable RUM SDK Injection.
 - **Description**: Container for Datadog RUM settings
    - **Syntax:**:
    ```xml
-   <DatadogRumSettings>
+   <DatadogRumSettings "v6">
      DatadogRumOption "applicationId" "my-app-id"
      ...
      DatadogRumOption "sessionSampleRate" "100"
    </DatadogRumSettings>
    ```
+
+Where `v6` is the version of the RUM SDK to be injected. Defaults to `v6`.
 
 ## `DatadogRumOption` directive
 
@@ -235,7 +237,7 @@ LoadModule status_module mod_status.so
 LoadModule datadog_module mod_datadog.so
 
 DatadogRum On
-<DatadogRumSettings>
+<DatadogRumSettings "v6">
     DatadogRumOption "applicationId" "<DATADOG_APPLICATION_ID>"
     DatadogRumOption "clientToken" "<DATADOG_CLIENT_TOKEN>"
     DatadogRumOption "site" "<DATADOG_SITE>"
@@ -250,7 +252,7 @@ DatadogRum On
 </DatadogRumSettings>
 
 <Location "/proxy">
-    <DatadogRumSettings>
+    <DatadogRumSettings "v6">
         DatadogRumOption "applicationId" "<DATADOG_APPLICATION_ID>"
         DatadogRumOption "clientToken" "<DATADOG_CLIENT_TOKEN>"
         DatadogRumOption "site" "<DATADOG_SITE>"
