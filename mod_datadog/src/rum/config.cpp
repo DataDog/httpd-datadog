@@ -116,22 +116,16 @@ const char* datadog_rum_settings_section(cmd_parms* cmd, void* cfg,
   }
 
   std::string version = "v6";
-  const char* version_start = arg;
-  while (*version_start && isspace(*version_start)) version_start++;
+  const char* left_quote = ap_strchr_c(arg, '"');
+  if (left_quote) {
+    const char* right_quote = ap_strchr_c(left_quote + 1, '"');
+    if (!right_quote) {
+      return apr_pstrcat(
+          cmd->pool, cmd->cmd->name,
+          "> version missing opening or closing double quote '\"'", nullptr);
+    }
 
-  const char* quote_start = strchr(version_start, '"');
-  if (quote_start) {
-    version_start = quote_start + 1;
-    std::string parsed_version;
-    while (*version_start && *version_start != '"') {
-      parsed_version += *version_start;
-      version_start++;
-    }
-    if (!*version_start) {
-      return apr_pstrcat(cmd->pool, cmd->cmd->name,
-                         "> version missing closing double quote '\"'",
-                         nullptr);
-    }
+    std::string parsed_version(left_quote + 1, right_quote - left_quote - 1);
     if (!parsed_version.empty()) {
       version = parsed_version;
     }
@@ -146,7 +140,6 @@ const char* datadog_rum_settings_section(cmd_parms* cmd, void* cfg,
 
   auto& dir_conf = *static_cast<Directory*>(cfg);
   dir_conf.rum.version = version;
-
   const char* err =
       ap_walk_config(cmd->directive->first_child, cmd, cmd->context);
   if (err != nullptr) {
