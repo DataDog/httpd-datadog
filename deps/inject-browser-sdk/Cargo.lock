@@ -219,14 +219,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "inject-browser-sdk-fuzz"
-version = "0.1.0"
-dependencies = [
- "inject-browser-sdk",
- "libfuzzer-sys",
-]
-
-[[package]]
 name = "itoa"
 version = "1.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
