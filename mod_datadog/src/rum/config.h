@@ -1,4 +1,8 @@
 #pragma once
+
+#include <string>
+#include <unordered_map>
+
 #include "http_core.h"
 #include "injectbrowsersdk.h"
 
