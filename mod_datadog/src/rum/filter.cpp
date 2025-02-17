@@ -30,7 +30,7 @@ static void init_rum_context(ap_filter_t* f, Snippet* snippet) {
       },
       apr_pool_cleanup_null);
   ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r,
-                "RUM injector is correctly initialized.");
+                "[RUM] injector is correctly initialized.");
 }
 
 bool should_inject(rum_filter_ctx& ctx, request_rec& r) {
@@ -46,8 +46,12 @@ bool should_inject(rum_filter_ctx& ctx, request_rec& r) {
   }
 
   const char* const content_type = apr_table_get(r.headers_out, "Content-Type");
-  if (content_type && datadog::common::utils::contains(
+  if (content_type && !datadog::common::utils::contains(
                           std::string_view(content_type), "text/html"sv)) {
+    ap_log_rerror(
+        APLOG_MARK, APLOG_DEBUG, 0, &r,
+        "[RUM] Skip injection: \"Content-Type: %s\" does not match text/html.",
+        content_type);
     return false;
   }
 
@@ -122,10 +126,15 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
         ctx->state = InjectionState::done;
         apr_table_set(r->headers_out, k_injected_header.data(), "1");
 
+        ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r,
+                      "[RUM] successfully injected the browser SDK.");
+
         return ap_pass_brigade(f->next, bb);
       }
     }
   }
 
+  ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r,
+                "[RUM] failed to inject the browser SDK.");
   return ap_pass_brigade(f->next, bb);
 }
