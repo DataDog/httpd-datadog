@@ -27,7 +27,7 @@ if (HTTPD_DATADOG_ENABLE_RUM)
   target_link_libraries(
     mod_datadog
     PRIVATE
-      injectbrowsersdk
+      inject_browser_sdk_ffi 
       rapidjson
   )
 endif ()
