@@ -63,8 +63,13 @@ static SpanConfig make_span_config(
   }
 
   datadog::tracing::SpanConfig options;
-  options.name =
-      (r->proxyreq != PROXYREQ_NONE) ? "httpd.proxy" : "httpd.request";
+  if (r->proxyreq != PROXYREQ_NONE) {
+    options.name = "httpd.proxy";
+    tags.emplace("span.kind", "client");
+  } else {
+    options.name = "httpd.request";
+    tags.emplace("span.kind", "server");
+  }
   options.resource = resource_name;
   options.tags = std::move(tags);
 
