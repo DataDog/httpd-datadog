@@ -146,16 +146,6 @@ DatadogAddTag "team" "apm/proxy"
 
 When calling the `</foo>` endpoint, both the team and location tags will be added.
 
-## `DatadogDelegateSampling` directive
-   - **Description**: Add custom tag
-   - **Syntax**: DatadogDelegateSampling *On|Off*
-   - **Mandatory**: No
-   - **Context**: Directory config
-
-If `on`, and if `httpd` is making the trace sampling decision (i.e. if `httpd` is the first service in the trace), then delegate the sampling decision to the upstream service. nginx will make a provisional sampling decision, and convey it along with the intention to delegate to the upstream. The upstream service might then make its own sampling decision and convey that decision back in the response. If the upstream does so, then nginx will use the upstream's sampling decision instead of the provisional decision.
-
-Sampling delegation exists to allow `httpd` to act as a reverse proxy for multiple different services, where the trace sampling decision can be better made within the service than it can within `httpd`.
-
 # Configuring Real User Monitoring
 
 > [!IMPORTANT]
