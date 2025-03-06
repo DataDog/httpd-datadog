@@ -19,7 +19,6 @@ struct Module final {
 
 struct Directory final {
   bool tracing_enabled = true;
-  bool delegate_sampling = false;
   bool trust_inbound_span = true;
   std::unordered_map<std::string, std::string> tags;
 

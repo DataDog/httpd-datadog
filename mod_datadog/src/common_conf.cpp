@@ -17,9 +17,6 @@ void* merge_dir_conf(apr_pool_t* pool, void* base, void* add) {
 
   conf->tracing_enabled = child->tracing_enabled || parent->tracing_enabled;
 
-  conf->delegate_sampling =
-      child->delegate_sampling || parent->delegate_sampling;
-
   conf->trust_inbound_span =
       child->trust_inbound_span || parent->trust_inbound_span;
 
