@@ -47,7 +47,6 @@ const char* set_service_environment(cmd_parms*, void*, const char*);
 const char* set_service_version(cmd_parms*, void*, const char*);
 const char* set_service_name(cmd_parms*, void*, const char*);
 const char* enable_tracing(cmd_parms*, void*, int);
-const char* delegate_sampling(cmd_parms*, void*, int);
 const char* add_or_overwrite_tag(cmd_parms*, void*, const char*, const char*);
 const char* enable_inbound_span(cmd_parms*, void*, int);
 const char* set_sampling_rate(cmd_parms*, void*, const char*);
@@ -65,7 +64,6 @@ static const command_rec datadog_commands[] = {
 
   // Server and Directive scope
   AP_INIT_FLAG("DatadogTracing",               reinterpret_cast<cmd_func>(enable_tracing),          NULL, RSRC_CONF | ACCESS_CONF, "Enable or disable Datadog tracing module"),
-  AP_INIT_FLAG("DatadogDelegateSampling",      reinterpret_cast<cmd_func>(delegate_sampling),       NULL, RSRC_CONF | ACCESS_CONF, "Enable or disable Sampling Delegation"),
   AP_INIT_FLAG("DatadogTrustInboundSpan",      reinterpret_cast<cmd_func>(enable_inbound_span),     NULL, RSRC_CONF | ACCESS_CONF, "Trust inbound span headers"),
   AP_INIT_ITERATE2("DatadogAddTag",            reinterpret_cast<cmd_func>(add_or_overwrite_tag),    NULL, RSRC_CONF | ACCESS_CONF, "Append tags"),
 
@@ -253,12 +251,6 @@ const char* set_propagation_style(cmd_parms* cmd, void* /* cfg */, int argc,
 const char* enable_tracing(cmd_parms* /* cmd */, void* cfg, int value) {
   auto* dir_conf = static_cast<datadog::conf::Directory*>(cfg);
   dir_conf->tracing_enabled = value != 0;
-  return NULL;
-}
-
-const char* delegate_sampling(cmd_parms* /* cmd */, void* cfg, int value) {
-  auto* dir_conf = static_cast<datadog::conf::Directory*>(cfg);
-  dir_conf->delegate_sampling = value != 0;
   return NULL;
 }
 

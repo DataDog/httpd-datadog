@@ -112,7 +112,6 @@ int on_fixups(request_rec* r, Tracer& g_tracer, module* datadog_module) {
     SpanConfig options = make_span_config(r, dir_conf->tags);
     options.name = "httpd.subrequests";
     span = new Span(parent_span->create_child(options));
-    injection_opts.delegate_sampling_decision = dir_conf->delegate_sampling;
   } else {
     // Trace request
     auto* dir_conf = static_cast<datadog::conf::Directory*>(
@@ -142,8 +141,6 @@ int on_fixups(request_rec* r, Tracer& g_tracer, module* datadog_module) {
     } else {
       span = new Span(g_tracer.create_span(options));
     }
-
-    injection_opts.delegate_sampling_decision = dir_conf->delegate_sampling;
   }
 
   assert(span != nullptr);
@@ -186,9 +183,6 @@ int on_log_transaction(request_rec* r, module* datadog_module) {
       span->set_error_message(error_msg);
     }
   }
-
-  utils::HeaderReader reader(r->headers_out);
-  span->read_sampling_delegation_response(reader);
 
   return DECLINED;
 }
