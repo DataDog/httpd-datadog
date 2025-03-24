@@ -1,0 +1,27 @@
+{
+  "version": 8,
+  "$schema": "https://cmake.org/cmake/help/latest/_downloads/3e2d73bff478d88a7de0de736ba5e361/schema.json",
+  "configurePresets": [
+      {
+        "name": "ci-xcomp",
+        "displayName": "CI Cross-Compilation",
+        "toolchainFile": "../cmake/toolchain-x86_64-pc-windows-msvc.cmake",
+        "cacheVariables": {
+          "XWIN_ROOT": "/xwin",
+          "TOOLCHAIN_ROOT": "/usr/bin/",
+          "IIS_INJECTOR_STATIC_CRT": "1",
+          "IIS_BUILD_TESTS": "1",
+          "IIS_INJECTOR_TEST_DIR": "C:/Users/circleci/project/injector_IIS/test"
+        }
+      },
+      {
+        "name": "ci-native",
+        "displayName": "CI Native",
+        "generator": "Ninja",
+        "cacheVariables": {
+          "IIS_INJECTOR_STATIC_CRT": "1",
+          "IIS_BUILD_TESTS": "1"
+        }
+      }
+    ]
+}
