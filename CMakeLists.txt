@@ -3,8 +3,7 @@
 # - toolchain (msvc, llvm, gcc)
 cmake_minimum_required(VERSION 3.12)
 
-set(HTTP_DATADOG_VERSION 1.3.0)
-project(httpd-datadog VERSION ${HTTP_DATADOG_VERSION})
+project(httpd-datadog VERSION 1.3.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
