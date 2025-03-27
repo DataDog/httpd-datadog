@@ -1,3 +1,5 @@
 # `nm -m` to get the list of symbols
 # For more details: <https://developer.apple.com/library/archive/documentation/Performance/Conceptual/CodeFootprint/Articles/ReducingExports.html
 _datadog_module
+_mod_datadog_version
+_mod_datadog_version_string

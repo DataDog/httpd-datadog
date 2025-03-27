@@ -1,0 +1,5 @@
+#include "version.h"
+
+const std::string_view mod_datadog_version = "@HTTPD_DATADOG_VERSION@";
+const std::string_view mod_datadog_version_string =
+    "httpd-datadog version: @HTTPD_DATADOG_VERSION@";

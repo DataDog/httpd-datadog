@@ -1,7 +1,23 @@
+include(${CMAKE_SOURCE_DIR}/cmake/generate_build_id.cmake)
+
+# Generate the build identifier.
+# Known issue: this command is only run during the CMake configuration stage.
+# Possible solution: <https://jonathanhamberg.com/post/cmake-embedding-git-hash/>
+make_build_id(HTTPD_DATADOG_BUILD_ID)
+if (HTTPD_DATADOG_BUILD_ID)
+  set(HTTPD_DATADOG_VERSION "${CMAKE_PROJECT_VERSION}+${HTTPD_DATADOG_BUILD_ID}")
+else ()
+  set(HTTPD_DATADOG_VERSION "${CMAKE_PROJECT_VERSION}")
+endif ()
+
+configure_file(src/version.cpp.in ${CMAKE_BINARY_DIR}/version.cpp)
+
+message(STATUS "httpd-datadog version=[${HTTPD_DATADOG_VERSION}]")
 
 add_library(
   mod_datadog
   SHARED
+    ${CMAKE_BINARY_DIR}/version.cpp
     src/mod_datadog.cpp
     src/common_conf.cpp
     src/tracing/conf.cpp

@@ -2,7 +2,27 @@
 import os
 import pytest
 import requests
+import subprocess
+import shlex
 from helper import relpath, make_configuration, save_configuration
+
+
+@pytest.mark.smoke
+def test_version_symbol(module_path):
+    def find_version_symbol(symbols: list[str]) -> bool:
+        for sym in symbols:
+            if sym.startswith("httpd-datadog version"):
+                return True
+        return False
+
+    proc = subprocess.run(
+        shlex.split(f"strings {module_path}"),
+        capture_output=True,
+        universal_newlines=True,
+    )
+
+    assert proc
+    assert find_version_symbol(proc.stdout.split("\n"))
 
 
 @pytest.mark.smoke

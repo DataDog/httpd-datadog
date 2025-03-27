@@ -2,5 +2,13 @@
 
 #include <string_view>
 
-// The release version at or before this code revision, e.g. "v1.0.3".
-inline constexpr std::string_view mod_datadog_version = "1.0.3";
+// Store httpd-datadog version following the Semantic Versioning (semver)
+// format. Version format: <version>+<build-id>
+//
+// The `build-id` is generated as follows:
+//   1. For Debug builds, the build-id starts with "dev" followed by the current
+//   date (YYYYMMDD).
+//   2. If Git is available, the build-id will include the latest commit hash.
+//      Otherwise, it will fall back to using the machine's hostname.
+extern const std::string_view mod_datadog_version;
+extern const std::string_view mod_datadog_version_string;
