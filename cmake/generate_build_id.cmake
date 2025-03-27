@@ -14,14 +14,6 @@
 #   OUT_BUILD_ID:
 #     The name of the variable where the generated build identifier will be stored.
 function (make_build_id OUT_BUILD_ID)
-  set(NGINX_DATADOG_BUILD_ID_LIST)
-
-  if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    string(TIMESTAMP TODAY "%Y%m%d")
-
-    list(APPEND NGINX_DATADOG_BUILD_ID_LIST "dev" ${TODAY})
-  endif()
-
   find_program(GIT_CMD "git")
   if (GIT_CMD)
     execute_process(
@@ -29,14 +21,15 @@ function (make_build_id OUT_BUILD_ID)
       WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
       OUTPUT_VARIABLE GIT_HASH
       OUTPUT_STRIP_TRAILING_WHITESPACE
+      RESULT_VARIABLE RC
     )
 
-    list(APPEND NGINX_DATADOG_BUILD_ID_LIST ${GIT_HASH})
-  else ()
-    cmake_host_system_information(RESULT USER_HOSTNAME QUERY HOSTNAME)
-    list(APPEND NGINX_DATADOG_BUILD_ID_LIST USER_HOSTNAME)
-  endif()
+    if(NOT RC EQUAL 0)
+      message(FATAL_ERROR "The command \"git log -1 --format=%h\" failed with exit code ${RC}")
+    endif()
 
-  list(JOIN NGINX_DATADOG_BUILD_ID_LIST "-" BUILD_ID)
-  set(${OUT_BUILD_ID} "${BUILD_ID}" PARENT_SCOPE)
+    set(${OUT_BUILD_ID} "dev+${GIT_HASH}" PARENT_SCOPE)
+  else ()
+    set(${OUT_BUILD_ID} "dev+${USER_HOSTNAME}" PARENT_SCOPE)
+  endif()
 endfunction ()
