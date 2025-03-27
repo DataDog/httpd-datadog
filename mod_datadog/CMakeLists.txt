@@ -3,12 +3,17 @@ include(${CMAKE_SOURCE_DIR}/cmake/generate_build_id.cmake)
 # Generate the build identifier.
 # Known issue: this command is only run during the CMake configuration stage.
 # Possible solution: <https://jonathanhamberg.com/post/cmake-embedding-git-hash/>
-make_build_id(HTTPD_DATADOG_BUILD_ID)
-if (HTTPD_DATADOG_BUILD_ID)
-  set(HTTPD_DATADOG_VERSION "${CMAKE_PROJECT_VERSION}+${HTTPD_DATADOG_BUILD_ID}")
+if (CMAKE_BUILD_TYPE MATCHES Debug)
+  make_build_id(HTTPD_DATADOG_BUILD_ID)
+  if (HTTPD_DATADOG_BUILD_ID)
+    set(HTTPD_DATADOG_VERSION "${CMAKE_PROJECT_VERSION}+${HTTPD_DATADOG_BUILD_ID}" PARENT_SCOPE)
+  else ()
+    set(HTTPD_DATADOG_VERSION "${CMAKE_PROJECT_VERSION}" PARENT_SCOPE)
+  endif ()
 else ()
-  set(HTTPD_DATADOG_VERSION "${CMAKE_PROJECT_VERSION}")
+  set(HTTPD_DATADOG_VERSION "${CMAKE_PROJECT_VERSION}" PARENT_SCOPE)
 endif ()
+
 
 configure_file(src/version.cpp.in ${CMAKE_BINARY_DIR}/version.cpp)
 
