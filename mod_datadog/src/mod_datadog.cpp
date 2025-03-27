@@ -111,9 +111,10 @@ int on_post_config(apr_pool_t*, apr_pool_t*, apr_pool_t*, server_rec* s) {
   }
 
   g_log_module_status = false;
+
   ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s, "httpd-datadog status: enabled");
-  ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s, "httpd-datadog version: %s",
-               mod_datadog_version.data());
+  ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s, "%s",
+               mod_datadog_version_string.data());
   ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s, "httpd-datadog products:");
   ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s, "- tracing: dd-trace-cpp@%s",
                datadog::tracing::tracer_version);
