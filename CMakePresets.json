@@ -1,0 +1,29 @@
+{
+  "version": 8,
+  "$schema": "https://cmake.org/cmake/help/latest/_downloads/3e2d73bff478d88a7de0de736ba5e361/schema.json",
+  "configurePresets": [
+    {
+      "name": "ci-dev",
+      "displayName": "CI Debug",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "/sysroot/x86_64-none-linux-musl/Toolchain.cmake",
+        "HTTPD_SRC_DIR": "/httpd",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "HTTPD_DATADOG_ENABLE_COVERAGE": "1",
+        "HTTPD_DATADOG_PATCH_AWAY_LIBC": "1"
+      }
+    },
+    {
+      "name": "ci-release",
+      "displayName": "CI Release",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "/sysroot/x86_64-none-linux-musl/Toolchain.cmake",
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "HTTPD_SRC_DIR": "/httpd",
+        "HTTPD_DATADOG_PATCH_AWAY_LIBC": "1"
+      }
+    }
+  ]
+}
