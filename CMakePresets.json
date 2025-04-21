@@ -4,7 +4,7 @@
   "configurePresets": [
     {
       "name": "ci-dev",
-      "displayName": "CI Debug Windows",
+      "displayName": "CI Debug",
       "generator": "Ninja",
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "/sysroot/x86_64-none-linux-musl/Toolchain.cmake",
@@ -16,7 +16,7 @@
     },
     {
       "name": "ci-release",
-      "displayName": "CI Debug Windows",
+      "displayName": "CI Release",
       "generator": "Ninja",
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "/sysroot/x86_64-none-linux-musl/Toolchain.cmake",
