@@ -1,0 +1,29 @@
+name: "Bug Report (Public)"
+description: "Create a public Bug Report. Note that looking up account information will be difficult."
+title: "[Bug]: "
+labels: ["\U0001F41B bug"]
+body:
+  - type: textarea
+    attributes:
+      label: Bug report
+      description: Please add a clear and concise description of your problem here
+    validations:
+      required: true
+
+  - type: dropdown
+    attributes:
+      label: Injector
+      description: Specific injector in use
+      options:
+        - NGINX
+        - httpd
+        - IIS
+    validations:
+      required: true
+
+  - type: input
+    attributes:
+      label: Injector version
+      description: Version of the injector mentioned above
+    validations:
+      required: true

@@ -1,31 +1,31 @@
-# inject-browser-sdk
+# Datadog RUM Auto-Instrumentation
 
-Shared library that injects Browser SDK snippets in HTML documents.
+This project enables automatic injection of the Datadog RUM Browser SDK into HTML responses without requiring changes to your application code. It works by intercepting HTML responses and inserting the SDK snippet before the closing `</head>` tag.
 
-[Reference](https://datadoghq.dev/inject-browser-sdk)
+[Browser Monitoring Auto-Instrumentation (Server-Side)](https://docs.datadoghq.com/real_user_monitoring/browser/setup/server/) public documentation.
 
-## Requirements
+## Design Considerations
 
-You will need to have a Rust toolchain installed.
+- **Zero Code Changes**: No need to modify your application code
+- **Low Performance Impact**: Minimal impact on response times
+- **Flexible Configuration**
 
-## Usage
+## Architecture
 
-Build the library:
+The project consists of several components:
 
-```sh
-cd lib
-cargo build
-# or
-cargo build --release
-```
+1. **[Core Injection Library](lib/)**: Written in Rust, handling the HTML parsing and determining appropriate injection location
+2. **Web Server Module**: Native module for IIS (Other proxies/web servers may live in different repos)
+3. **Installer Scripts**: For easy deployment and configuration
 
-## Approximative library sizes
+## Contributing
 
-Compiled on Windows, with `--release`:
+We welcome contributions to the project! Please see our [Contributing Guide](CONTRIBUTING.md) for more information.
 
-| json library                                                                         | size | branch                                                                                          |
-| ------------------------------------------------------------------------------------ | ---- | ----------------------------------------------------------------------------------------------- |
-| serde, [serde_json](https://github.com/serde-rs/json)                                | 164K | [main](https://github.com/DataDog/inject-browser-sdk/tree/main)                                 |
-| serde, [serde_json_core](https://github.com/rust-embedded-community/serde-json-core) | 156K | [test-serde-json-core](https://github.com/DataDog/inject-browser-sdk/tree/test-serde-json-core) |
-| [miniserde](https://github.com/dtolnay/miniserde)                                    | 148K | [test-miniserde](https://github.com/DataDog/inject-browser-sdk/tree/test-miniserde)             |
-| (no json)                                                                            | 140K | [test-no-json](https://github.com/DataDog/inject-browser-sdk/tree/test-no-json)                 |
+## License
+
+This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENSE) file for details.
+
+## Support
+
+For support, please [open an issue](https://github.com/DataDog/inject-browser-sdk/issues/new) or contact [Datadog support](https://docs.datadoghq.com/help/).

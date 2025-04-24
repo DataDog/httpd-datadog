@@ -88,5 +88,5 @@ def get_version(
 def get_version_numeric_only(ctx, env=os.environ, major_version='7'):
     # we only need the git info for the non omnibus builds, omnibus includes all this information by default
 
-    version, _, _, _ = query_version(ctx, major_version_hint=None)
+    version, _, _, _ = query_version(ctx, prefix='iis', major_version_hint=None)
     return version
