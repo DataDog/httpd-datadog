@@ -25,6 +25,7 @@ static void init_rum_context(ap_filter_t* f, Snippet* snippet) {
   apr_pool_cleanup_register(
       r->pool, (void*)ctx->injector,
       [](void* p) -> apr_status_t {
+        if (p == nullptr) return 0;
         injector_cleanup((Injector*)p);
         return 0;
       },

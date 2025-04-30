@@ -134,6 +134,7 @@ void* init_module_conf(apr_pool_t* pool, server_rec* s) {
 }
 
 apr_status_t destroy_module_conf(void* ptr) {
+  if (ptr == nullptr) return 0;
   delete static_cast<datadog::conf::Module*>(ptr);
   return 0;
 }

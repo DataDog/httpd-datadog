@@ -77,6 +77,7 @@ static SpanConfig make_span_config(
 }
 
 apr_status_t delete_span(void* data) {
+  if (data == nullptr) return 0;
   auto* span = static_cast<datadog::tracing::Span*>(data);
   delete span;
 
