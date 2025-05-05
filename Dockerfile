@@ -6,7 +6,7 @@
 #
 # To publish:
 #  docker buildx build --platform linux/amd64,linux/arm64 --output=type=image,name=datadog/docker-library:build-httpd-2.4,push=true .
-FROM public.ecr.aws/b1o7r7e0/nginx_musl_toolchain:latest
+FROM public.ecr.aws/b1o7r7e0/nginx_musl_toolchain:6c650e5
 
 ADD scripts/setup-httpd.py setup-httpd.py
 
