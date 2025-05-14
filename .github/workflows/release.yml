@@ -10,10 +10,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: true
+      - run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
       - name: Add cloned repo as safe
         run: sh -c "git config --global --add safe.directory $PWD"
       - name: Configure
-        run: cmake --preset ci-release -B build .
+        run: cmake --preset ci-release -B build -DHTTPD_DATADOG_ENABLE_RUM=ON .
       - name: Build
         run: |
           cmake --build build -j --verbose
