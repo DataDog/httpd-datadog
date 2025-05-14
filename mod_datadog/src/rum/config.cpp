@@ -1,6 +1,7 @@
 #include "rum/config.h"
 
 #include <fmt/format.h>
+#include <http_log.h>
 #include <rapidjson/document.h>
 #include <rapidjson/stringbuffer.h>
 #include <rapidjson/writer.h>
@@ -11,6 +12,7 @@
 #include "apr_strings.h"
 #include "common_conf.h"
 #include "mod_datadog.h"
+#include "telemetry.h"
 #include "utils.h"
 
 using namespace datadog::conf;
@@ -146,6 +148,17 @@ const char* datadog_rum_settings_section(cmd_parms* cmd, void* cfg,
     return err;
   }
 
+  auto it_app_id = dir_conf.rum.config.find("applicationId");
+  if (it_app_id != dir_conf.rum.config.end()) {
+    dir_conf.rum.app_id_tag =
+        fmt::format("application_id:{}", it_app_id->second);
+  }
+
+  dir_conf.rum.remote_config_tag =
+      dir_conf.rum.config.count("remoteConfigurationId")
+          ? "remote_config_used:true"
+          : "remote_config_used:false";
+
   const auto json_config =
       make_rum_json_config(dir_conf.rum.version, dir_conf.rum.config);
   if (json_config.empty()) {
@@ -154,10 +167,16 @@ const char* datadog_rum_settings_section(cmd_parms* cmd, void* cfg,
 
   Snippet* snippet = snippet_create_from_json(json_config.c_str());
   if (snippet->error_code != 0) {
+    datadog::telemetry::counter::increment(
+        *datadog::rum::telemetry::configuration_failed,
+        datadog::rum::telemetry::build_tags("reason:invalid_json"));
     return apr_psprintf(cmd->pool, "Failed to initialize RUM SDK injection: %s",
                         snippet->error_message);
   }
 
+  datadog::telemetry::counter::increment(
+      *datadog::rum::telemetry::configuration_succeed,
+      datadog::rum::telemetry::build_tags());
   dir_conf.rum.snippet = snippet;
 
   return NULL;
@@ -169,6 +188,12 @@ void merge_directory_configuration(Directory& out, const Directory& parent,
                                    const Directory& child) {
   out.enabled = child.enabled || parent.enabled;
   out.snippet = child.snippet ? child.snippet : parent.snippet;
+  out.app_id_tag =
+      child.app_id_tag.empty() ? parent.app_id_tag : child.app_id_tag;
+  out.remote_config_tag = child.remote_config_tag.empty()
+                              ? parent.remote_config_tag
+                              : child.remote_config_tag;
+
   return;
 }
 }  // namespace datadog::rum::conf
