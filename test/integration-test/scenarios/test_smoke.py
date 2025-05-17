@@ -58,12 +58,16 @@ def test_mpm(mpm, server, agent, log_dir, module_path):
         },
     }
 
+    headers = {"Connection": "close"}
+
     conf_path = os.path.join(log_dir, "httpd.conf")
     save_configuration(make_configuration(config, log_dir, module_path), conf_path)
 
     assert server.check_configuration(conf_path)
     assert server.load_configuration(conf_path)
-    r = requests.get(server.make_url("/"), timeout=2)
+    session = requests.Session()
+    r = session.get(server.make_url("/"), timeout=2, headers=headers)
+    session.close()
     assert r.status_code == 200
     assert agent.received_trace(timeout=10)
     assert server.stop(conf_path)

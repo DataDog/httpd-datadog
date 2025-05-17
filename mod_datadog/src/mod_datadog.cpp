@@ -7,6 +7,7 @@
 #include <http_protocol.h>
 #include <http_request.h>
 
+#include <atomic>
 #include <string>
 
 #include "common_conf.h"
