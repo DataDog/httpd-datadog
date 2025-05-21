@@ -14,7 +14,6 @@
 #if defined(HTTPD_DD_RUM)
 #include "rum/config.h"
 #include "rum/filter.h"
-#include "rum/telemetry.h"
 #else
 #define RUM_MODULE_CMDS
 #endif

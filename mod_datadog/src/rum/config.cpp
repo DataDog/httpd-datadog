@@ -11,7 +11,6 @@
 #include "apr_strings.h"
 #include "common_conf.h"
 #include "mod_datadog.h"
-#include "telemetry.h"
 #include "utils.h"
 
 using namespace datadog::conf;
@@ -147,8 +146,8 @@ const char* datadog_rum_settings_section(cmd_parms* cmd, void* cfg,
     return err;
   }
 
-  auto it_app_id = dir_conf.rum.config.find("applicationId");
-  if (it_app_id != dir_conf.rum.config.end()) {
+  if (auto it_app_id = dir_conf.rum.config.find("applicationId");
+      it_app_id != dir_conf.rum.config.end()) {
     dir_conf.rum.app_id_tag =
         fmt::format("application_id:{}", it_app_id->second);
   }
