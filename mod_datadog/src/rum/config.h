@@ -1,4 +1,8 @@
 #pragma once
+
+#include <string>
+#include <unordered_map>
+
 #include "http_core.h"
 #include "injectbrowsersdk.h"
 
@@ -26,6 +30,8 @@ struct Directory final {
   Snippet* snippet = nullptr;
   std::string version;
   std::unordered_map<std::string, std::string> config;
+  std::string app_id_tag;
+  std::string remote_config_tag;
 
   ~Directory() {
     if (snippet != nullptr) {
