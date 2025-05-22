@@ -1,5 +1,7 @@
 #include "rum/filter.h"
 
+#include <datadog/telemetry/telemetry.h>
+
 #include <string_view>
 
 #include "common_conf.h"
@@ -45,7 +47,7 @@ bool should_inject(rum_filter_ctx& ctx, request_rec& r,
       apr_table_get(r.headers_out, k_injected_header.data());
   if (already_injected && std::string_view(already_injected) == "1") {
     datadog::telemetry::counter::increment(
-        *telemetry::injection_skipped,
+        telemetry::injection_skipped,
         telemetry::build_tags("reason:already_injected", rum_conf.app_id_tag,
                               rum_conf.remote_config_tag));
 
@@ -61,7 +63,7 @@ bool should_inject(rum_filter_ctx& ctx, request_rec& r,
         "[RUM] Skip injection: \"Content-Type: %s\" does not match text/html.",
         content_type);
     datadog::telemetry::counter::increment(
-        *telemetry::injection_skipped,
+        telemetry::injection_skipped,
         telemetry::build_tags("reason:content-type", rum_conf.app_id_tag,
                               rum_conf.remote_config_tag));
     return false;
@@ -71,7 +73,7 @@ bool should_inject(rum_filter_ctx& ctx, request_rec& r,
       apr_table_get(r.headers_out, "Content-Encoding");
   if (content_encoding) {
     datadog::telemetry::counter::increment(
-        *telemetry::injection_skipped,
+        telemetry::injection_skipped,
         telemetry::build_tags("reason:compressed_html", rum_conf.app_id_tag,
                               rum_conf.remote_config_tag));
     return false;
@@ -105,7 +107,7 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
         apr_table_get(r->headers_out, "Content-Security-Policy");
     if (csp_header && !std::string_view(csp_header).empty()) {
       datadog::telemetry::counter::increment(
-          *telemetry::content_security_policy,
+          telemetry::content_security_policy,
           telemetry::build_tags("status:seen", "kind:header"));
     }
   }
@@ -124,7 +126,7 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
     if (APR_BUCKET_IS_EOS(b)) {
       injector_end(ctx->injector);
       datadog::telemetry::counter::increment(
-          *telemetry::injection_failed,
+          telemetry::injection_failed,
           telemetry::build_tags("reason:missing_header_tag",
                                 dir_conf->rum.app_id_tag,
                                 dir_conf->rum.remote_config_tag));
@@ -157,7 +159,7 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
         ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r,
                       "[RUM] successfully injected the browser SDK.");
         datadog::telemetry::counter::increment(
-            *telemetry::injection_succeed,
+            telemetry::injection_succeed,
             telemetry::build_tags(dir_conf->rum.app_id_tag,
                                   dir_conf->rum.remote_config_tag));
 
