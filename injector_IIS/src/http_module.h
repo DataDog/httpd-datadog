@@ -25,7 +25,7 @@ public:
                  IN ISendResponseProvider *pProvider);
 
   bool ShouldAttemptInjection(IHttpResponse &pHttpResponse,
-                              Logger &logger) const;
+                              const ModuleContext &ctx) const;
 
   REQUEST_NOTIFICATION_STATUS PerformInjection(IHttpContext &pHttpContext,
                                                IHttpResponse &pHttpResponse,

@@ -8,25 +8,30 @@
 
 #pragma once
 
+#include "version.h"
 #include <datadog/telemetry/metrics.h>
+#include <format>
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace datadog::rum::telemetry {
 
-namespace injection_skip {
-extern std::shared_ptr<datadog::telemetry::CounterMetric> already_injected;
-extern std::shared_ptr<datadog::telemetry::CounterMetric> invalid_content_type;
-extern std::shared_ptr<datadog::telemetry::CounterMetric> no_content;
-extern std::shared_ptr<datadog::telemetry::CounterMetric> compressed_html;
-} // namespace injection_skip
+template <typename... T> auto build_tags(T &&...specific_tags) {
+  std::vector<std::string> tags = {std::forward<T>(specific_tags)...};
+  tags.emplace_back("integration_name:iis");
+  tags.emplace_back(std::format(
+      "injector_version:{}", std::string_view{datadog_rum_injector_version}));
+  tags.emplace_back(
+      std::format("integration_version:{}", SHORT_VERSION_STRING));
 
-extern std::shared_ptr<datadog::telemetry::CounterMetric> injection_succeed;
-extern std::shared_ptr<datadog::telemetry::CounterMetric> injection_failed;
-extern std::shared_ptr<datadog::telemetry::CounterMetric> configuration_succeed;
-extern std::shared_ptr<datadog::telemetry::CounterMetric>
-    configuration_failed_invalid_json;
+  return tags;
+}
 
-/*extern tracing::HistogramMetric injection_duration;*/
-/*extern tracing::HistogramMetric response_size;*/
+const extern datadog::telemetry::Counter injection_skipped;
+const extern datadog::telemetry::Counter injection_succeed;
+const extern datadog::telemetry::Counter injection_failed;
+const extern datadog::telemetry::Counter content_security_policy;
 
 } // namespace datadog::rum::telemetry

@@ -10,10 +10,12 @@
 #include "module_context.h"
 #include "telemetry.h"
 #include <cassert>
+#include <datadog/tracer_config.h>
 #include <format>
 #include <rapidjson/document.h>
 #include <rapidjson/stringbuffer.h>
 #include <rapidjson/writer.h>
+#include <string>
 
 namespace datadog::rum {
 namespace {
@@ -29,9 +31,9 @@ std::string wstring_to_utf8(const std::wstring &wstr) {
   return strTo;
 }
 
-std::string
-make_json_cfg(const int version,
-              const std::unordered_map<std::string, std::string> &opts) {
+Snippet *
+make_snippet(const int version,
+             const std::unordered_map<std::string, std::string> &opts) {
   rapidjson::Document doc;
   doc.SetObject();
 
@@ -64,7 +66,7 @@ make_json_cfg(const int version,
   rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
   doc.Accept(writer);
 
-  return buffer.GetString();
+  return snippet_create_from_json(buffer.GetString());
 }
 
 IAppHostProperty *get_property(IAppHostElement *xmlElement,
@@ -84,14 +86,14 @@ VARIANT get_property_value(IAppHostProperty &property) {
   return v;
 }
 
-Snippet *read_conf(IHttpServer &server, PCWSTR cfg_path) {
+std::optional<RumConfig> read_conf(IHttpServer &server, PCWSTR cfg_path) {
   auto admin_manager = server.GetAdminManager();
   IAppHostElement *cfg_root_elem;
   auto res = admin_manager->GetAdminSection(
       (BSTR)L"system.webServer/datadogRum", const_cast<BSTR>(cfg_path),
       &cfg_root_elem);
   if (res != S_OK) {
-    return nullptr;
+    return std::nullopt;
   }
 
   const auto defer_root = defer([&] { cfg_root_elem->Release(); });
@@ -99,21 +101,21 @@ Snippet *read_conf(IHttpServer &server, PCWSTR cfg_path) {
   IAppHostProperty *enabled_prop = get_property(cfg_root_elem, L"enabled");
   if (enabled_prop == nullptr) {
     // missing enabled attribute -> invalid format -> disabled
-    return nullptr;
+    return std::nullopt;
   }
 
   const auto defer_enabled_prop = defer([&] { enabled_prop->Release(); });
 
   const auto is_enabled = get_property_value(*enabled_prop).boolVal;
   if (!is_enabled) {
-    return nullptr;
+    return std::nullopt;
   }
 
   int cfg_version = 6;
   auto version_prop = get_property(cfg_root_elem, L"version");
   if (version_prop != nullptr) {
+    const auto defer_version_prop = defer([&] { version_prop->Release(); });
     cfg_version = get_property_value(*version_prop).iVal;
-    version_prop->Release();
   }
 
   // Iterate on the SDK configuration
@@ -141,29 +143,62 @@ Snippet *read_conf(IHttpServer &server, PCWSTR cfg_path) {
       const auto option_element_guard =
           defer([&] { option_element->Release(); });
 
-      auto property = get_property(option_element, L"name");
-      if (property == nullptr) {
+      auto name_property = get_property(option_element, L"name");
+      if (name_property == nullptr) {
         // TODO: log property `name` do not exist
         continue;
       }
-      std::string opt_name =
-          wstring_to_utf8(std::wstring(get_property_value(*property).bstrVal));
+      const auto defer_name_property = defer([&] { name_property->Release(); });
+      std::string opt_name = wstring_to_utf8(
+          std::wstring(get_property_value(*name_property).bstrVal));
 
-      property = get_property(option_element, L"value");
-      if (property == nullptr) {
+      auto value_property = get_property(option_element, L"value");
+      if (value_property == nullptr) {
         continue;
       }
-
-      std::string opt_value =
-          wstring_to_utf8(std::wstring(get_property_value(*property).bstrVal));
+      const auto defer_value_property =
+          defer([&] { value_property->Release(); });
+      std::string opt_value = wstring_to_utf8(
+          std::wstring(get_property_value(*value_property).bstrVal));
 
       rum_sdk_opts.emplace(std::move(opt_name), std::move(opt_value));
     }
   }
 
-  // Build the JSON representation of the configuration
-  const std::string json_cfg = make_json_cfg(cfg_version, rum_sdk_opts);
-  return snippet_create_from_json(json_cfg.c_str());
+  return RumConfig{cfg_version, std::move(rum_sdk_opts)};
+}
+
+void update_module_context(ModuleContext &ctx, IHttpServer &server,
+                           PCWSTR config_path, std::shared_ptr<Logger> logger) {
+
+  auto config_options_opt = read_conf(server, config_path);
+  if (!config_options_opt.has_value()) {
+    logger->error("Failed to load RUM configuration");
+    return;
+  }
+  const RumConfig &loaded_config = config_options_opt.value();
+  Snippet *snippet =
+      make_snippet(loaded_config.version, loaded_config.sdk_options);
+
+  if (snippet == nullptr) {
+    logger->error("Failed to create RUM snippet");
+    return;
+  } else if (snippet->error_code != 0) {
+    logger->error(std::format("Failed to create RUM snippet: {}",
+                              snippet->error_message));
+    return;
+  }
+
+  logger->info("Configuration validated");
+  ctx.js_snippet = snippet;
+
+  if (auto appIdIt = loaded_config.sdk_options.find("applicationId");
+      appIdIt != loaded_config.sdk_options.end()) {
+    ctx.application_id_tag = std::format("application_id:{}", appIdIt->second);
+  }
+
+  auto rcUsed = loaded_config.sdk_options.count("remoteConfigurationId") > 0;
+  ctx.remote_config_tag = std::format("remote_config_used:{}", rcUsed);
 }
 } // namespace
 
@@ -183,19 +218,29 @@ GlobalModule::GlobalModule(IHttpServer *server, DWORD server_version,
     logger_->error(std::format("Failed to configure the telemetry module: {}",
                                error->message));
   } else {
-    std::vector<std::shared_ptr<datadog::telemetry::Metric>> rum_metrics{
-        telemetry::injection_skip::already_injected,
-        telemetry::injection_skip::invalid_content_type,
-        telemetry::injection_skip::no_content,
-        telemetry::injection_skip::compressed_html,
-        telemetry::injection_succeed,
-        telemetry::injection_failed,
-        telemetry::configuration_succeed,
-        telemetry::configuration_failed_invalid_json,
-    };
 
-    telemetry_ = std::make_unique<datadog::telemetry::Telemetry>(
-        *maybe_telemetry_cfg, logger_, rum_metrics);
+    const datadog::tracing::Clock &clock = datadog::tracing::default_clock;
+    datadog::tracing::DatadogAgentConfig agent_cfg_for_telemetry;
+    auto finalized_agent_cfg_result = datadog::tracing::finalize_config(
+        agent_cfg_for_telemetry, logger_, clock);
+    if (auto *error = finalized_agent_cfg_result.if_error()) {
+      logger_->log_error(
+          error->with_prefix("Failed to finalize agent settings for "
+                             "telemetry, no telemetry will be sent."));
+
+      return;
+    }
+    datadog::tracing::FinalizedDatadogAgentConfig dac =
+        *finalized_agent_cfg_result;
+
+    if (!dac.http_client) {
+      logger_->error(
+          "HTTPClient for telemetry is null, no telemetry will be sent");
+      return;
+    }
+
+    datadog::telemetry::init(*maybe_telemetry_cfg, logger_, dac.http_client,
+                             dac.event_scheduler, dac.url, clock);
   }
 }
 
@@ -216,19 +261,8 @@ GlobalModule::OnGlobalApplicationStart(
   logger_->info(std::format("Parsing configuration \"{}\" for app (id: {})",
                             wstring_to_utf8(config_path),
                             wstring_to_utf8(app->GetApplicationId())));
-  Snippet *snippet = read_conf(*server_, config_path);
-  if (snippet == nullptr) {
-    logger_->error("Failed to load RUM configuration");
-    ctx->js_snippet = nullptr;
-  } else if (snippet->error_code != 0) {
-    logger_->error(std::format("Failed to load RUM configuration: {}",
-                               snippet->error_message));
-    ctx->js_snippet = nullptr;
-  } else {
-    ctx->js_snippet = snippet;
-    logger_->info("Configuration validated");
-  }
 
+  update_module_context(*ctx, *server_, config_path, logger_);
   app->GetModuleContextContainer()->SetModuleContext(ctx, g_module_id);
 
   // NOTE(@dmehala): Keep a reference on the module context for
@@ -280,18 +314,10 @@ GLOBAL_NOTIFICATION_STATUS GlobalModule::OnGlobalConfigurationChange(
     // Question(@dmehala): should the default behaviour to keep the old setting
     // if there's an issue with the configuration?
     if (std::wstring_view(path).starts_with(cfg_path)) {
-      Snippet *snippet = read_conf(*server_, provider->GetChangePath());
-      if (snippet->error_code != 0) {
-        logger_->error(std::format(
-            "Failed to load new RUM configuration: {}. Keep using the old one",
-            snippet->error_message));
-      } else {
-        ctx->js_snippet = snippet;
-      }
+      update_module_context(*ctx, *server_, provider->GetChangePath(), logger_);
     }
   }
 
   return GL_NOTIFICATION_CONTINUE;
 }
-
 } // namespace datadog::rum

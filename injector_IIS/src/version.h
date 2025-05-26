@@ -6,6 +6,9 @@
  * Copyright 2024-Present Datadog, Inc.
  */
 
+#ifndef RC_INVOKED
+#include <string_view>
+#endif
 
 #ifndef MAJ_VER
 #define MAJ_VER 1
@@ -16,7 +19,7 @@
 #endif
 
 #ifndef PATCH_VER
-#define PATCH_VER 1
+#define PATCH_VER 2
 #endif
 
 #define RC_FILE_VERSION MAJ_VER, MIN_VER, PATCH_VER, 0
@@ -26,3 +29,8 @@
 
 #define FILE_VERSION_STRING TO_STRING(MAJ_VER.MIN_VER.PATCH_VER.0)
 #define SHORT_VERSION_STRING TO_STRING(MAJ_VER.MIN_VER.PATCH_VER)
+
+extern "C" {
+extern const std::string_view datadog_rum_injector_version;
+extern const std::string_view datadog_rum_injector_version_string;
+}

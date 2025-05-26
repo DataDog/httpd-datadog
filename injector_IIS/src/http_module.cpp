@@ -8,6 +8,9 @@
 #include "module_context.h"
 #include "telemetry.h"
 #include <cassert>
+#include <datadog/telemetry/telemetry.h>
+#include <format>
+#include <string>
 
 namespace datadog::rum {
 namespace {
@@ -87,7 +90,7 @@ HttpModule::OnSendResponse(IN IHttpContext *http_context,
     return RQ_NOTIFICATION_CONTINUE;
   }
 
-  if (!ShouldAttemptInjection(*http_response, *ctx.logger)) {
+  if (!ShouldAttemptInjection(*http_response, ctx)) {
     return RQ_NOTIFICATION_CONTINUE;
   }
 
@@ -95,7 +98,7 @@ HttpModule::OnSendResponse(IN IHttpContext *http_context,
 }
 
 bool HttpModule::ShouldAttemptInjection(IHttpResponse &pHttpResponse,
-                                        Logger &logger) const {
+                                        const ModuleContext &ctx) const {
   // First, we must validate the the content type is 'text/html'
   // Note that the value of the Content-Type header is case insensitive, and it
   // may or may not be be followed by semicolon-delimited parameters
@@ -104,8 +107,11 @@ bool HttpModule::ShouldAttemptInjection(IHttpResponse &pHttpResponse,
 
   if (_strnicmp(get_header(pHttpResponse, "Content-Type").data(), "text/html",
                 9) != 0) {
-    telemetry::injection_skip::invalid_content_type->inc();
-    logger.debug("Skipping RUM injection: content type is not text/html ");
+    datadog::telemetry::counter::increment(
+        telemetry::injection_skipped,
+        telemetry::build_tags("reason:content-type", ctx.application_id_tag,
+                              ctx.remote_config_tag));
+    ctx.logger->debug("Skipping RUM injection: content type is not text/html ");
     return false;
   }
 
@@ -114,7 +120,7 @@ bool HttpModule::ShouldAttemptInjection(IHttpResponse &pHttpResponse,
 
   // only inject if response code is 2xx, 4xx, 5xx
   if (statusCode < 200 || (statusCode >= 300 && statusCode < 400)) {
-    logger.debug(
+    ctx.logger->debug(
         std::format("Skipping RUM injection: return code {}", statusCode));
     return false;
   }
@@ -122,9 +128,12 @@ bool HttpModule::ShouldAttemptInjection(IHttpResponse &pHttpResponse,
   // We must also validate that another injector in this environment hasn't
   // previously attempted injection into this response
   if (!get_header(pHttpResponse, k_injection_header).empty()) {
-    telemetry::injection_skip::already_injected->inc();
-    logger.debug("Skipping RUM injection: injection has "
-                 "already been attempted on this response");
+    datadog::telemetry::counter::increment(
+        telemetry::injection_skipped,
+        telemetry::build_tags("reason:already_injected", ctx.application_id_tag,
+                              ctx.remote_config_tag));
+    ctx.logger->debug("Skipping RUM injection: injection has "
+                      "already been attempted on this response");
     return false;
   }
 
@@ -203,9 +212,13 @@ HttpModule::PerformInjection(IHttpContext &pHttpContext,
   }
 
   if (injected) {
-    telemetry::injection_succeed->inc();
+    datadog::telemetry::counter::increment(
+        telemetry::injection_succeed,
+        telemetry::build_tags(ctx.application_id_tag, ctx.remote_config_tag));
   } else {
-    telemetry::injection_failed->inc();
+    datadog::telemetry::counter::increment(
+        telemetry::injection_failed,
+        telemetry::build_tags(ctx.application_id_tag, ctx.remote_config_tag));
   }
 
   injector_cleanup(injector);

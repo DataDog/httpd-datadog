@@ -11,6 +11,7 @@
 #include "framework.h"
 #include "injectbrowsersdk.h"
 #include "logger.h"
+#include <string>
 
 namespace datadog::rum {
 
@@ -21,6 +22,8 @@ extern HTTP_MODULE_ID g_module_id;
 struct ModuleContext final : public IHttpStoredContext {
   Snippet *js_snippet = nullptr;
   Logger *logger = nullptr;
+  std::string application_id_tag;
+  std::string remote_config_tag;
 
   void CleanupStoredContext() override {
     if (js_snippet != nullptr) {

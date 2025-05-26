@@ -22,7 +22,6 @@ class GlobalModule final : public CGlobalModule {
   HTTP_MODULE_ID module_id_;
   IHttpServer *server_;
   std::shared_ptr<Logger> logger_;
-  std::unique_ptr<datadog::telemetry::Telemetry> telemetry_;
   std::map<std::wstring, ModuleContext *> configurations_;
 
 public:
@@ -43,6 +42,11 @@ public:
   GLOBAL_NOTIFICATION_STATUS
   OnGlobalConfigurationChange(
       IGlobalConfigurationChangeProvider *provider) override;
+};
+
+struct RumConfig {
+  int version;
+  std::unordered_map<std::string, std::string> sdk_options;
 };
 
 } // namespace datadog::rum
