@@ -3,3 +3,9 @@
 const std::string_view mod_datadog_version = "@HTTPD_DATADOG_VERSION@";
 const std::string_view mod_datadog_version_string =
     "httpd-datadog version: @HTTPD_DATADOG_VERSION@";
+
+#if defined(HTTPD_DD_RUM)
+const std::string_view datadog_rum_injector_version = "@RUM_SDK_INJECTOR_VERSION@";
+const std::string_view datadog_rum_injector_version_string =
+    "[inject-browser-sdk version @RUM_SDK_INJECTOR_VERSION@]";
+#endif

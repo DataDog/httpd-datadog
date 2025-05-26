@@ -146,6 +146,17 @@ const char* datadog_rum_settings_section(cmd_parms* cmd, void* cfg,
     return err;
   }
 
+  if (auto it_app_id = dir_conf.rum.config.find("applicationId");
+      it_app_id != dir_conf.rum.config.end()) {
+    dir_conf.rum.app_id_tag =
+        fmt::format("application_id:{}", it_app_id->second);
+  }
+
+  dir_conf.rum.remote_config_tag =
+      dir_conf.rum.config.count("remoteConfigurationId")
+          ? "remote_config_used:true"
+          : "remote_config_used:false";
+
   const auto json_config =
       make_rum_json_config(dir_conf.rum.version, dir_conf.rum.config);
   if (json_config.empty()) {
@@ -169,6 +180,12 @@ void merge_directory_configuration(Directory& out, const Directory& parent,
                                    const Directory& child) {
   out.enabled = child.enabled || parent.enabled;
   out.snippet = child.snippet ? child.snippet : parent.snippet;
+  out.app_id_tag =
+      child.app_id_tag.empty() ? parent.app_id_tag : child.app_id_tag;
+  out.remote_config_tag = child.remote_config_tag.empty()
+                              ? parent.remote_config_tag
+                              : child.remote_config_tag;
+
   return;
 }
 }  // namespace datadog::rum::conf

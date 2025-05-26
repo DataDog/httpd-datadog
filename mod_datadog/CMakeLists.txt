@@ -14,9 +14,6 @@ else ()
   set(HTTPD_DATADOG_VERSION "${CMAKE_PROJECT_VERSION}")
 endif ()
 
-
-configure_file(src/version.cpp.in ${CMAKE_BINARY_DIR}/version.cpp)
-
 message(STATUS "httpd-datadog version=[${HTTPD_DATADOG_VERSION}]")
 
 add_library(
@@ -43,6 +40,7 @@ if (HTTPD_DATADOG_ENABLE_RUM)
     PRIVATE
       src/rum/config.cpp
       src/rum/filter.cpp
+      src/rum/telemetry.cpp
   )
 
   target_link_libraries(
@@ -51,7 +49,25 @@ if (HTTPD_DATADOG_ENABLE_RUM)
       inject_browser_sdk_ffi 
       rapidjson
   )
+
+  execute_process (
+    COMMAND cargo pkgid --package inject-browser-sdk --manifest-path "${CMAKE_SOURCE_DIR}/deps/inject-browser-sdk/Cargo.toml"
+    OUTPUT_VARIABLE RUM_SDK_INJECTOR_PKGID
+  )
+
+  string(REGEX REPLACE ".*@" "" _VERSION_STRING_CANDIDATE "${RUM_SDK_INJECTOR_PKGID}")
+  if(_VERSION_STRING_CANDIDATE MATCHES "([0-9]+\\.[0-9]+\\.[0-9]+)")
+    set(RUM_SDK_INJECTOR_VERSION "${CMAKE_MATCH_1}")
+  else()
+    message(FATAL_ERROR "Could not extract a maj.min.patch version from string: '${_VERSION_STRING_CANDIDATE}' derived from PkgID: '${RUM_SDK_INJECTOR_PKGID}'")
+  endif()
+  string(STRIP "${RUM_SDK_INJECTOR_VERSION}" RUM_SDK_INJECTOR_VERSION)
+
+  unset(_VERSION_STRING_CANDIDATE)
+  unset(RUM_SDK_INJECTOR_PKGID)
 endif ()
+
+configure_file(src/version.cpp.in ${CMAKE_BINARY_DIR}/version.cpp)
 
 target_include_directories(
   mod_datadog
