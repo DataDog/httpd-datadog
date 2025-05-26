@@ -13,8 +13,8 @@ template <typename... T>
 auto build_tags(T&&... specific_tags) {
   std::vector<std::string> tags = {std::forward<T>(specific_tags)...};
   tags.emplace_back("integration_name:httpd");
-  tags.emplace_back(fmt::format("injector_version:{}",
-                                std::string_view{datadog_semver_rum_injector}));
+  tags.emplace_back(fmt::format(
+      "injector_version:{}", std::string_view{datadog_rum_injector_version}));
   tags.emplace_back(fmt::format("integration_version:{}", mod_datadog_version));
 
   return tags;

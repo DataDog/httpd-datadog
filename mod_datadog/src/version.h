@@ -14,6 +14,6 @@ extern const std::string_view mod_datadog_version;
 extern const std::string_view mod_datadog_version_string;
 
 #if defined(HTTPD_DD_RUM)
-extern const char datadog_semver_rum_injector[];
-extern const char datadog_version_rum_injector[];
+extern const std::string_view datadog_rum_injector_version;
+extern const std::string_view datadog_rum_injector_version_string;
 #endif
