@@ -9,6 +9,7 @@
 #include "injectbrowsersdk.h"
 #include "module_context.h"
 #include "telemetry.h"
+#include <algorithm>
 #include <cassert>
 #include <datadog/tracer_config.h>
 #include <format>
@@ -84,6 +85,40 @@ VARIANT get_property_value(IAppHostProperty &property) {
   VARIANT v;
   property.get_Value(&v);
   return v;
+}
+
+std::optional<ServerConfig> read_server_conf(IHttpServer &server,
+                                             std::shared_ptr<Logger> logger) {
+  ServerConfig default_config{LogLevel::Info};
+  auto admin_manager = server.GetAdminManager();
+
+  if (admin_manager == nullptr) {
+    return default_config;
+  }
+
+  IAppHostElement *cfg_root_elem;
+  auto res = admin_manager->GetAdminSection(
+      (BSTR)L"system.applicationHost/datadogRumServer",
+      (BSTR)L"MACHINE/WEBROOT/APPHOST", &cfg_root_elem);
+
+  if (res != S_OK) {
+    return default_config;
+  }
+
+  const auto defer_root = defer([&] { cfg_root_elem->Release(); });
+
+  LogLevel log_level = LogLevel::Info;
+  auto log_level_prop = get_property(cfg_root_elem, L"logLevel");
+  if (log_level_prop != nullptr) {
+    const auto defer_log_level_prop = defer([&] { log_level_prop->Release(); });
+    int log_level_int = get_property_value(*log_level_prop).lVal;
+    if (log_level_int <= static_cast<int>(LogLevel::Debug) &&
+        log_level_int >= static_cast<int>(LogLevel::Error)) {
+      log_level = static_cast<LogLevel>(log_level_int);
+    }
+  }
+
+  return ServerConfig{log_level};
 }
 
 std::optional<RumConfig> read_conf(IHttpServer &server, PCWSTR cfg_path) {
@@ -207,6 +242,8 @@ GlobalModule::GlobalModule(IHttpServer *server, DWORD server_version,
     : server_(server), logger_(std::move(logger)) {
   assert(server_ != nullptr);
 
+  update_server_log_level();
+
   // TODO(@dmehala): Add `rum` product in `app-started` event.
   datadog::telemetry::Configuration cfg;
   cfg.enabled = true;
@@ -241,6 +278,13 @@ GlobalModule::GlobalModule(IHttpServer *server, DWORD server_version,
 
     datadog::telemetry::init(*maybe_telemetry_cfg, logger_, dac.http_client,
                              dac.event_scheduler, dac.url, clock);
+  }
+}
+
+void GlobalModule::update_server_log_level() {
+  auto server_config = read_server_conf(*server_, logger_);
+  if (server_config.has_value()) {
+    logger_->set_log_level(server_config->log_level);
   }
 }
 
@@ -296,6 +340,12 @@ GLOBAL_NOTIFICATION_STATUS GlobalModule::OnGlobalConfigurationChange(
 
   logger_->info(std::format("Dispatching configuration update (\"{}\")",
                             wstring_to_utf8(cfg_path)));
+
+  std::wstring_view change_path_view(cfg_path);
+  if (change_path_view.find(L"MACHINE/WEBROOT/APPHOST") !=
+      std::wstring_view::npos) {
+    update_server_log_level();
+  }
 
   // NOTE(@dmehala): There's a mismatch between the config path given in
   // `OnGlobalApplicationStart` and the one here. This path is the common parent

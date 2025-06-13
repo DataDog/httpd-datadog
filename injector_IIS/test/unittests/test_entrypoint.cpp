@@ -18,6 +18,9 @@ TEST(TestRegisterModule,
   MockModule module;
   MockServer server;
 
+  EXPECT_CALL(server, GetAdminManager())
+      .WillRepeatedly(Return(nullptr));
+
   EXPECT_CALL(module, SetGlobalNotifications(_, GL_APPLICATION_START |
                                                     GL_CONFIGURATION_CHANGE |
                                                     GL_APPLICATION_STOP))
@@ -35,6 +38,9 @@ TEST(TestRegisterModule,
 TEST(TestRegisterModule, TestRegistersValidHTTPModuleFactory) {
   MockModule module;
   MockServer server;
+
+  EXPECT_CALL(server, GetAdminManager())
+      .WillRepeatedly(Return(nullptr));
 
   IHttpModuleFactory *resultFactory = NULL;
   ON_CALL(module, SetRequestNotifications)

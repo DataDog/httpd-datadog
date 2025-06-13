@@ -20,4 +20,11 @@
       <attribute name="value" type="string" required="true" validationType="nonEmptyString" />
     </collection>
   </sectionSchema>
+  <sectionSchema name="system.applicationHost/datadogRumServer">
+	  <attribute name="logLevel" type="enum" defaultValue="info">
+      <enum name="debug" value="2" />
+      <enum name="info"  value="1" />
+      <enum name="error" value="0" />
+    </attribute>
+  </sectionSchema>
 </configSchema>

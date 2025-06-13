@@ -9,12 +9,16 @@
 #pragma once
 #include "event_provider.h"
 #include "framework.h"
+#include <algorithm>
 #include <datadog/error.h>
 #include <datadog/logger.h>
 #include <format>
 #include <sstream>
+#include <string>
 
 namespace datadog::rum {
+
+enum class LogLevel { Error = 0, Info = 1, Debug = 2 };
 
 // Logger using the Event Logging API
 // <https://learn.microsoft.com/en-us/windows/win32/eventlog/event-logging>
@@ -24,11 +28,10 @@ namespace datadog::rum {
 class Logger : public datadog::tracing::Logger {
   HANDLE m_eventLog;
   std::ostringstream m_stream;
+  LogLevel m_logLevel;
 
 public:
-  bool enable_debug_logs = true;
-
-  Logger() {
+  Logger(LogLevel initial_level = LogLevel::Info) : m_logLevel(initial_level) {
     m_eventLog = RegisterEventSource(NULL, L"Datadog-RUM-Instrumentation");
   }
 
@@ -39,13 +42,22 @@ public:
     }
   }
 
+  void set_log_level(LogLevel level) { m_logLevel = level; }
+
+  inline bool should_log(LogLevel level) const {
+    return static_cast<int>(level) <= static_cast<int>(m_logLevel);
+  }
+
   virtual void info(std::string message) {
+    if (!should_log(LogLevel::Info))
+      return;
+
     report_event(std::move(message), EVENTLOG_INFORMATION_TYPE,
                  INJECTOR_CATEGORY, MSG_GENERIC_INFO);
   }
 
   virtual void debug(std::string message) {
-    if (!enable_debug_logs)
+    if (!should_log(LogLevel::Debug))
       return;
 
     report_event(std::move(message), EVENTLOG_INFORMATION_TYPE,
@@ -53,6 +65,9 @@ public:
   }
 
   virtual void error(std::string message) {
+    if (!should_log(LogLevel::Error))
+      return;
+
     report_event(std::move(message), EVENTLOG_ERROR_TYPE, INJECTOR_CATEGORY,
                  MSG_GENERIC_ERROR);
   }
@@ -78,6 +93,9 @@ public:
   void log_startup(const LogFunc &) override {}
 
   void log_error(const LogFunc &f) override {
+    if (!should_log(LogLevel::Error))
+      return;
+
     m_stream.clear();
     m_stream.str("");
 
@@ -87,12 +105,18 @@ public:
   }
 
   void log_error(const datadog::tracing::Error &error) override {
+    if (!should_log(LogLevel::Error))
+      return;
+
     report_event(std::format("[dd-trace-cpp error code {}] {}",
                              static_cast<int>(error.code), error.message),
                  EVENTLOG_ERROR_TYPE, TRACER_CATEGORY, MSG_GENERIC_ERROR);
   }
 
   void log_error(datadog::tracing::StringView sv) override {
+    if (!should_log(LogLevel::Error))
+      return;
+
     report_event(std::string(sv), EVENTLOG_ERROR_TYPE, TRACER_CATEGORY,
                  MSG_GENERIC_ERROR);
   }

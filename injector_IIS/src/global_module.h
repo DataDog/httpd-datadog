@@ -42,11 +42,18 @@ public:
   GLOBAL_NOTIFICATION_STATUS
   OnGlobalConfigurationChange(
       IGlobalConfigurationChangeProvider *provider) override;
+
+private:
+  void update_server_log_level();
 };
 
 struct RumConfig {
   int version;
   std::unordered_map<std::string, std::string> sdk_options;
+};
+
+struct ServerConfig {
+  LogLevel log_level;
 };
 
 } // namespace datadog::rum

@@ -64,7 +64,7 @@
 			DllEntry="WixQuietExec64"
 			Execute="deferred"
 			Return="check"
-			Impersonate="yes" />
+			Impersonate="no" />
 
 		<CustomAction Id="RunMigrationScript_Cmd"
 			Property="RunMigrationScript"
@@ -323,6 +323,8 @@
 			
       <Component Id="InjectorConfiguration" Guid="{8F1996EE-7046-468F-94F1-DC9526F3F965}" Directory="InetsrvSchemaDir">
         <File Id="InjectorSchema" Name="RUM_schema.xml" Source="..\resources\RUM_schema.xml" />
+        
+        <!-- system.webServer datadogRum section -->
         <util:XmlConfig Id='ApplicationHostSectionElement' On='install' Action='create'
                         File='[InetsrvDir]config\applicationHost.config' Node='element'
                         ElementPath="/configuration/configSections/sectionGroup[\[]@name='system.webServer'[\]]" Name="section" Sequence="6"
@@ -331,12 +333,37 @@
                         ElementPath='ApplicationHostSectionElement' Sequence='7' Name='name' Value='datadogRum' />
         <util:XmlConfig Id='ApplicationHostSectionOverrideAttrib' File='[InetsrvDir]config\applicationHost.config'
                         ElementPath='ApplicationHostSectionElement' Sequence='8' Name='overrideModeDefault' Value='Allow' />
+        
+        <!-- system.applicationHost datadogRumServer section -->
+        <util:XmlConfig Id='AppHostSectionElement' On='install' Action='create'
+                        File='[InetsrvDir]config\applicationHost.config' Node='element'
+                        ElementPath="/configuration/configSections/sectionGroup[\[]@name='system.applicationHost'[\]]" Name="section" Sequence="9"
+                        VerifyPath="/configuration/configSections/sectionGroup[\[]@name='system.applicationHost'[\]]/section[\[]@name='datadogRumServer'[\]]" />
+        <util:XmlConfig Id='AppHostSectionNameAttrib' File='[InetsrvDir]config\applicationHost.config'
+                        ElementPath='AppHostSectionElement' Sequence='10' Name='name' Value='datadogRumServer' />
+        <util:XmlConfig Id='AppHostSectionAllowDefAttrib' File='[InetsrvDir]config\applicationHost.config'
+                        ElementPath='AppHostSectionElement' Sequence='11' Name='allowDefinition' Value='AppHostOnly' />
+        <util:XmlConfig Id='AppHostSectionOverrideAttrib' File='[InetsrvDir]config\applicationHost.config'
+                        ElementPath='AppHostSectionElement' Sequence='12' Name='overrideModeDefault' Value='Deny' />
+        
         <!-- uninstall -->
         <!-- NOTE(@dmehala): might also need to remove all datadogRum nodes in system.webServer and location (regardless of the path) -->
         <util:XmlConfig Id='ApplicationHostSectionElementRemove' On='uninstall' Action='delete'
                         File='[InetsrvDir]config\applicationHost.config' Node='element'
                         ElementPath="/configuration/configSections/sectionGroup[\[]@name='system.webServer'[\]]" Sequence='103'
                         VerifyPath="/configuration/configSections/sectionGroup[\[]@name='system.webServer'[\]]/section[\[]@name='datadogRum'[\]]" />
+        
+        <!-- Remove system.applicationHost datadogRumServer section -->
+        <util:XmlConfig Id='AppHostSectionElementRemove' On='uninstall' Action='delete'
+                        File='[InetsrvDir]config\applicationHost.config' Node='element'
+                        ElementPath="/configuration/configSections/sectionGroup[\[]@name='system.applicationHost'[\]]" Sequence='104'
+                        VerifyPath="/configuration/configSections/sectionGroup[\[]@name='system.applicationHost'[\]]/section[\[]@name='datadogRumServer'[\]]" />
+
+		  <!-- Remove the actual datadogRumServer configuration element -->
+		  <util:XmlConfig Id='DatadogRumServerElementRemove' On='uninstall' Action='delete'
+						  File='[InetsrvDir]config\applicationHost.config' Node='element'
+						  ElementPath="/configuration/system.applicationHost" Sequence='105'
+						  VerifyPath="/configuration/system.applicationHost/datadogRumServer" />
       </Component>
 		</Fragment>
 </Wix>
