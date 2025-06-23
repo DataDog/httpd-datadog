@@ -144,6 +144,13 @@ TEST(HttpModuleTest, ShouldAttemptInjection_ReturnsTrueForValidStatusCode) {
                           Return(contentTypeHeaderValue.data())));
 
       EXPECT_CALL(httpResponse,
+                  GetHeader(Matcher<PCSTR>(StrEq("Content-Encoding")), _))
+          .WillOnce(DoAll(Invoke([](_In_ PCSTR, _Out_ USHORT *headerValueLen) {
+                            *headerValueLen = 0;
+                          }),
+                          Return("")));
+
+      EXPECT_CALL(httpResponse,
                   GetHeader(Matcher<PCSTR>(StrEq("x-datadog-rum-injected")), _))
           .WillRepeatedly(
               DoAll(Invoke([](_In_ PCSTR, _Out_ USHORT *headerValueLen) {
@@ -190,6 +197,13 @@ TEST(HttpModuleTest,
                             (USHORT)strlen(contentTypeHeaderValue);
                       }),
                       Return(contentTypeHeaderValue)));
+
+  EXPECT_CALL(httpResponse,
+              GetHeader(Matcher<PCSTR>(StrEq("Content-Encoding")), _))
+      .WillOnce(DoAll(Invoke([](_In_ PCSTR, _Out_ USHORT *headerValueLen) {
+                        *headerValueLen = 0;
+                      }),
+                      Return("")));
 
   EXPECT_CALL(httpResponse, GetStatus(_, _, _, _, _, _, _, _, _))
       .WillOnce(DoAll(
@@ -243,6 +257,13 @@ TEST(HttpModuleTest, ShouldAttemptInjection_ReturnsTrueForValidHeaders) {
                       }),
                       Return(contentTypeHeaderValue)));
 
+  EXPECT_CALL(httpResponse,
+              GetHeader(Matcher<PCSTR>(StrEq("Content-Encoding")), _))
+      .WillOnce(DoAll(Invoke([](_In_ PCSTR, _Out_ USHORT *headerValueLen) {
+                        *headerValueLen = 0;
+                      }),
+                      Return("")));
+
   EXPECT_CALL(httpResponse, GetHeader(Matcher<PCSTR>(StrEq(customHeader)), _))
       .WillOnce(DoAll(
           Invoke([customHeaderValue](_In_ PCSTR, _Out_ USHORT *headerValueLen) {
@@ -251,5 +272,47 @@ TEST(HttpModuleTest, ShouldAttemptInjection_ReturnsTrueForValidHeaders) {
           Return(customHeaderValue)));
 
   EXPECT_TRUE(
+      module.ShouldAttemptInjection(httpResponse, moduleContext));
+}
+
+TEST(HttpModuleTest, ShouldAttemptInjection_ReturnsFalseForCompressedContent) {
+  HttpModule module;
+  SilentLogger logger;
+  MockHttpResponse httpResponse;
+  ModuleContext moduleContext;
+  moduleContext.logger = &logger;
+
+  const char *contentTypeHeader = "Content-Type";
+  const char *contentTypeHeaderValue = "text/html";
+  const char *contentEncodingValue = "gzip";
+  USHORT code = 200;
+
+  EXPECT_CALL(httpResponse,
+              GetHeader(Matcher<PCSTR>(StrEq(contentTypeHeader)), _))
+      .WillOnce(DoAll(Invoke([contentTypeHeaderValue](
+                                 _In_ PCSTR, _Out_ USHORT *headerValueLen) {
+                        *headerValueLen =
+                            (USHORT)strlen(contentTypeHeaderValue);
+                      }),
+                      Return(contentTypeHeaderValue)));
+
+  EXPECT_CALL(httpResponse, GetStatus(_, _, _, _, _, _, _, _, _))
+      .WillOnce(DoAll(
+          Invoke([code](_Out_ USHORT *pStatusCode, _Out_ USHORT *,
+                        _Outptr_opt_result_bytebuffer_(*pcchReason) PCSTR *,
+                        _Out_ USHORT *, _Out_ HRESULT *, _Outptr_opt_ PCWSTR *,
+                        _Out_ DWORD *, _Outptr_opt_ IAppHostConfigException **,
+                        _Out_ BOOL *) { *pStatusCode = code; }),
+          Return()));
+
+  EXPECT_CALL(httpResponse,
+              GetHeader(Matcher<PCSTR>(StrEq("Content-Encoding")), _))
+      .WillOnce(DoAll(Invoke([contentEncodingValue](
+                                 _In_ PCSTR, _Out_ USHORT *headerValueLen) {
+                        *headerValueLen = (USHORT)strlen(contentEncodingValue);
+                      }),
+                      Return(contentEncodingValue)));
+
+  EXPECT_FALSE(
       module.ShouldAttemptInjection(httpResponse, moduleContext));
 }

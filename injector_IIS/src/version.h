@@ -15,11 +15,11 @@
 #endif
 
 #ifndef MIN_VER
-#define MIN_VER 1
+#define MIN_VER 2
 #endif
 
 #ifndef PATCH_VER
-#define PATCH_VER 3
+#define PATCH_VER 0
 #endif
 
 #define RC_FILE_VERSION MAJ_VER, MIN_VER, PATCH_VER, 0
