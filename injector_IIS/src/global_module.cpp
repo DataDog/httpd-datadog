@@ -53,6 +53,26 @@ make_snippet(const int version,
       auto b = (value == "true" ? true : false);
       rum.AddMember(rapidjson::Value(key.c_str(), allocator).Move(),
                     rapidjson::Value(b).Move(), allocator);
+    } else if (key == "allowedTracingUrls") {
+      rapidjson::Value urlArray(rapidjson::kArrayType);
+      std::stringstream ss(value);
+      std::string url;
+
+      while (std::getline(ss, url, ',')) {
+        auto start = url.find_first_not_of(" \t");
+        if (start != std::string::npos) {
+          auto end = url.find_last_not_of(" \t");
+          url = url.substr(start, end - start + 1);
+
+          urlArray.PushBack(rapidjson::Value(url.c_str(), allocator).Move(),
+                            allocator);
+        }
+      }
+
+      if (!urlArray.Empty()) {
+        rum.AddMember(rapidjson::Value(key.c_str(), allocator).Move(),
+                      urlArray.Move(), allocator);
+      }
     } else {
       rum.AddMember(rapidjson::Value(key.c_str(), allocator).Move(),
                     rapidjson::Value(value.c_str(), allocator).Move(),

@@ -81,39 +81,50 @@ type injectionTest struct {
   url string
   injectionService string
   title string
+  allowedTracingUrls []string
 }
 var expected_results = []injectionTest {
   {
     url: "http://localhost:8080",
     injectionService: `"service":"my-web-application"`,
     title: "simple injection test, default_site",
+    allowedTracingUrls: []string{
+      "https://first.myapp.com",
+      "https://second.myapp.com",
+    },
   },
   {
     url: "http://localhost:8081",
     injectionService: `"service":"my-web-application"`,
     title: "large file injection test, large_site",
+    allowedTracingUrls: nil,
   },
   {
     url: "http://localhost:8082",
     injectionService: "",  // no injection set up on this site
     title: "no injection test, sitewithapps",
+    allowedTracingUrls: nil,
   },
   {
     url: "http://localhost:8082/site1/app1",
     injectionService: `"service":"app1"`,
     title: "simple app injection test, sitewithapps/app1",
+    allowedTracingUrls: nil,
   },
   {
     url: "http://localhost:8082/site1/app2",
     injectionService: `"service":"app2"`,
     title: "simple app injection test, sitewithapps/app2",
+    allowedTracingUrls: nil,
   },
   {
     url: "http://localhost:8082/site1/app2/nested",
     injectionService: `"service":"nested"`,
     title: "deep app injection test, sitewithapps/app2/nested", 
+    allowedTracingUrls: nil,
   },
 }
+
 func TestRUMInstallSuite(t *testing.T) {
   suiteParams := []e2e.SuiteOption{e2e.WithProvisioner(awsHostWindows.ProvisionerNoAgentNoFakeIntake())}
 
@@ -313,6 +324,17 @@ func (v *rumvmSuite) testSuccessfulInjection(tests []injectionTest) {
       if test.injectionService != "" {
         v.Assert().Contains(responseHeaders, "x-datadog-rum-injected")
         v.Assert().Contains(response, test.injectionService)
+
+        if test.allowedTracingUrls != nil && len(test.allowedTracingUrls) > 0 {
+          quotedUrls := make([]string, len(test.allowedTracingUrls))
+          for i, url := range test.allowedTracingUrls {
+            quotedUrls[i] = fmt.Sprintf(`"%s"`, url)
+          }
+          expectedAllowedTracingUrls := fmt.Sprintf(`"allowedTracingUrls":[%s]`, strings.Join(quotedUrls, ","))
+
+          v.Assert().Contains(response, expectedAllowedTracingUrls)
+          v.T().Logf("Verified allowedTracingUrls in injection: %s", expectedAllowedTracingUrls)
+        }
       } else {
         v.Assert().NotContains(responseHeaders, "x-datadog-rum-injected")
         v.Assert().NotContains(response, `"service":`)
