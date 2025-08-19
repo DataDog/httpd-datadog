@@ -82,6 +82,56 @@ bool should_inject(rum_filter_ctx& ctx, request_rec& r,
   return true;
 }
 
+static void handle_eos_bucket(request_rec* r, ap_filter_t* f,
+                              apr_bucket_brigade* bb, rum_filter_ctx* ctx,
+                              Directory* dir_conf) {
+  InjectorResult result = injector_end(ctx->injector);
+  if (result.injected) {
+    apr_bucket_brigade* new_bb =
+        apr_brigade_create(r->pool, f->r->connection->bucket_alloc);
+    size_t total_length = 0;
+    for (size_t i = 0; i < result.slices_length; i++) {
+      total_length += result.slices[i].length;
+    }
+
+    char* combined_buffer = (char*)apr_palloc(r->pool, total_length);
+    size_t offset = 0;
+    for (size_t i = 0; i < result.slices_length; i++) {
+      const BytesSlice* slice = result.slices + i;
+      memcpy(combined_buffer + offset, slice->start, slice->length);
+      offset += slice->length;
+    }
+
+    apr_bucket* content_bucket = apr_bucket_immortal_create(
+        combined_buffer, total_length, f->r->connection->bucket_alloc);
+    APR_BRIGADE_INSERT_TAIL(new_bb, content_bucket);
+
+    apr_bucket* eos_bucket =
+        apr_bucket_eos_create(f->r->connection->bucket_alloc);
+    APR_BRIGADE_INSERT_TAIL(new_bb, eos_bucket);
+
+    apr_brigade_cleanup(bb);
+    APR_BRIGADE_CONCAT(bb, new_bb);
+
+    apr_table_set(r->headers_out, k_injected_header.data(), "1");
+
+    ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r,
+                  "[RUM] successfully injected the browser SDK at EOS.");
+    datadog::telemetry::counter::increment(
+        telemetry::injection_succeed,
+        telemetry::build_tags(dir_conf->rum.app_id_tag,
+                              dir_conf->rum.remote_config_tag));
+  } else {
+    ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r,
+                  "[RUM] failed to inject the browser SDK.");
+    datadog::telemetry::counter::increment(
+        telemetry::injection_failed,
+        telemetry::build_tags("reason:missing_header_tag",
+                              dir_conf->rum.app_id_tag,
+                              dir_conf->rum.remote_config_tag));
+  }
+}
+
 /* TODO:
  *   - use AddOutputFilterByType. In theory the scanner can be run on
  *     everything.
@@ -124,12 +174,8 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
   for (apr_bucket* b = APR_BRIGADE_FIRST(bb); b != APR_BRIGADE_SENTINEL(bb);
        b = APR_BUCKET_NEXT(b)) {
     if (APR_BUCKET_IS_EOS(b)) {
-      injector_end(ctx->injector);
-      datadog::telemetry::counter::increment(
-          telemetry::injection_failed,
-          telemetry::build_tags("reason:missing_header_tag",
-                                dir_conf->rum.app_id_tag,
-                                dir_conf->rum.remote_config_tag));
+      handle_eos_bucket(r, f, bb, ctx, dir_conf);
+      break;
     } else if (APR_BUCKET_IS_METADATA(b)) {
       // TODO: Handle metadata bucket like flush
     } else if (apr_bucket_read(b, &buffer, &bytes, APR_BLOCK_READ) ==
@@ -168,7 +214,5 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
     }
   }
 
-  ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r,
-                "[RUM] failed to inject the browser SDK.");
   return ap_pass_brigade(f->next, bb);
 }
