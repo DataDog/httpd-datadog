@@ -5,7 +5,7 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     container:
-      image: datadog/docker-library:httpd-datadog-ci-2.4-e5dd7ac
+      image: datadog/docker-library:httpd-datadog-ci-2.4-cdb3cb2
     steps:
       - uses: actions/checkout@v4
         with:
