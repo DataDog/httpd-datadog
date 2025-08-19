@@ -1,9 +1,8 @@
 module github.com/DataDog/inject-browser-sdk/installer/configurator
 
-go 1.23.0
+go 1.24.5
 
 require (
-	github.com/google/go-github v17.0.0+incompatible
 	github.com/google/uuid v1.6.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.9.0
@@ -13,7 +12,6 @@ require (
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/google/go-cmp v0.5.2 // indirect
-	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
