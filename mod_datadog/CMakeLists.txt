@@ -1,6 +1,6 @@
 include(${CMAKE_SOURCE_DIR}/cmake/generate_build_id.cmake)
 
-set(HTTPD_DATADOG_VERSION "1.0.3-rum+cdb3cb2")
+set(HTTPD_DATADOG_VERSION "1.0.3-rum+bbb5e35")
 
 message(STATUS "httpd-datadog version=[${HTTPD_DATADOG_VERSION}]")
 
