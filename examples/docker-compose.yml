@@ -1,0 +1,60 @@
+version: "3.7"
+
+services:
+  httpjs:
+    build:
+      context: ./httpjs
+      dockerfile: Dockerfile
+    container_name: sample-httpjs
+    labels:
+      com.datadoghq.ad.logs: '[{"source": "httpjs", "service": "sample-httpjs"}]'
+    ports:
+      - 8080:8080
+    environment:
+      - DD_ENV=dev
+      - DD_HOSTNAME=local
+      - DD_AGENT_HOST=datadog
+      - DD_TRACE_AGENT_PORT=8126
+
+  apache:
+    build:
+      context: ./apache
+      dockerfile: Dockerfile
+    platform: linux/amd64
+    container_name: sample-apache
+    depends_on:
+      - httpjs
+    image: sample-apache
+    labels:
+      com.datadoghq.tags.env: 'dev'
+      com.datadoghq.tags.service: 'sample-apache'
+      com.datadoghq.tags.version: '0.1.0'
+      com.datadoghq.ad.check_names: '["apache"]'
+      com.datadoghq.ad.init_configs: '[{}]'
+      com.datadoghq.ad.instances: '[{"apache_status_url": "http://%%host%%:81/server-status?auto"}]'
+      com.datadoghq.ad.logs: '[{"source": "apache", "service": "sample-apache"}]'
+    ports:
+      - "8888:8888"
+      - "81:81"
+    environment:
+      DD_AGENT_HOST: datadog
+      DD_TRACE_AGENT_PORT: 8126
+
+  datadog:
+    image: datadog/agent:7
+    container_name: sample-ddagent
+    environment:
+      - DD_API_KEY
+      - DD_SITE=datadoghq.com
+      - DD_ENV=dev
+      - DD_HOSTNAME=local
+      - DD_LOGS_ENABLED=true
+      - DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL=true
+      - DD_APM_NON_LOCAL_TRAFFIC=true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /proc/:/host/proc/:ro
+      - /sys/fs/cgroup/:/host/sys/fs/cgroup:ro
+    ports:
+      - "8126:8126/tcp"
