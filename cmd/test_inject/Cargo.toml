@@ -1,0 +1,11 @@
+[package]
+name = "test_inject"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+inject-browser-sdk = { path = "../../lib/inject-browser-sdk" }
+
+[lints]
+workspace = true

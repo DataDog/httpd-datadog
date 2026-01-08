@@ -491,6 +491,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "test_inject"
+version = "0.1.0"
+dependencies = [
+ "inject-browser-sdk",
+]
+
+[[package]]
 name = "textwrap"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
