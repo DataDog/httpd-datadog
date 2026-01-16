@@ -1,5 +1,10 @@
 name: Development
-on: [push, workflow_dispatch]
+on:
+  push:
+  workflow_dispatch:
+  schedule:
+    # Run every other month to avoid 90-day GitHub artifact expiration
+    - cron: '0 0 1 */2 *'
 
 jobs:
   format:
