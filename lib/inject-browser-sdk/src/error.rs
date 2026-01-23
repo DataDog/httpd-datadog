@@ -4,6 +4,9 @@
 //
 // Copyright 2024-Present Datadog, Inc.
 
+use alloc::string::String;
+use core::fmt;
+
 #[derive(Debug, PartialEq)]
 pub enum Error {
     Json(String),
@@ -25,8 +28,8 @@ impl Error {
     }
 }
 
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Error::Json(cause) => write!(f, "JSON error: {cause}"),
             Error::UnsupportedMajorVersion(version) => {

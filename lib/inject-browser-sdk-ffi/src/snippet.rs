@@ -5,8 +5,9 @@
 //
 // Copyright 2024-Present Datadog, Inc.
 
-use std::{
-    ffi::{c_char, CStr, CString},
+use alloc::{boxed::Box, ffi::CString, format, string::ToString, vec::Vec};
+use core::{
+    ffi::{c_char, CStr},
     ptr::null,
 };
 
@@ -157,7 +158,7 @@ pub unsafe extern "C" fn snippet_create_from_json(json: *const c_char) -> *mut S
     let json_bytes = CStr::from_ptr(json).to_bytes();
 
     let result = serde_json::from_slice::<Configuration>(json_bytes)
-        .map_err(|err| Error::Json(err.to_string()))
+        .map_err(|err| Error::Json(format!("{}", err)))
         .and_then(|configuration| generate_snippet(&configuration));
 
     SnippetInternal::new(result).into_public_ptr()
@@ -177,7 +178,7 @@ pub unsafe extern "C" fn snippet_cleanup(snippet: *mut Snippet) {
 mod tests {
     use super::*;
     use pretty_assertions::{assert_eq, assert_ne};
-    use std::ptr::null_mut;
+    use std::{borrow::ToOwned, ptr::null_mut, string::String};
 
     #[test]
     fn snippet_creation() {

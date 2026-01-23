@@ -4,7 +4,9 @@
 //
 // Copyright 2024-Present Datadog, Inc.
 
-use std::mem;
+use alloc::vec;
+use alloc::vec::Vec;
+use core::mem;
 
 use crate::injection_point_locator::{InjectionPointLocator, Location};
 
@@ -121,7 +123,7 @@ impl<'snippet> Injector<'snippet> {
         let mut non_empty_slices = slices.iter().filter(|slice| !slice.is_empty());
 
         Result {
-            slices: std::array::from_fn(|_| match non_empty_slices.next() {
+            slices: core::array::from_fn(|_| match non_empty_slices.next() {
                 Some(slice) => {
                     length += 1;
                     BytesSlice {
@@ -166,6 +168,7 @@ mod tests {
     use rand::{distributions::Uniform, prelude::Distribution, seq::SliceRandom, Rng};
 
     use super::*;
+    use alloc::string::String;
 
     #[test]
     fn injector_basic() {
@@ -306,7 +309,7 @@ mod tests {
         }
     }
 
-    fn test_injector<T: AsRef<[u8]> + std::fmt::Debug>(
+    fn test_injector<T: AsRef<[u8]> + core::fmt::Debug>(
         input_chunks: impl IntoIterator<Item = T>,
         expected: &str,
     ) {

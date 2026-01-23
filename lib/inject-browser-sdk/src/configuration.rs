@@ -5,9 +5,11 @@
 // Copyright 2024-Present Datadog, Inc.
 
 use crate::error::Error;
+use alloc::boxed::Box;
+use alloc::collections::BTreeMap as Map;
+use alloc::string::{String, ToString};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::BTreeMap as Map;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -128,6 +130,7 @@ pub fn validate_configuration(conf: &Configuration) -> Result<(), Error> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use alloc::vec;
     use pretty_assertions::assert_eq;
 
     #[test]

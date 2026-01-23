@@ -5,7 +5,8 @@
 //
 // Copyright 2024-Present Datadog, Inc.
 
-use std::{ptr::null, slice};
+use alloc::boxed::Box;
+use core::{ptr::null, slice};
 
 use crate::{Snippet, SnippetInternal};
 use inject_browser_sdk::injector;
@@ -48,7 +49,7 @@ pub unsafe extern "C" fn injector_create(snippet: *const Snippet) -> *mut Inject
 
     return Box::into_raw(Box::new(Injector {
         inner: injector::Injector::new(snippet_content),
-        slices_memory_storage: std::array::from_fn(|_| BytesSlice::empty()),
+        slices_memory_storage: core::array::from_fn(|_| BytesSlice::empty()),
     }));
 }
 
@@ -162,7 +163,7 @@ pub struct InjectorResult {
 
 impl InjectorResult {
     fn new(result: injector::Result<'static>, slices_memory_storage: &mut [BytesSlice; 4]) -> Self {
-        *slices_memory_storage = std::array::from_fn(|index| result.slices[index].into());
+        *slices_memory_storage = core::array::from_fn(|index| result.slices[index].into());
         Self {
             slices_length: result.length as u32,
             slices: slices_memory_storage as *const _,

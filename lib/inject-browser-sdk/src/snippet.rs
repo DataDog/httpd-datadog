@@ -4,8 +4,9 @@
 //
 // Copyright 2024-Present Datadog, Inc.
 
-use serde::Serialize;
-use std::io::{self, Write};
+use alloc::format;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 
 use crate::{configuration::validate_configuration, configuration::Configuration, error::Error};
 
@@ -21,39 +22,44 @@ pub fn generate_snippet(configuration: &Configuration) -> Result<Vec<u8>, Error>
 
     let mut output = Vec::new();
 
-    output
-        .write_all(
-            br#"
+    output.extend_from_slice(
+        br#"
 <script>
 (function(h,o,u,n,d) {
   h=h[d]=h[d]||{q:[],onReady:function(c){h.q.push(c)}}
   d=o.createElement(u);d.async=1;d.src=n
   n=o.getElementsByTagName(u)[0];n.parentNode.insertBefore(d,n)
 })(window,document,'script','"#,
-        )
-        .unwrap();
+    );
 
-    output.write_all(url.as_bytes()).unwrap();
+    output.extend_from_slice(url.as_bytes());
 
-    output
-        .write_all(
-            br#"','DD_RUM')
+    output.extend_from_slice(
+        br#"','DD_RUM')
 window.DD_RUM.onReady(function() {
   window.DD_RUM.init("#,
-        )
-        .unwrap();
+    );
 
-    let mut serializer = serde_json::Serializer::with_formatter(&mut output, EscapeNonAscii);
-    configuration.rum.serialize(&mut serializer).unwrap();
+    let json_string =
+        serde_json::to_string(&configuration.rum).map_err(|e| Error::Json(e.to_string()))?;
+    for ch in json_string.chars() {
+        if ch.is_ascii() {
+            let mut buf = [0; 4];
+            output.extend_from_slice(ch.encode_utf8(&mut buf).as_bytes());
+        } else {
+            let mut buf = [0; 2];
+            for escape in ch.encode_utf16(&mut buf) {
+                output.extend_from_slice(format!("\\u{:04x}", escape).as_bytes());
+            }
+        }
+    }
 
-    output
-        .write_all(
-            br#");
+    output.extend_from_slice(
+        br#");
 });
 </script>
 "#,
-        )
-        .unwrap();
+    );
 
     Ok(output)
 }
@@ -79,36 +85,14 @@ fn format_cdn_url(major_version: u32, site: &str) -> Result<String, Error> {
     ))
 }
 
-/// JSON Formatter that escapes all non-ASCII characters.
-/// Based on `<https://github.com/serde-rs/json/issues/907#issuecomment-1179882369>`
-struct EscapeNonAscii;
-
-impl serde_json::ser::Formatter for EscapeNonAscii {
-    fn write_string_fragment<W: ?Sized + Write>(
-        &mut self,
-        writer: &mut W,
-        fragment: &str,
-    ) -> io::Result<()> {
-        for ch in fragment.chars() {
-            if ch.is_ascii() {
-                writer.write_all(ch.encode_utf8(&mut [0; 4]).as_bytes())?;
-            } else {
-                for escape in ch.encode_utf16(&mut [0; 2]) {
-                    write!(writer, "\\u{:04x}", escape)?;
-                }
-            }
-        }
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{configuration::PrivacyLevel, configuration::RumConfiguration};
+    use alloc::boxed::Box;
+    use alloc::collections::BTreeMap;
     use pretty_assertions::assert_eq;
     use serde_json::json;
-    use std::collections::BTreeMap;
 
     #[test]
     fn test_generate_snippet_with_minimal_configuration() {
@@ -126,7 +110,7 @@ window.DD_RUM.onReady(function() {
 "#;
 
         assert_eq!(
-            std::str::from_utf8(
+            core::str::from_utf8(
                 &generate_snippet(&Configuration {
                     major_version: 5,
                     rum: RumConfiguration {
@@ -158,7 +142,7 @@ window.DD_RUM.onReady(function() {
 "#;
 
         assert_eq!(
-            std::str::from_utf8(
+            core::str::from_utf8(
                 &generate_snippet(&Configuration {
                     major_version: 5,
                     rum: RumConfiguration {
@@ -196,7 +180,7 @@ window.DD_RUM.onReady(function() {
 "#;
 
         assert_eq!(
-            std::str::from_utf8(
+            core::str::from_utf8(
                 &generate_snippet(&Configuration {
                     major_version: 5,
                     rum: RumConfiguration {
@@ -229,7 +213,7 @@ window.DD_RUM.onReady(function() {
 "#;
 
         assert_eq!(
-            std::str::from_utf8(
+            core::str::from_utf8(
                 &generate_snippet(&Configuration {
                     major_version: 5,
                     rum: RumConfiguration {

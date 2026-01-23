@@ -77,8 +77,44 @@
 //!
 //!
 
-#![warn(missing_docs)]
 #![allow(deprecated)] // allow internal usage of deprecated things
+#![cfg_attr(not(feature = "std"), no_std)]
+
+extern crate alloc;
+
+#[cfg(not(feature = "std"))]
+mod no_std_support {
+    #[cfg(target_os = "linux")]
+    #[global_allocator]
+    static ALLOC: rustix_dlmalloc::GlobalDlmalloc = rustix_dlmalloc::GlobalDlmalloc;
+
+    #[cfg(not(target_os = "linux"))]
+    #[global_allocator]
+    static ALLOC: dlmalloc::GlobalDlmalloc = dlmalloc::GlobalDlmalloc;
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[panic_handler]
+    fn panic(info: &core::panic::PanicInfo) -> ! {
+        unsafe {
+            let _ = rustix::io::write(
+                rustix::stdio::stderr(),
+                alloc::format!("Panic: {}\n", info).as_bytes(),
+            );
+        }
+        loop {}
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[panic_handler]
+    fn panic(_info: &core::panic::PanicInfo) -> ! {
+        loop {}
+    }
+
+    #[cfg(not(test))]
+    #[no_mangle]
+    pub extern "C" fn rust_eh_personality() {}
+}
+
 mod injector;
 mod snippet;
 
