@@ -26,16 +26,18 @@ from helper import (
 )
 
 
-@pytest.fixture(scope="module")
-def check_rum_support(server):
+@pytest.fixture
+def check_rum_support(server, module_path):
     """
     Check if RUM directives are supported in the loaded module.
 
     RUM support requires mod_datadog to be compiled with -DHTTPD_DATADOG_ENABLE_RUM=ON.
     This fixture checks if the DatadogRum directive is recognized.
     """
-    # Test if DatadogRum directive is recognized
-    if not server.check_directive("DatadogRum On"):
+    # Test if DatadogRum directive is recognized by loading the module first
+    cmd = f'-C "LoadModule datadog_module {module_path}" -C "DatadogRum On" -t'
+    rc = server._proc.run(cmd).returncode
+    if rc != 0:
         pytest.skip("RUM support not available (module not compiled with -DHTTPD_DATADOG_ENABLE_RUM=ON)")
     return True
 

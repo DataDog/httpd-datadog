@@ -26,7 +26,8 @@ AP_INIT_TAKE_ARGV("DatadogRumOption", reinterpret_cast<cmd_func>(set_rum_option)
 namespace datadog::rum::conf {
 
 struct Directory final {
-  bool enabled = false;
+  // -1 = not set (inherit from parent), 0 = explicitly disabled, 1 = explicitly enabled
+  int enabled = -1;
   Snippet* snippet = nullptr;
   std::string version;
   std::unordered_map<std::string, std::string> config;
