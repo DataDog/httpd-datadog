@@ -4,41 +4,36 @@ Integration tests for Apache httpd Datadog module using pytest.
 
 ## Quick Start
 
-**Via CMake (recommended, auto-detects module path):**
 ```bash
 # Install dependencies
 curl -LsSf https://astral.sh/uv/install.sh | sh
 cd test/integration-test && uv sync
 
-# Build and run tests
-cmake -B build -DHTTPD_DATADOG_ENABLE_RUM=ON .
-cmake --build build
+# Set Apache path and run tests
 export HTTPD_BIN_PATH=/path/to/apachectl
-ctest --test-dir build -V
-```
-
-**Direct pytest (manual paths):**
-```bash
-export HTTPD_BIN_PATH=/path/to/apachectl
-export HTTPD_MODULE_PATH=/path/to/mod_datadog.so
-cd test/integration-test && uv run pytest
+uv run pytest
 
 # Run specific tests
-uv run pytest scenarios/test_rum.py -v
+uv run pytest scenarios/test_rum.py -v  # Auto-builds with RUM
 uv run pytest -m smoke
 ```
+
+**Auto-Build Behavior:**
+- RUM tests (`@pytest.mark.requires_rum`) trigger automatic CMake build with `-DHTTPD_DATADOG_ENABLE_RUM=ON`
+- Module path is auto-set to `build/mod_datadog/mod_datadog.so`
+- Build failures cause tests to fail (not skip)
 
 ## Environment Variables
 
 - `HTTPD_BIN_PATH` - Path to apachectl binary (required)
-- `HTTPD_MODULE_PATH` - Path to mod_datadog.so (auto-set by CMake/CTest)
+- `HTTPD_MODULE_PATH` - Path to mod_datadog.so (auto-built for RUM tests)
 - `TEST_LOG_DIR` - Directory for test logs (optional)
 
 ## Test Markers
 
 - `@pytest.mark.smoke` - Basic functionality tests
 - `@pytest.mark.ci` - CI-suitable tests
-- `@pytest.mark.requires_rum` - RUM tests (auto-skip if RUM not compiled)
+- `@pytest.mark.requires_rum` - RUM tests (auto-build module with RUM)
 
 ## RUM Tests
 
@@ -61,7 +56,7 @@ DatadogRum On
 **Implementation:**
 - Uses tri-state: -1 (not set), 0 (off), 1 (on)
 - Child `<Location>` overrides parent
-- Auto-skip when module lacks `-DHTTPD_DATADOG_ENABLE_RUM=ON`
+- Auto-builds module with `-DHTTPD_DATADOG_ENABLE_RUM=ON` when RUM tests detected
 
 ## Docker Testing
 
@@ -79,9 +74,10 @@ docker run --rm -v "$PWD:/workspace" -w /workspace \
 
 ## Troubleshooting
 
-**RUM tests skipped:** Module not built with `-DHTTPD_DATADOG_ENABLE_RUM=ON`
+**RUM build fails:** Check CMake output for missing dependencies
 ```bash
-strings dist/lib/mod_datadog.so | grep -i "inject.*browser"
+# Verify inject-browser-sdk submodule
+git submodule update --init --recursive
 ```
 
 **Tests hang:** Port 8136 in use
