@@ -26,23 +26,8 @@ from helper import (
 )
 
 
-@pytest.fixture
-def check_rum_support(server, module_path):
-    """
-    Check if RUM directives are supported in the loaded module.
-
-    RUM support requires mod_datadog to be compiled with -DHTTPD_DATADOG_ENABLE_RUM=ON.
-    This fixture checks if the DatadogRum directive is recognized.
-    """
-    # Test if DatadogRum directive is recognized by loading the module first
-    cmd = f'-C "LoadModule datadog_module {module_path}" -C "DatadogRum On" -t'
-    rc = server._proc.run(cmd).returncode
-    if rc != 0:
-        pytest.skip("RUM support not available (module not compiled with -DHTTPD_DATADOG_ENABLE_RUM=ON)")
-    return True
-
-
-def test_rum_selective_disabling(server, agent, log_dir, module_path, check_rum_support):
+@pytest.mark.requires_rum
+def test_rum_selective_disabling(server, agent, log_dir, module_path):
     """
     Verify RUM can be selectively disabled for specific subpaths.
 
@@ -95,7 +80,8 @@ def test_rum_selective_disabling(server, agent, log_dir, module_path, check_rum_
     assert len(traces) >= 5
 
 
-def test_rum_nested_location_override(server, agent, log_dir, module_path, check_rum_support):
+@pytest.mark.requires_rum
+def test_rum_nested_location_override(server, agent, log_dir, module_path):
     """
     Verify RUM configuration can be overridden in nested locations.
 
@@ -172,7 +158,8 @@ DatadogRum On
     assert server.stop(conf_path)
 
 
-def test_rum_configuration_validation(server, module_path, check_rum_support):
+@pytest.mark.requires_rum
+def test_rum_configuration_validation(server, log_dir, module_path):
     """
     Verify RUM configuration directives are validated correctly.
 

@@ -25,6 +25,7 @@ testpaths = ["scenarios"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+plugins = ["pytest_plugins.integration_helpers"]
 addopts = [
     "-v",
     "--strict-markers",
