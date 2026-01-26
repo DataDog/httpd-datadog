@@ -190,14 +190,13 @@ def pytest_addoption(parser, pluginmanager) -> None:
     parser.addoption(
         "--bin-path",
         help="binary under test. Example: apachectl",
-        required=True,
+        required=False,
         type=extant_file,
     )
     parser.addoption(
         "--module-path",
-        help="mod_datadog.so under test",
-        required=True,
-        type=extant_file,
+        help="mod_datadog.so under test (auto-built for RUM tests)",
+        required=False,
     )
     parser.addoption(
         "--log-dir",
