@@ -16,37 +16,49 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 DOCKER_IMAGE="datadog/docker-library:httpd-datadog-ci-2.4-cdb3cb2"
 
+# Check if RUM tests are being run
+ENABLE_RUM="OFF"
+for arg in "$@"; do
+    if [[ "$arg" == *"test_rum"* ]] || [[ "$arg" == *"rum"* ]]; then
+        ENABLE_RUM="ON"
+        echo -e "${YELLOW}RUM tests detected - enabling RUM support in build${NC}"
+        break
+    fi
+done
+
 echo -e "${GREEN}Building mod_datadog.so in Docker...${NC}"
 
 # Build the module in Docker
 docker run --rm \
     -v "$PROJECT_ROOT:/workspace" \
     -w /workspace \
+    -e "ENABLE_RUM=$ENABLE_RUM" \
     "$DOCKER_IMAGE" \
-    sh -c "
+    sh -c '
         set -e
         git config --global --add safe.directory /workspace
         git submodule update --init --recursive
 
         # Detect architecture and set toolchain
-        ARCH=\$(uname -m)
-        if [ \"\$ARCH\" = \"aarch64\" ]; then
-            TOOLCHAIN=\"/sysroot/aarch64-none-linux-musl/Toolchain.cmake\"
+        ARCH=$(uname -m)
+        if [ "$ARCH" = "aarch64" ]; then
+            TOOLCHAIN="/sysroot/aarch64-none-linux-musl/Toolchain.cmake"
         else
-            TOOLCHAIN=\"/sysroot/x86_64-none-linux-musl/Toolchain.cmake\"
+            TOOLCHAIN="/sysroot/x86_64-none-linux-musl/Toolchain.cmake"
         fi
 
         cmake -B build \
             -G Ninja \
-            -DCMAKE_TOOLCHAIN_FILE=\"\$TOOLCHAIN\" \
+            -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
             -DHTTPD_SRC_DIR=/httpd \
             -DCMAKE_BUILD_TYPE=Debug \
             -DHTTPD_DATADOG_ENABLE_COVERAGE=1 \
             -DHTTPD_DATADOG_PATCH_AWAY_LIBC=1 \
+            -DHTTPD_DATADOG_ENABLE_RUM=$ENABLE_RUM \
             .
         cmake --build build -j
         cmake --install build --prefix dist
-    "
+    '
 
 if [ ! -f "$PROJECT_ROOT/dist/lib/mod_datadog.so" ]; then
     echo -e "${RED}Error: Module build failed${NC}"
