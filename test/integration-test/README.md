@@ -4,17 +4,24 @@ Integration tests for Apache httpd Datadog module using pytest.
 
 ## Quick Start
 
+**Via CMake (recommended, auto-detects module path):**
 ```bash
 # Install dependencies
 curl -LsSf https://astral.sh/uv/install.sh | sh
 cd test/integration-test && uv sync
 
-# Set paths
+# Build and run tests
+cmake -B build -DHTTPD_DATADOG_ENABLE_RUM=ON .
+cmake --build build
+export HTTPD_BIN_PATH=/path/to/apachectl
+ctest --test-dir build -V
+```
+
+**Direct pytest (manual paths):**
+```bash
 export HTTPD_BIN_PATH=/path/to/apachectl
 export HTTPD_MODULE_PATH=/path/to/mod_datadog.so
-
-# Run tests
-uv run pytest
+cd test/integration-test && uv run pytest
 
 # Run specific tests
 uv run pytest scenarios/test_rum.py -v
@@ -23,9 +30,9 @@ uv run pytest -m smoke
 
 ## Environment Variables
 
-- `HTTPD_BIN_PATH` - Path to apachectl binary
-- `HTTPD_MODULE_PATH` - Path to mod_datadog.so
-- `TEST_LOG_DIR` - (Optional) Directory for test logs
+- `HTTPD_BIN_PATH` - Path to apachectl binary (required)
+- `HTTPD_MODULE_PATH` - Path to mod_datadog.so (auto-set by CMake/CTest)
+- `TEST_LOG_DIR` - Directory for test logs (optional)
 
 ## Test Markers
 
