@@ -1,4 +1,4 @@
-.PHONY: help install test test-rum test-smoke test-ci clean
+.PHONY: help install test test-rum test-smoke test-ci test-verbose clean
 
 # Default target
 help:
@@ -8,11 +8,15 @@ help:
 	@echo "  test-rum      - Run RUM tests only"
 	@echo "  test-smoke    - Run smoke tests only"
 	@echo "  test-ci       - Run CI tests only"
+	@echo "  test-verbose  - Run tests with verbose output"
 	@echo "  clean         - Clean up test artifacts"
 	@echo ""
 	@echo "Required environment variables:"
 	@echo "  HTTPD_BIN_PATH      - Path to apachectl binary"
 	@echo "  HTTPD_MODULE_PATH   - Path to mod_datadog.so"
+	@echo ""
+	@echo "Optional environment variables:"
+	@echo "  TEST_LOG_DIR        - Directory for test logs (default: auto-generated)"
 	@echo ""
 	@echo "Example:"
 	@echo "  export HTTPD_BIN_PATH=/usr/local/bin/apachectl"
@@ -27,23 +31,23 @@ install:
 
 # Run all tests
 test:
-	@./run_tests.sh
+	uv run pytest
 
 # Run RUM tests only
 test-rum:
-	@./run_tests.sh scenarios/test_rum.py
+	uv run pytest scenarios/test_rum.py -v
 
 # Run smoke tests
 test-smoke:
-	@./run_tests.sh --markers smoke
+	uv run pytest -m smoke
 
 # Run CI tests
 test-ci:
-	@./run_tests.sh --markers ci
+	uv run pytest -m ci
 
 # Run with verbose output
 test-verbose:
-	@./run_tests.sh -vv -s
+	uv run pytest -vv -s
 
 # Clean up test artifacts
 clean:
@@ -52,6 +56,9 @@ clean:
 	rm -rf .pytest_cache/
 	rm -rf __pycache__/
 	rm -rf scenarios/__pycache__/
+	rm -rf pytest_plugins/__pycache__/
 	rm -rf log-*/
-	rm -f uv.lock
+	rm -rf test-logs/
+	rm -f .coverage
+	rm -f *.profraw
 	@echo "Done!"

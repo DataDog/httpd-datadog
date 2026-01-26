@@ -46,6 +46,27 @@ Or pass them as command-line arguments to pytest.
 
 ### 4. Run Tests
 
+**Using Make (convenient shortcuts):**
+
+```bash
+# Run all tests (using environment variables)
+make test
+
+# Run RUM tests only
+make test-rum
+
+# Run smoke tests
+make test-smoke
+
+# Run CI tests
+make test-ci
+
+# Run with verbose output
+make test-verbose
+```
+
+**Using pytest directly:**
+
 ```bash
 # Run all tests (using environment variables)
 uv run pytest
@@ -67,6 +88,7 @@ uv run pytest -vv -s
 
 ```
 integration-test/
+├── Makefile                 # Convenient test targets
 ├── conftest.py              # pytest configuration and fixtures
 ├── pytest_plugins/          # Custom pytest plugins
 │   └── integration_helpers.py  # RUM detection and environment vars
