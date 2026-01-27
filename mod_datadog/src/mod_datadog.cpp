@@ -310,11 +310,13 @@ void on_child_init(apr_pool_t* pool, server_rec* s) {
   init_tracer(module_conf->tracing);
 
   // Register cleanup hook to prevent crashes during shutdown
-  apr_pool_cleanup_register(pool, nullptr, on_child_exit, apr_pool_cleanup_null);
+  apr_pool_cleanup_register(pool, nullptr, on_child_exit,
+                            apr_pool_cleanup_null);
 }
 
 apr_status_t on_child_exit(void*) {
-  // Explicitly clean up global objects to prevent crashes during process shutdown
+  // Explicitly clean up global objects to prevent crashes during process
+  // shutdown
   g_tracer.reset();
   g_runtime_id.reset();
   return APR_SUCCESS;

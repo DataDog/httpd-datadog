@@ -78,7 +78,8 @@ std::string make_rum_json_config(
 
 const char* enable_rum_ddog(cmd_parms* /* cmd */, void* cfg, int value) {
   auto* dir_conf = static_cast<Directory*>(cfg);
-  // Store 0 for Off, 1 for On (value is already 0 or 1 from Apache FLAG directive)
+  // Store 0 for Off, 1 for On (value is already 0 or 1 from Apache FLAG
+  // directive)
   dir_conf->rum.enabled = value ? 1 : 0;
   return NULL;
 }
