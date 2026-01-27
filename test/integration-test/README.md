@@ -19,9 +19,13 @@ uv run pytest -m smoke
 ```
 
 **Auto-Build Behavior:**
-- RUM tests (`@pytest.mark.requires_rum`) trigger automatic CMake build with `-DHTTPD_DATADOG_ENABLE_RUM=ON`
-- Module path is auto-set to `build/mod_datadog/mod_datadog.so`
+- The test suite automatically builds two module variants on demand:
+  - **Without RUM**: `build/mod_datadog/mod_datadog.so` (for regular tests)
+  - **With RUM**: `build-rum/mod_datadog/mod_datadog.so` (for `@pytest.mark.requires_rum` tests)
+- Each variant is only built if tests requiring it are collected
+- Tests automatically use the correct variant based on markers
 - Build failures cause tests to fail (not skip)
+- Use `--module-path` to override and skip auto-build
 
 ## Environment Variables
 
