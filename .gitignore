@@ -43,3 +43,4 @@ venv/
 
 compile_commands.json
 build-rum/
+*.bak
