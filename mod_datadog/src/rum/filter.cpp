@@ -96,9 +96,8 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
   auto* dir_conf = static_cast<Directory*>(
       ap_get_module_config(r->per_dir_config, &datadog_module));
 
-  // enabled: -1 = not set, 0 = Off, 1 = On
-  // Only inject if explicitly enabled (1)
-  if (dir_conf->rum.enabled != 1 || dir_conf->rum.snippet == nullptr) {
+  // Only inject if explicitly enabled
+  if (dir_conf->rum.enabled != true || dir_conf->rum.snippet == nullptr) {
     return ap_pass_brigade(f->next, bb);
   }
 

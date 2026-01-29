@@ -78,9 +78,7 @@ std::string make_rum_json_config(
 
 const char* enable_rum_ddog(cmd_parms* /* cmd */, void* cfg, int value) {
   auto* dir_conf = static_cast<Directory*>(cfg);
-  // Store 0 for Off, 1 for On (value is already 0 or 1 from Apache FLAG
-  // directive)
-  dir_conf->rum.enabled = value ? 1 : 0;
+  dir_conf->rum.enabled = static_cast<bool>(value);
   return NULL;
 }
 
@@ -180,10 +178,9 @@ namespace datadog::rum::conf {
 
 void merge_directory_configuration(Directory& out, const Directory& parent,
                                    const Directory& child) {
-  // enabled: -1 = not set, 0 = Off, 1 = On
-  // If child explicitly set enabled (not -1), use child's value
-  // Otherwise, inherit from parent
-  out.enabled = (child.enabled != -1) ? child.enabled : parent.enabled;
+  // If child explicitly set enabled, use child's value; otherwise inherit from
+  // parent
+  out.enabled = child.enabled.has_value() ? child.enabled : parent.enabled;
   out.snippet = child.snippet ? child.snippet : parent.snippet;
   out.app_id_tag =
       child.app_id_tag.empty() ? parent.app_id_tag : child.app_id_tag;
