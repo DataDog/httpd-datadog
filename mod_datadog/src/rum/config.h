@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 #include <unordered_map>
 
@@ -26,7 +27,7 @@ AP_INIT_TAKE_ARGV("DatadogRumOption", reinterpret_cast<cmd_func>(set_rum_option)
 namespace datadog::rum::conf {
 
 struct Directory final {
-  bool enabled = false;
+  std::optional<bool> enabled;  // nullopt = inherit from parent
   Snippet* snippet = nullptr;
   std::string version;
   std::unordered_map<std::string, std::string> config;
