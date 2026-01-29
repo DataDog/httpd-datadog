@@ -50,3 +50,14 @@ endif (UNIX)
 add_subdirectory(deps)
 add_subdirectory(mod_datadog)
 add_subdirectory(test/unit-test)
+
+# Integration tests
+enable_testing()
+add_test(
+  NAME integration-tests
+  COMMAND uv run pytest
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/test/integration-test
+)
+set_tests_properties(integration-tests PROPERTIES
+  ENVIRONMENT "HTTPD_MODULE_PATH=${CMAKE_BINARY_DIR}/mod_datadog/mod_datadog.so"
+)
