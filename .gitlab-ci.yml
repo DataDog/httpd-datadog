@@ -1,6 +1,7 @@
 variables:
   DOCKER_REGISTRY: registry.ddbuild.io
   CI_DOCKER_IMAGE_BASE: $DOCKER_REGISTRY/ci/httpd-datadog
+  GIT_SUBMODULE_STRATEGY: recursive
 
 stages:
   - ci-image
