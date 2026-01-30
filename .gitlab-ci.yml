@@ -1,0 +1,67 @@
+variables:
+  DOCKER_REGISTRY: registry.ddbuild.io
+  CI_DOCKER_IMAGE_BASE: $DOCKER_REGISTRY/ci/httpd-datadog
+
+stages:
+  - ci-image
+  - build
+
+build-ci-image:
+  stage: ci-image
+  allow_failure: true
+  tags: ["arch:$ARCH"]
+  image: $DOCKER_REGISTRY/docker:20.10.13
+  parallel:
+    matrix:
+      - ARCH: amd64
+        TOOLCHAIN_ARCH: x86_64
+      - ARCH: arm64
+        TOOLCHAIN_ARCH: aarch64
+  script:
+    - HASH=$(sha256sum .gitlab/Dockerfile | cut -d ' ' -f 1)
+    - echo "DOCKERFILE_HASH=$HASH" >> docker.env
+    - IMAGE_TAG="$CI_DOCKER_IMAGE_BASE/$ARCH:$HASH"
+    - |
+      if docker buildx imagetools inspect "$IMAGE_TAG" > /dev/null 2>&1; then
+        echo "Image $IMAGE_TAG already exists. Skipping build."
+        exit 0
+      fi
+    - >
+      docker buildx build
+      --tag $IMAGE_TAG
+      --platform linux/$ARCH
+      --build-arg ARCH=$TOOLCHAIN_ARCH
+      --push
+      --file .gitlab/Dockerfile
+      .
+  artifacts:
+    reports:
+      dotenv: docker.env
+
+build:
+  stage: build
+  needs: [build-ci-image]
+  parallel:
+    matrix:
+      - ARCH: amd64
+        TOOLCHAIN_ARCH: x86_64
+      - ARCH: arm64
+        TOOLCHAIN_ARCH: aarch64
+  image: $CI_DOCKER_IMAGE_BASE/$ARCH:$DOCKERFILE_HASH
+  tags: ["arch:$ARCH"]
+  script:
+    - git config --global --add safe.directory $PWD
+    - >
+      cmake --preset=ci-release
+      -DHTTPD_DATADOG_ENABLE_RUM=ON
+      -DCMAKE_TOOLCHAIN_FILE=/sysroot/${TOOLCHAIN_ARCH}-none-linux-musl/Toolchain.cmake
+      -B build .
+    - cmake --build build -j --verbose
+    - cmake --install build --prefix dist
+    - mkdir -p artifacts/$ARCH
+    - cp dist/lib/mod_datadog.so artifacts/$ARCH/
+    - cp dist/lib/mod_datadog.so.debug artifacts/$ARCH/ || true
+  artifacts:
+    paths:
+      - artifacts/$ARCH/mod_datadog.so
+      - artifacts/$ARCH/mod_datadog.so.debug

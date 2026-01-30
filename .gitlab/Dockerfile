@@ -1,0 +1,96 @@
+# Build image for httpd-datadog GitLab CI.
+#
+# It contains:
+#   - LLVM 17 toolchain with musl sysroot for cross-compilation
+#   - httpd 2.4 source code
+#   - Tools necessary to build httpd and mod_datadog
+#   - Rust toolchain for RUM (inject-browser-sdk requires Rust 1.73+)
+#
+FROM alpine:3.20.3 AS sysroot
+
+ARG LLVM_VERSION=17.0.6
+ARG ARCH
+
+COPY .gitlab/CHECKSUMS /CHECKSUMS
+
+RUN echo "Building LLVM ${LLVM_VERSION} on ${ARCH}"
+
+RUN apk --no-cache add alpine-sdk coreutils sudo bash samurai python3 linux-headers \
+	compiler-rt clang llvm lld wget cmake make binutils musl-dev git patchelf xz lit
+RUN wget https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/llvm-project-${LLVM_VERSION}.src.tar.xz && \
+    grep -F llvm-project-${LLVM_VERSION}.src.tar.xz /CHECKSUMS | sha512sum --check && \
+    tar -xvf llvm-project-${LLVM_VERSION}.src.tar.xz
+
+COPY .gitlab/locale.h.diff /locale.h.diff
+RUN cd /usr/include && patch -p0 < /locale.h.diff
+
+COPY .gitlab/alltypes.h.diff /alltypes.h.diff
+RUN cd /usr/include && patch -p0 < /alltypes.h.diff
+
+RUN cd llvm-project-${LLVM_VERSION}.src && mkdir -p build && cd build && \
+    cmake -G Ninja \
+    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_C_COMPILER=clang \
+    -DCMAKE_C_FLAGS="-fno-omit-frame-pointer -D_LIBCPP_HAS_NO_C11_ALIGNED_ALLOC=1" \
+    -DCMAKE_CXX_COMPILER=clang++ \
+    -DCMAKE_CXX_FLAGS="-fno-omit-frame-pointer -D_LIBCPP_HAS_NO_C11_ALIGNED_ALLOC=1" \
+    -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+    -DLIBUNWIND_ENABLE_SHARED=OFF \
+    -DLIBUNWIND_ENABLE_STATIC=ON \
+    -DLIBUNWIND_USE_COMPILER_RT=ON \
+    -DLIBCXXABI_ENABLE_SHARED=OFF \
+    -DLIBCXXABI_USE_LLVM_UNWINDER=ON \
+    -DLIBCXXABI_ENABLE_STATIC_UNWINDER=ON \
+    -DLIBCXXABI_USE_COMPILER_RT=ON \
+    -DLIBCXX_ENABLE_SHARED=OFF \
+    -DLIBCXX_HAS_MUSL_LIBC=ON \
+    -DLIBCXX_USE_COMPILER_RT=ON \
+    -DLIBCXX_ENABLE_STATIC_ABI_LIBRARY=ON \
+    -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind" \
+    -DLLVM_EXTERNAL_LIT=/usr/bin/lit ../runtimes && \
+    ninja -v install-unwind install-cxxabi install-cxx
+
+RUN cd /usr/lib && ln -s gcc/*/*/ resource_dir
+RUN cd /usr/lib && ln -s clang/${LLVM_VERSION%%.*}/lib/linux/libclang_rt.builtins-*.a libclang_rt.builtins.a
+
+RUN rm -rf /llvm-project-${LLVM_VERSION}.src
+RUN rm -f llvm-project-${LLVM_VERSION}.src.tar.xz
+
+RUN mkdir -p /sysroot/${ARCH}-none-linux-musl/usr
+RUN ln -s /usr/lib /sysroot/${ARCH}-none-linux-musl/usr/
+RUN ln -s /usr/include /sysroot/${ARCH}-none-linux-musl/usr/
+RUN ln -s /lib /sysroot/${ARCH}-none-linux-musl/
+RUN ln -s /usr/lib/llvm${LLVM_VERSION%%.*}/lib/clang/${LLVM_VERSION%%.*}/lib /sysroot/${ARCH}-none-linux-musl/usr/lib/resource_dir/lib
+
+COPY .gitlab/Toolchain.cmake.${ARCH} /sysroot/${ARCH}-none-linux-musl/Toolchain.cmake
+
+# see https://github.com/llvm/llvm-project/issues/60572
+RUN mv /usr/lib/gcc/${ARCH}-alpine-linux-musl/13.2.1/include/stdatomic.h /usr/lib/gcc/${ARCH}-alpine-linux-musl/13.2.1/include/stdatomic.h_
+RUN cp /usr/lib/llvm${LLVM_VERSION%%.*}/lib/clang/${LLVM_VERSION%%.*}/include/stdatomic.h /usr/lib/gcc/${ARCH}-alpine-linux-musl/13.2.1/include/stdatomic.h
+
+COPY .gitlab/glibc_compat.c /sysroot/
+RUN clang --sysroot /sysroot/${ARCH}-none-linux-musl/ -fpie -O2 -fno-omit-frame-pointer \
+    -ggdb3 -c /sysroot/glibc_compat.c -o /tmp/glibc_compat.o && \
+    ar rcs /sysroot/${ARCH}-none-linux-musl/usr/lib/libglibc_compat.a /tmp/glibc_compat.o && \
+    rm /tmp/glibc_compat.o
+
+
+# Install dependencies for httpd
+RUN apk add --no-cache expat expat-dev autoconf libtool py-pip gpg gpg-agent
+
+# Install Rust toolchain
+RUN apk add --no-cache curl
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -yq --default-toolchain 1.73.0 \
+  && ln -s ~/.cargo/bin/cargo /usr/bin/cargo
+
+RUN cargo install --locked cbindgen --version 0.26.0 \
+  && ln -s ~/.cargo/bin/cbindgen /usr/local/bin/cbindgen
+
+# Setup httpd 2.4 source
+COPY scripts/setup-httpd.py setup-httpd.py
+RUN python3 ./setup-httpd.py -o httpd 2.4.58 \
+ && cd httpd \
+ && ./configure --with-included-apr --prefix=$(pwd)/httpd-build --enable-mpms-shared="all" \
+ && make -j \
+ && make -j install
