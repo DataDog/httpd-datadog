@@ -74,6 +74,7 @@ build:
 
 list-s3-artifacts:
   stage: aws
+  needs: []
   image: $DOCKER_REGISTRY/images/aws-cli:2.28.10
   script:
     - aws s3 ls s3://rum-auto-instrumentation/httpd/ --recursive
