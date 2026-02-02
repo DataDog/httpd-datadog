@@ -2,6 +2,10 @@ variables:
   DOCKER_REGISTRY: registry.ddbuild.io
   CI_DOCKER_IMAGE_BASE: $DOCKER_REGISTRY/ci/httpd-datadog
   GIT_SUBMODULE_STRATEGY: recursive
+  GIT_SUBMODULE_DEPTH: 1
+  GIT_CONFIG_COUNT: 1
+  GIT_CONFIG_KEY_0: url.https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.ddbuild.io/DataDog/.insteadOf
+  GIT_CONFIG_VALUE_0: https://github.com/DataDog/
 
 stages:
   - ci-image
