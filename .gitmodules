@@ -5,3 +5,7 @@
 	path = deps/inject-browser-sdk
 	url = ../httpd-datadog.git
 	branch = mirror-inject-browser-sdk
+[submodule "deps/nginx-datadog"]
+	path = deps/nginx-datadog
+	url = ../httpd-datadog.git
+	branch = mirror-nginx-datadog

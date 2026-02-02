@@ -6,12 +6,14 @@
 #   - Tools necessary to build httpd and mod_datadog
 #   - Rust toolchain for RUM (inject-browser-sdk requires Rust 1.73+)
 #
+# Toolchain files are sourced from deps/nginx-datadog/build_env/
+#
 FROM alpine:3.20.3 AS sysroot
 
 ARG LLVM_VERSION=17.0.6
 ARG ARCH
 
-COPY .gitlab/CHECKSUMS /CHECKSUMS
+COPY deps/nginx-datadog/build_env/CHECKSUMS /CHECKSUMS
 
 RUN echo "Building LLVM ${LLVM_VERSION} on ${ARCH}"
 
@@ -21,10 +23,10 @@ RUN wget https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_V
     grep -F llvm-project-${LLVM_VERSION}.src.tar.xz /CHECKSUMS | sha512sum --check && \
     tar -xvf llvm-project-${LLVM_VERSION}.src.tar.xz
 
-COPY .gitlab/locale.h.diff /locale.h.diff
+COPY deps/nginx-datadog/build_env/locale.h.diff /locale.h.diff
 RUN cd /usr/include && patch -p0 < /locale.h.diff
 
-COPY .gitlab/alltypes.h.diff /alltypes.h.diff
+COPY deps/nginx-datadog/build_env/alltypes.h.diff /alltypes.h.diff
 RUN cd /usr/include && patch -p0 < /alltypes.h.diff
 
 RUN cd llvm-project-${LLVM_VERSION}.src && mkdir -p build && cd build && \
@@ -63,13 +65,13 @@ RUN ln -s /usr/include /sysroot/${ARCH}-none-linux-musl/usr/
 RUN ln -s /lib /sysroot/${ARCH}-none-linux-musl/
 RUN ln -s /usr/lib/llvm${LLVM_VERSION%%.*}/lib/clang/${LLVM_VERSION%%.*}/lib /sysroot/${ARCH}-none-linux-musl/usr/lib/resource_dir/lib
 
-COPY .gitlab/Toolchain.cmake.${ARCH} /sysroot/${ARCH}-none-linux-musl/Toolchain.cmake
+COPY deps/nginx-datadog/build_env/Toolchain.cmake.${ARCH} /sysroot/${ARCH}-none-linux-musl/Toolchain.cmake
 
 # see https://github.com/llvm/llvm-project/issues/60572
 RUN mv /usr/lib/gcc/${ARCH}-alpine-linux-musl/13.2.1/include/stdatomic.h /usr/lib/gcc/${ARCH}-alpine-linux-musl/13.2.1/include/stdatomic.h_
 RUN cp /usr/lib/llvm${LLVM_VERSION%%.*}/lib/clang/${LLVM_VERSION%%.*}/include/stdatomic.h /usr/lib/gcc/${ARCH}-alpine-linux-musl/13.2.1/include/stdatomic.h
 
-COPY .gitlab/glibc_compat.c /sysroot/
+COPY deps/nginx-datadog/build_env/glibc_compat.c /sysroot/
 RUN clang --sysroot /sysroot/${ARCH}-none-linux-musl/ -fpie -O2 -fno-omit-frame-pointer \
     -ggdb3 -c /sysroot/glibc_compat.c -o /tmp/glibc_compat.o && \
     ar rcs /sysroot/${ARCH}-none-linux-musl/usr/lib/libglibc_compat.a /tmp/glibc_compat.o && \
