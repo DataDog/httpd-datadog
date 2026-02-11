@@ -1,0 +1,61 @@
+name: System Tests
+
+on:
+  # pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  # schedule:
+  #   - cron: 0 4 * * *
+
+concurrency:
+  # this ensures that only one workflow runs at a time for a given branch on pull requests
+  # as the group key is the workflow name and the branch name
+  # for scheduled runs and pushes to main, we use the run id to ensure that all runs are executed
+  group: ${{ (github.event_name == 'pull_request' && format('{0}-{1}', github.workflow, github.ref)) || format('{0}-{1}', github.workflow, github.run_id) }}
+  cancel-in-progress: true
+
+jobs:
+  build-artifacts:
+    runs-on: ubuntu-22.04
+    container:
+      image: datadog/docker-library:httpd-datadog-ci-2.4-cdb3cb2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Add cloned repo as safe
+        run: sh -c "git config --global --add safe.directory $PWD"
+      - name: Configure
+        run: cmake --preset=ci-dev -B build .
+      - name: Build
+        run: |
+          cmake --build build -j --verbose
+          cmake --install build --prefix dist
+      - name: Export library
+        uses:  actions/upload-artifact@v4
+        with:
+          name: system_tests_binaries
+          path: dist/lib/mod_datadog.so
+          if-no-files-found: error
+
+  main:
+    needs:
+      - build-artifacts
+    uses: DataDog/system-tests/.github/workflows/system-tests.yml@main
+    secrets:
+      TEST_OPTIMIZATION_API_KEY: ${{ secrets.DD_API_KEY_CI_APP }}
+      DD_API_KEY: ${{ secrets.DD_API_KEY_CI_APP }}
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    with:
+      library: cpp_httpd
+      binaries_artifact: system_tests_binaries
+      desired_execution_time: 300  # 5 minutes
+      scenarios_groups: tracer-release
+      excluded_scenarios: APM_TRACING_E2E_OTEL,APM_TRACING_E2E_SINGLE_SPAN  # require AWS and datadog credentials
+      parametric_job_count: 8
+      skip_empty_scenarios: true
+      push_to_test_optimization: ${{ github.actor != 'dependabot[bot]' }}
