@@ -1,3 +1,5 @@
+pytest_plugins = ["pytest_plugins.integration_helpers"]
+
 import tempfile
 import shutil
 import argparse
@@ -190,13 +192,13 @@ def pytest_addoption(parser, pluginmanager) -> None:
     parser.addoption(
         "--bin-path",
         help="binary under test. Example: apachectl",
-        required=True,
+        required=False,
         type=extant_file,
     )
     parser.addoption(
         "--module-path",
-        help="mod_datadog.so under test",
-        required=True,
+        help="mod_datadog.so under test (auto-built for RUM tests)",
+        required=False,
         type=extant_file,
     )
     parser.addoption(
@@ -222,7 +224,10 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     Called after the Session object has been created and
     before performing collection and entering the run test loop.
     """
-    module_path = session.config.getoption("--module-path")
+    # Use module_path from plugin if auto-built, otherwise use command-line option
+    if not hasattr(session.config, 'module_path') or session.config.module_path is None:
+        session.config.module_path = session.config.getoption("--module-path")
+
     apachectl_bin = session.config.getoption("--bin-path")
 
     log_dir = session.config.getoption("--log-dir")
@@ -235,8 +240,6 @@ def pytest_sessionstart(session: pytest.Session) -> None:
         log_dir = tempfile.mkdtemp(prefix="log-httpd-tests-", dir=".")
 
     session.config.log_dir = log_dir
-
-    session.config.module_path = module_path
 
     session.config.test_agent = TestAgent("127.0.0.1", 8136)
     session.config.test_agent.run()

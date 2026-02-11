@@ -26,7 +26,14 @@ include(cmake/utils.cmake)
 include(cmake/deps/fmt.cmake)
 
 if (HTTPD_DATADOG_ENABLE_RUM)
-  include(cmake/deps/corrosion.cmake)
+  include(FetchContent)
+  FetchContent_Declare(
+    InjectBrowserSDK
+    GIT_REPOSITORY https://github.com/DataDog/inject-browser-sdk.git
+    GIT_TAG        cmake-corrosion-wrapper-external  # PR #21 — pin to release tag once merged
+  )
+  FetchContent_MakeAvailable(InjectBrowserSDK)
+
   include(cmake/deps/rapidjson.cmake)
 endif ()
 
@@ -50,3 +57,14 @@ endif (UNIX)
 add_subdirectory(deps)
 add_subdirectory(mod_datadog)
 add_subdirectory(test/unit-test)
+
+# Integration tests
+enable_testing()
+add_test(
+  NAME integration-tests
+  COMMAND uv run pytest
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/test/integration-test
+)
+set_tests_properties(integration-tests PROPERTIES
+  ENVIRONMENT "HTTPD_MODULE_PATH=${CMAKE_BINARY_DIR}/mod_datadog/mod_datadog.so"
+)

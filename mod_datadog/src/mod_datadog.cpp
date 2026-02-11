@@ -7,6 +7,8 @@
 #include <http_protocol.h>
 #include <http_request.h>
 
+#include <atomic>
+#include <memory>
 #include <string>
 
 #include "common_conf.h"
@@ -37,6 +39,7 @@ apr_status_t destroy_module_conf(void*);
 // Hooks
 int on_post_config(apr_pool_t*, apr_pool_t*, apr_pool_t*, server_rec*);
 void on_child_init(apr_pool_t*, server_rec*);
+apr_status_t on_child_exit(void*);
 int on_fixups(request_rec*);
 int on_log_transaction(request_rec*);
 void register_hooks(apr_pool_t*);
@@ -296,7 +299,7 @@ void init_tracer(datadog::tracing::TracerConfig& tracer_conf) {
   g_tracer = std::make_unique<datadog::tracing::Tracer>(*validated_config);
 }
 
-void on_child_init(apr_pool_t*, server_rec* s) {
+void on_child_init(apr_pool_t* pool, server_rec* s) {
   auto* module_conf = static_cast<datadog::conf::Module*>(
       ap_get_module_config(s->module_config, &datadog_module));
   if (module_conf == nullptr) {
@@ -305,6 +308,18 @@ void on_child_init(apr_pool_t*, server_rec* s) {
   }
 
   init_tracer(module_conf->tracing);
+
+  // Register cleanup hook to prevent crashes during shutdown
+  apr_pool_cleanup_register(pool, nullptr, on_child_exit,
+                            apr_pool_cleanup_null);
+}
+
+apr_status_t on_child_exit(void*) {
+  // Explicitly clean up global objects to prevent crashes during process
+  // shutdown
+  g_tracer.reset();
+  g_runtime_id.reset();
+  return APR_SUCCESS;
 }
 
 int on_fixups(request_rec* r) {
