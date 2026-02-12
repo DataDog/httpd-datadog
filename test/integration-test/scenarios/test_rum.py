@@ -127,10 +127,11 @@ DatadogRum On
 
     # Replace the default.conf content with our custom content
     lines = base_config.split('\n')
-    # Find where to insert our custom config (after the base template)
+
+    # Find where the default.conf content starts (after the base template)
     insert_index = len(lines)
     for i, line in enumerate(lines):
-        if 'LoadModule datadog_module' in line:
+        if 'DocumentRoot' in line:
             insert_index = i + 1
             break
 
@@ -141,9 +142,12 @@ DatadogRum On
         load_datadog_module=f"LoadModule datadog_module {module_path}"
     )
 
-    # Remove any existing datadog module load
-    base_lines = [l for l in lines if 'LoadModule datadog_module' not in l]
-    final_config = '\n'.join(base_lines[:5]) + '\n' + custom_conf
+    # Replace everything after DocumentRoot with our custom config
+    # Keep the base Apache configuration (Listen, LoadModule, LogLevel, etc.)
+    base_lines = lines[:insert_index]
+    # Remove any existing datadog module load from base
+    base_lines = [l for l in base_lines if 'LoadModule datadog_module' not in l]
+    final_config = '\n'.join(base_lines) + '\n' + custom_conf
 
     save_configuration(final_config, conf_path)
 

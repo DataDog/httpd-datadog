@@ -132,6 +132,14 @@ class TestAgent:
             pool_trace_check_failures=False,
             disable_error_responses=False,
             snapshot_removed_attrs="",
+            snapshot_regex_placeholders="",
+            vcr_cassettes_directory="",
+            vcr_ci_mode=False,
+            vcr_provider_map="",
+            vcr_ignore_headers="",
+            dd_site="",
+            dd_api_key="",
+            disable_llmobs_data_forwarding=False,
         )
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
