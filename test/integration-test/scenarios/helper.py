@@ -26,7 +26,7 @@ Listen $port
 LoadModule dir_module modules/mod_dir.so
 #LoadModule unixd_module modules/mod_unixd.so
 LoadModule authz_core_module modules/mod_authz_core.so
-#LoadModule log_config_module modules/mod_log_config.so
+LoadModule log_config_module modules/mod_log_config.so
 
 LogLevel debug
 ErrorLog $error_log_file
