@@ -38,14 +38,7 @@ stages:
   image: $CI_DOCKER_IMAGE_BASE/$ARCH:$DOCKERFILE_HASH
   script:
     - cd $CI_PROJECT_DIR/test/integration-test && uv sync
-    - >
-      cd $CI_PROJECT_DIR/test/integration-test &&
-      uv run pytest
-      --module-path $CI_PROJECT_DIR/artifacts/$ARCH/mod_datadog.so
-      --bin-path /httpd/httpd-build/bin/apachectl
-      --log-dir $CI_PROJECT_DIR/logs
-      -m requires_rum
-      -v
+    - cd $CI_PROJECT_DIR/test/integration-test && uv run pytest --module-path $CI_PROJECT_DIR/artifacts/$ARCH/mod_datadog.so --bin-path /httpd/httpd-build/bin/apachectl --log-dir $CI_PROJECT_DIR/logs -m requires_rum -v
 
 build-ci-image:
   stage: ci-image
