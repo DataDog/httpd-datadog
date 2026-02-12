@@ -46,7 +46,12 @@ build-ci-image:
 
 build:
   stage: build
-  needs: [build-ci-image]
+  needs:
+    - job: build-ci-image
+      artifacts: true
+      parallel:
+        matrix:
+          - ARCH: $ARCH
   parallel:
     matrix:
       - ARCH: amd64
@@ -74,7 +79,17 @@ build:
 
 test-rum:
   stage: test
-  needs: [build-ci-image, build]
+  needs:
+    - job: build-ci-image
+      artifacts: true
+      parallel:
+        matrix:
+          - ARCH: $ARCH
+    - job: build
+      artifacts: true
+      parallel:
+        matrix:
+          - ARCH: $ARCH
   parallel:
     matrix:
       - ARCH: amd64
