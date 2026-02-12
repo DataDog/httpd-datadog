@@ -74,7 +74,7 @@ build:
 
 test-rum:
   stage: test
-  needs: [build]
+  needs: [build-ci-image, build]
   parallel:
     matrix:
       - ARCH: amd64
