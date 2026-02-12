@@ -90,6 +90,7 @@ test-rum:
     # Install dependencies and run tests with uv
     - cd test/integration-test && uv sync
     - >
+      cd test/integration-test &&
       uv run pytest
       --module-path $CI_PROJECT_DIR/artifacts/$ARCH/mod_datadog.so
       --bin-path /httpd/httpd-build/bin/apachectl
