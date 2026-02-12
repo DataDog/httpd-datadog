@@ -4,18 +4,39 @@ Integration tests for Apache httpd Datadog module using pytest.
 
 ## Quick Start
 
+### Prerequisites
+
+For local testing, install Apache development packages:
 ```bash
-# Install dependencies
+# Ubuntu/Debian
+sudo apt-get install apache2 apache2-dev libapr1-dev libaprutil1-dev
+
+# macOS
+brew install httpd
+```
+
+### Setup
+
+```bash
+# Install uv (Python package manager)
 curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install test dependencies
 cd test/integration-test && uv sync
 
-# Set Apache path and run tests
-export HTTPD_BIN_PATH=/path/to/apachectl
-uv run pytest
+# Run all tests (auto-builds module variants as needed)
+uv run pytest --bin-path=/usr/sbin/apachectl -v
 
-# Run specific tests
-uv run pytest scenarios/test_rum.py -v  # Auto-builds with RUM
-uv run pytest -m smoke
+# Run RUM tests only (auto-builds with RUM support)
+uv run pytest --bin-path=/usr/sbin/apachectl -m requires_rum -v
+
+# Run with pre-built module (skip auto-build)
+uv run pytest --bin-path=/usr/sbin/apachectl \
+  --module-path=/path/to/mod_datadog.so -v
+
+# Run specific test file
+uv run pytest --bin-path=/usr/sbin/apachectl \
+  scenarios/test_rum.py -v
 ```
 
 **Auto-Build Behavior:**
@@ -27,11 +48,14 @@ uv run pytest -m smoke
 - Build failures cause tests to fail (not skip)
 - Use `--module-path` to override and skip auto-build
 
-## Environment Variables
+## Command-Line Options
 
-- `HTTPD_BIN_PATH` - Path to apachectl binary (required)
-- `HTTPD_MODULE_PATH` - Path to mod_datadog.so (auto-built for RUM tests)
-- `TEST_LOG_DIR` - Directory for test logs (optional)
+Required options:
+- `--bin-path` - Path to apachectl binary (e.g., `/usr/sbin/apachectl`)
+
+Optional:
+- `--module-path` - Path to mod_datadog.so (skips auto-build if provided)
+- `--log-dir` - Directory for test logs (defaults to temp directory)
 
 ## Test Markers
 
@@ -70,8 +94,9 @@ docker run --rm -v "$PWD:/workspace" -w /workspace \
   sh -c "
     cmake -B build -G Ninja -DHTTPD_DATADOG_ENABLE_RUM=ON .
     cmake --build build -j && cmake --install build --prefix dist
+    cd test/integration-test
     pip install -r requirements.txt --break-system-packages
-    pytest --bin-path=/httpd/httpd-build/bin/apachectl \
+    uv run pytest --bin-path=/httpd/httpd-build/bin/apachectl \
            --module-path=/workspace/dist/lib/mod_datadog.so -v
   "
 ```
