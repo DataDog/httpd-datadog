@@ -120,27 +120,42 @@ class TestAgent:
         self._stop = asyncio.Event()
         self.host = host
         self.port = port
-        self._app = make_app(
-            enabled_checks="",
-            log_span_fmt="[{name}]",
-            snapshot_dir="snapshot",
-            snapshot_ci_mode=0,
-            snapshot_ignored_attrs="",
-            agent_url="",
-            trace_request_delay=0.0,
-            suppress_trace_parse_errors=False,
-            pool_trace_check_failures=False,
-            disable_error_responses=False,
-            snapshot_removed_attrs="",
-            snapshot_regex_placeholders="",
-            vcr_cassettes_directory="",
-            vcr_ci_mode=False,
-            vcr_provider_map="",
-            vcr_ignore_headers="",
-            dd_site="",
-            dd_api_key="",
-            disable_llmobs_data_forwarding=False,
-        )
+
+        # Base parameters supported by all versions
+        app_kwargs = {
+            "enabled_checks": "",
+            "log_span_fmt": "[{name}]",
+            "snapshot_dir": "snapshot",
+            "snapshot_ci_mode": 0,
+            "snapshot_ignored_attrs": "",
+            "agent_url": "",
+            "trace_request_delay": 0.0,
+            "suppress_trace_parse_errors": False,
+            "pool_trace_check_failures": False,
+            "disable_error_responses": False,
+            "snapshot_removed_attrs": "",
+        }
+
+        # Try with newer parameters first (v1.40+)
+        try:
+            import inspect
+            sig = inspect.signature(make_app)
+            # Add new parameters only if they're in the signature
+            if "snapshot_regex_placeholders" in sig.parameters:
+                app_kwargs.update({
+                    "snapshot_regex_placeholders": "",
+                    "vcr_cassettes_directory": "",
+                    "vcr_ci_mode": False,
+                    "vcr_provider_map": "",
+                    "vcr_ignore_headers": "",
+                    "dd_site": "",
+                    "dd_api_key": "",
+                    "disable_llmobs_data_forwarding": False,
+                })
+        except Exception:
+            pass  # Fall back to base parameters
+
+        self._app = make_app(**app_kwargs)
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
 
