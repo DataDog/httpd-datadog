@@ -84,10 +84,7 @@ test-rum:
   image: $CI_DOCKER_IMAGE_BASE/$ARCH:$DOCKERFILE_HASH
   tags: ["arch:$ARCH"]
   script:
-    # Install uv
-    - curl -LsSf https://astral.sh/uv/install.sh | sh
-    - export PATH="$HOME/.local/bin:$PATH"
-    # Install dependencies and run tests with uv
+    # Install test dependencies and run tests
     - cd test/integration-test && uv sync
     - >
       cd test/integration-test &&
