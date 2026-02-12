@@ -47,7 +47,7 @@ build-ci-image:
 build:amd64:
   stage: build
   needs:
-    - build-ci-image: [amd64, x86_64]
+    - job: "build-ci-image: [amd64, x86_64]"
   variables:
     ARCH: amd64
     TOOLCHAIN_ARCH: x86_64
@@ -73,7 +73,7 @@ build:amd64:
 build:arm64:
   stage: build
   needs:
-    - build-ci-image: [arm64, aarch64]
+    - job: "build-ci-image: [arm64, aarch64]"
   variables:
     ARCH: arm64
     TOOLCHAIN_ARCH: aarch64
@@ -99,8 +99,8 @@ build:arm64:
 test-rum:amd64:
   stage: test
   needs:
-    - build-ci-image: [amd64, x86_64]
-    - build:amd64
+    - job: "build-ci-image: [amd64, x86_64]"
+    - job: "build:amd64"
   variables:
     ARCH: amd64
   image: $CI_DOCKER_IMAGE_BASE/$ARCH:$DOCKERFILE_HASH
@@ -120,8 +120,8 @@ test-rum:amd64:
 test-rum:arm64:
   stage: test
   needs:
-    - build-ci-image: [arm64, aarch64]
-    - build:arm64
+    - job: "build-ci-image: [arm64, aarch64]"
+    - job: "build:arm64"
   variables:
     ARCH: arm64
   image: $CI_DOCKER_IMAGE_BASE/$ARCH:$DOCKERFILE_HASH
