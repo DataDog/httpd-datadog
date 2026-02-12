@@ -10,6 +10,7 @@ variables:
 stages:
   - ci-image
   - build
+  - test
 
 build-ci-image:
   stage: ci-image
@@ -70,3 +71,24 @@ build:
     paths:
       - artifacts/$ARCH/mod_datadog.so
       - artifacts/$ARCH/mod_datadog.so.debug
+
+test-rum:
+  stage: test
+  needs: [build]
+  parallel:
+    matrix:
+      - ARCH: amd64
+        TOOLCHAIN_ARCH: x86_64
+      - ARCH: arm64
+        TOOLCHAIN_ARCH: aarch64
+  image: $CI_DOCKER_IMAGE_BASE/$ARCH:$DOCKERFILE_HASH
+  tags: ["arch:$ARCH"]
+  script:
+    - pip install -r requirements.txt --break-system-packages
+    - >
+      pytest test/integration-test
+      --module-path artifacts/$ARCH/mod_datadog.so
+      --bin-path /httpd/httpd-build/bin/apachectl
+      --log-dir logs
+      -m requires_rum
+      -v
