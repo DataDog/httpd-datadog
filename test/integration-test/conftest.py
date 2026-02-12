@@ -77,8 +77,12 @@ class Server:
 
         # TODO: if the server is already started -> "-k reload"
         #       else -> just start
-        rc = self._proc.run(f"-f {conf_path}").returncode
-        return rc == 0
+        result = self._proc.run(f"-f {conf_path}")
+        if result.returncode != 0:
+            print(f"[error] Apache startup failed:")
+            print(f"[error] stdout: {result.stdout.decode('utf-8')}")
+            print(f"[error] stderr: {result.stderr.decode('utf-8')}")
+        return result.returncode == 0
 
     def stop(self, conf_path) -> None:
         rc = self._proc.run(f"-f {conf_path} -k stop").returncode
