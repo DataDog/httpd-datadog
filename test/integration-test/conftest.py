@@ -75,9 +75,8 @@ class Server:
         if not os.path.exists(conf_path):
             raise Exception(f"Configuration not found: {conf_path}")
 
-        # TODO: if the server is already started -> "-k reload"
-        #       else -> just start
-        result = self._proc.run(f"-f {conf_path}")
+        # Start Apache as a daemon
+        result = self._proc.run(f"-f {conf_path} -k start")
         if result.returncode != 0:
             print(f"[error] Apache startup failed:")
             print(f"[error] stdout: {result.stdout.decode('utf-8')}")
