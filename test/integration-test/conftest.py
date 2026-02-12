@@ -64,8 +64,12 @@ class Server:
         if not os.path.exists(conf_path):
             raise Exception(f"Configuration not found: {conf_path}")
 
-        rc = self._proc.run(f"-f {conf_path} -t").returncode
-        return rc == 0
+        result = self._proc.run(f"-f {conf_path} -t")
+        if result.returncode != 0:
+            print(f"[error] Configuration check failed:")
+            print(f"[error] stdout: {result.stdout.decode('utf-8')}")
+            print(f"[error] stderr: {result.stderr.decode('utf-8')}")
+        return result.returncode == 0
 
     def load_configuration(self, conf_path: str) -> bool:
         if not os.path.exists(conf_path):
