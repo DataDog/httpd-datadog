@@ -84,10 +84,14 @@ test-rum:
   image: $CI_DOCKER_IMAGE_BASE/$ARCH:$DOCKERFILE_HASH
   tags: ["arch:$ARCH"]
   script:
-    - pip install -r requirements.txt --break-system-packages
+    # Install uv
+    - curl -LsSf https://astral.sh/uv/install.sh | sh
+    - export PATH="$HOME/.local/bin:$PATH"
+    # Install dependencies and run tests with uv
+    - cd test/integration-test && uv sync
     - >
-      pytest test/integration-test
-      --module-path artifacts/$ARCH/mod_datadog.so
+      uv run pytest
+      --module-path $CI_PROJECT_DIR/artifacts/$ARCH/mod_datadog.so
       --bin-path /httpd/httpd-build/bin/apachectl
       --log-dir $CI_PROJECT_DIR/logs
       -m requires_rum
