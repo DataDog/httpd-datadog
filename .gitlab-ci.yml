@@ -12,6 +12,41 @@ stages:
   - build
   - test
 
+# Template jobs (hidden, reusable)
+.build-template:
+  stage: build
+  image: $CI_DOCKER_IMAGE_BASE/$ARCH:$DOCKERFILE_HASH
+  script:
+    - git config --global --add safe.directory $PWD
+    - >
+      cmake --preset=ci-release
+      -DHTTPD_DATADOG_ENABLE_RUM=ON
+      -DCMAKE_TOOLCHAIN_FILE=/sysroot/${TOOLCHAIN_ARCH}-none-linux-musl/Toolchain.cmake
+      -B build .
+    - cmake --build build -j --verbose
+    - cmake --install build --prefix dist
+    - mkdir -p artifacts/$ARCH
+    - cp dist/lib/mod_datadog.so artifacts/$ARCH/
+    - cp dist/lib/mod_datadog.so.debug artifacts/$ARCH/ || true
+  artifacts:
+    paths:
+      - artifacts/$ARCH/mod_datadog.so
+      - artifacts/$ARCH/mod_datadog.so.debug
+
+.test-rum-template:
+  stage: test
+  image: $CI_DOCKER_IMAGE_BASE/$ARCH:$DOCKERFILE_HASH
+  script:
+    - cd test/integration-test && uv sync
+    - >
+      cd test/integration-test &&
+      uv run pytest
+      --module-path $CI_PROJECT_DIR/artifacts/$ARCH/mod_datadog.so
+      --bin-path /httpd/httpd-build/bin/apachectl
+      --log-dir $CI_PROJECT_DIR/logs
+      -m requires_rum
+      -v
+
 build-ci-image:
   stage: ci-image
   allow_failure: true
@@ -45,95 +80,37 @@ build-ci-image:
       dotenv: docker.env
 
 build:amd64:
-  stage: build
+  extends: .build-template
   needs:
     - job: "build-ci-image: [amd64, x86_64]"
   variables:
     ARCH: amd64
     TOOLCHAIN_ARCH: x86_64
-  image: $CI_DOCKER_IMAGE_BASE/$ARCH:$DOCKERFILE_HASH
   tags: ["arch:amd64"]
-  script:
-    - git config --global --add safe.directory $PWD
-    - >
-      cmake --preset=ci-release
-      -DHTTPD_DATADOG_ENABLE_RUM=ON
-      -DCMAKE_TOOLCHAIN_FILE=/sysroot/${TOOLCHAIN_ARCH}-none-linux-musl/Toolchain.cmake
-      -B build .
-    - cmake --build build -j --verbose
-    - cmake --install build --prefix dist
-    - mkdir -p artifacts/$ARCH
-    - cp dist/lib/mod_datadog.so artifacts/$ARCH/
-    - cp dist/lib/mod_datadog.so.debug artifacts/$ARCH/ || true
-  artifacts:
-    paths:
-      - artifacts/$ARCH/mod_datadog.so
-      - artifacts/$ARCH/mod_datadog.so.debug
 
 build:arm64:
-  stage: build
+  extends: .build-template
   needs:
     - job: "build-ci-image: [arm64, aarch64]"
   variables:
     ARCH: arm64
     TOOLCHAIN_ARCH: aarch64
-  image: $CI_DOCKER_IMAGE_BASE/$ARCH:$DOCKERFILE_HASH
   tags: ["arch:arm64"]
-  script:
-    - git config --global --add safe.directory $PWD
-    - >
-      cmake --preset=ci-release
-      -DHTTPD_DATADOG_ENABLE_RUM=ON
-      -DCMAKE_TOOLCHAIN_FILE=/sysroot/${TOOLCHAIN_ARCH}-none-linux-musl/Toolchain.cmake
-      -B build .
-    - cmake --build build -j --verbose
-    - cmake --install build --prefix dist
-    - mkdir -p artifacts/$ARCH
-    - cp dist/lib/mod_datadog.so artifacts/$ARCH/
-    - cp dist/lib/mod_datadog.so.debug artifacts/$ARCH/ || true
-  artifacts:
-    paths:
-      - artifacts/$ARCH/mod_datadog.so
-      - artifacts/$ARCH/mod_datadog.so.debug
 
 test-rum:amd64:
-  stage: test
+  extends: .test-rum-template
   needs:
     - job: "build-ci-image: [amd64, x86_64]"
     - job: "build:amd64"
   variables:
     ARCH: amd64
-  image: $CI_DOCKER_IMAGE_BASE/$ARCH:$DOCKERFILE_HASH
   tags: ["arch:amd64"]
-  script:
-    # Install test dependencies and run tests
-    - cd test/integration-test && uv sync
-    - >
-      cd test/integration-test &&
-      uv run pytest
-      --module-path $CI_PROJECT_DIR/artifacts/$ARCH/mod_datadog.so
-      --bin-path /httpd/httpd-build/bin/apachectl
-      --log-dir $CI_PROJECT_DIR/logs
-      -m requires_rum
-      -v
 
 test-rum:arm64:
-  stage: test
+  extends: .test-rum-template
   needs:
     - job: "build-ci-image: [arm64, aarch64]"
     - job: "build:arm64"
   variables:
     ARCH: arm64
-  image: $CI_DOCKER_IMAGE_BASE/$ARCH:$DOCKERFILE_HASH
   tags: ["arch:arm64"]
-  script:
-    # Install test dependencies and run tests
-    - cd test/integration-test && uv sync
-    - >
-      cd test/integration-test &&
-      uv run pytest
-      --module-path $CI_PROJECT_DIR/artifacts/$ARCH/mod_datadog.so
-      --bin-path /httpd/httpd-build/bin/apachectl
-      --log-dir $CI_PROJECT_DIR/logs
-      -m requires_rum
-      -v
