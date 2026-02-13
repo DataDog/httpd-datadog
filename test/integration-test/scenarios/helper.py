@@ -34,7 +34,7 @@ ErrorLog $error_log_file
 LogFormat "%h %l %u %t \\"%r\\" %>s %b" common
 CustomLog $access_log_file common
 
-PidFile logs/httpd.pid
+PidFile $pid_file
 
 DocumentRoot $htdoc_dir
 DirectoryIndex index.html
@@ -62,6 +62,7 @@ DirectoryIndex index.html
         "htdoc_dir": relpath("htdocs"),
         "access_log_file": f"{os.path.join(log_dir, 'access_log')}",
         "error_log_file": f"{os.path.join(log_dir, 'error_log')}",
+        "pid_file": f"{os.path.join(log_dir, 'httpd.pid')}",
         "load_datadog_module": f"LoadModule datadog_module {module_path}",
     }
     server_opts.update(config["var"])
