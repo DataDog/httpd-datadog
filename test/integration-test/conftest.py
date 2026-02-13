@@ -75,17 +75,27 @@ class Server:
         if not os.path.exists(conf_path):
             raise Exception(f"Configuration not found: {conf_path}")
 
+        # First, try to stop any existing Apache instance to ensure clean state
+        # This handles stale processes or PID files from previous runs
+        self._proc.run(f"-f {conf_path} -k stop")
+
+        # Give Apache time to fully stop
+        import time
+        time.sleep(0.5)
+
         # Start Apache as a daemon
         result = self._proc.run(f"-f {conf_path} -k start")
+
+        # Check if the command succeeded
         if result.returncode != 0:
-            print(f"[error] Apache startup failed:")
+            print(f"[error] Apache start command failed with exit code {result.returncode}:")
             print(f"[error] stdout: {result.stdout.decode('utf-8')}")
             print(f"[error] stderr: {result.stderr.decode('utf-8')}")
-            return False
+            # Continue anyway - sometimes apachectl returns non-zero but Apache starts
+            # We'll verify below with HTTP requests
 
         # Wait for Apache to fully start and verify it's running
         # Give Apache up to 5 seconds to start
-        import time
         max_wait = 5
         start_time = time.time()
 
@@ -106,11 +116,14 @@ class Server:
         # Try to get error log content to understand why
         error_log = os.path.join(os.path.dirname(conf_path), "error_log")
         if os.path.exists(error_log):
-            with open(error_log, "r") as f:
-                error_content = f.read()
-                if error_content:
-                    print(f"[error] Error log content:")
-                    print(error_content[-500:])  # Last 500 chars
+            try:
+                with open(error_log, "r") as f:
+                    error_content = f.read()
+                    if error_content:
+                        print(f"[error] Error log content:")
+                        print(error_content[-1000:])  # Last 1000 chars
+            except Exception as e:
+                print(f"[error] Could not read error log: {e}")
         return False
 
     def stop(self, conf_path) -> None:
