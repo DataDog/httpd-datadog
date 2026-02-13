@@ -81,7 +81,37 @@ class Server:
             print(f"[error] Apache startup failed:")
             print(f"[error] stdout: {result.stdout.decode('utf-8')}")
             print(f"[error] stderr: {result.stderr.decode('utf-8')}")
-        return result.returncode == 0
+            return False
+
+        # Wait for Apache to fully start and verify it's running
+        # Give Apache up to 5 seconds to start
+        import time
+        max_wait = 5
+        start_time = time.time()
+
+        while time.time() - start_time < max_wait:
+            # Check if Apache is responding by making a simple HTTP request
+            try:
+                import requests
+                response = requests.get(self.make_url("/"), timeout=1)
+                # If we get any response, Apache is running
+                print(f"[debug] Apache started successfully, responding with status {response.status_code}")
+                return True
+            except requests.exceptions.RequestException:
+                # Apache not ready yet, wait a bit
+                time.sleep(0.2)
+
+        # If we get here, Apache didn't start properly
+        print(f"[error] Apache failed to respond after {max_wait} seconds")
+        # Try to get error log content to understand why
+        error_log = os.path.join(os.path.dirname(conf_path), "error_log")
+        if os.path.exists(error_log):
+            with open(error_log, "r") as f:
+                error_content = f.read()
+                if error_content:
+                    print(f"[error] Error log content:")
+                    print(error_content[-500:])  # Last 500 chars
+        return False
 
     def stop(self, conf_path) -> None:
         rc = self._proc.run(f"-f {conf_path} -k stop").returncode
