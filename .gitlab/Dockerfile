@@ -91,8 +91,7 @@ RUN cargo install --locked cbindgen --version 0.26.0 \
   && ln -s ~/.cargo/bin/cbindgen /usr/local/bin/cbindgen
 
 # Install uv (fast Python package manager)
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
-  && ln -s ~/.local/bin/uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.9.28 /uv /usr/local/bin/uv
 
 # Setup httpd 2.4 source
 COPY scripts/setup-httpd.py setup-httpd.py

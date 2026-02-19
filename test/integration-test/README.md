@@ -41,12 +41,12 @@ uv run pytest --bin-path=/usr/sbin/apachectl \
 
 **Auto-Build Behavior:**
 - The test suite automatically builds two module variants on demand:
-  - **Without RUM**: `build/mod_datadog/mod_datadog.so` (for regular tests)
-  - **With RUM**: `build-rum/mod_datadog/mod_datadog.so` (for `@pytest.mark.requires_rum` tests)
-- Each variant is only built if tests requiring it are collected
-- Tests automatically use the correct variant based on markers
-- Build failures cause tests to fail (not skip)
-- Use `--module-path` to override and skip auto-build
+  - **Without RUM**: `build/mod_datadog/mod_datadog.so` (for regular tests).
+  - **With RUM**: `build-rum/mod_datadog/mod_datadog.so` (for `@pytest.mark.requires_rum` tests).
+- Each variant is only built if tests requiring it are collected.
+- Tests automatically use the correct variant based on markers.
+- Build failures cause tests to fail (not skip).
+- Use `--module-path` to override and skip auto-build.
 
 ## Command-Line Options
 
@@ -82,9 +82,8 @@ DatadogRum On
 ```
 
 **Implementation:**
-- Uses tri-state: -1 (not set), 0 (off), 1 (on)
-- Child `<Location>` overrides parent
-- Auto-builds module with `-DHTTPD_DATADOG_ENABLE_RUM=ON` when RUM tests detected
+- Child `<Location>` overrides parent.
+- Auto-builds module with `-DHTTPD_DATADOG_ENABLE_RUM=ON` when RUM tests are detected.
 
 ## Docker Testing
 

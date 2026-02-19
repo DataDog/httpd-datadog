@@ -9,13 +9,14 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Literal
 import pytest
 
 
 # Options are defined in conftest.py, no need to duplicate them here
 
 
-def pytest_configure(config):
+def pytest_configure(config: pytest.Config) -> None:
     """Register custom markers and initialize build state."""
     config.addinivalue_line(
         "markers",
@@ -30,16 +31,11 @@ def pytest_configure(config):
     config._built_variants = set()  # Track which variants have been built
 
 
-def _build_module(project_root, variant="no_rum"):
-    """Build a specific module variant.
-
-    Args:
-        project_root: Path to project root
-        variant: "rum" or "no_rum"
-
-    Returns:
-        Path to built module
-    """
+def _build_module(
+    project_root: Path,
+    variant: Literal["rum", "no_rum"] = "no_rum",
+) -> Path:
+    """Build a specific module variant."""
     enable_rum = variant == "rum"
     build_dir_name = "build-rum" if enable_rum else "build"
     build_dir = project_root / build_dir_name
@@ -92,7 +88,7 @@ def _build_module(project_root, variant="no_rum"):
 
 
 @pytest.hookimpl(tryfirst=True)
-def pytest_collection_modifyitems(config, items):
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     """Build required module variants based on collected tests."""
     # Skip if user provided explicit module path
     if config.getoption("--module-path"):
@@ -127,7 +123,7 @@ def pytest_collection_modifyitems(config, items):
 
 
 @pytest.hookimpl(tryfirst=True)
-def pytest_sessionstart(session):
+def pytest_sessionstart(session: pytest.Session) -> None:
     """Initialize module path based on collected tests."""
     # If user provided explicit path, use it
     explicit_path = session.config.getoption("--module-path")
@@ -145,7 +141,7 @@ def pytest_sessionstart(session):
         pytest.exit("No module path available", returncode=1)
 
 
-def pytest_runtest_setup(item):
+def pytest_runtest_setup(item: pytest.Item) -> None:
     """Switch to appropriate module variant before each test."""
     # Skip if user provided explicit module path
     if item.config.getoption("--module-path"):

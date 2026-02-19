@@ -19,6 +19,7 @@ For more information: https://www.datadoghq.com/private-beta/rum-sdk-auto-inject
 import os
 import requests
 import pytest
+from conftest import Server, AgentSession
 from helper import (
     relpath,
     make_configuration,
@@ -27,7 +28,7 @@ from helper import (
 
 
 @pytest.mark.requires_rum
-def test_rum_selective_disabling(server, agent, log_dir, module_path):
+def test_rum_selective_disabling(server: Server, agent: AgentSession, log_dir: str, module_path: str) -> None:
     """
     Verify RUM can be selectively disabled for specific subpaths.
 
@@ -81,7 +82,7 @@ def test_rum_selective_disabling(server, agent, log_dir, module_path):
 
 
 @pytest.mark.requires_rum
-def test_rum_nested_location_override(server, agent, log_dir, module_path):
+def test_rum_nested_location_override(server: Server, agent: AgentSession, log_dir: str, module_path: str) -> None:
     """
     Verify RUM configuration can be overridden in nested locations.
 
@@ -163,7 +164,7 @@ DatadogRum On
 
 
 @pytest.mark.requires_rum
-def test_rum_configuration_validation(server, log_dir, module_path):
+def test_rum_configuration_validation(server: Server, log_dir: str, module_path: str) -> None:
     """
     Verify RUM configuration directives are validated correctly.
 
@@ -183,7 +184,7 @@ def test_rum_configuration_validation(server, log_dir, module_path):
 
 # Helper functions
 
-def assert_rum_injected(response):
+def assert_rum_injected(response: requests.Response) -> None:
     """
     Verify that RUM SDK was injected into the response.
 
@@ -217,7 +218,7 @@ def assert_rum_injected(response):
     )
 
 
-def assert_rum_not_injected(response):
+def assert_rum_not_injected(response: requests.Response) -> None:
     """
     Verify that RUM SDK was NOT injected into the response.
 
