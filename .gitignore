@@ -42,3 +42,16 @@ __pycache__/
 venv/
 
 compile_commands.json
+build-rum/
+*.bak
+
+# Integration tests
+test/integration-test/.venv/
+test/integration-test/uv.lock
+test/integration-test/.pytest_cache/
+test/integration-test/.coverage
+test/integration-test/htmlcov/
+test/integration-test/log-*/
+test/integration-test/logs/
+test/integration-test/*.conf.tmp
+test/integration-test/*.log

@@ -1,3 +1,5 @@
+pytest_plugins = ["pytest_plugins.integration_helpers"]
+
 import tempfile
 import shutil
 import argparse
@@ -62,17 +64,67 @@ class Server:
         if not os.path.exists(conf_path):
             raise Exception(f"Configuration not found: {conf_path}")
 
-        rc = self._proc.run(f"-f {conf_path} -t").returncode
-        return rc == 0
+        result = self._proc.run(f"-f {conf_path} -t")
+        if result.returncode != 0:
+            print(f"[error] Configuration check failed:")
+            print(f"[error] stdout: {result.stdout.decode('utf-8')}")
+            print(f"[error] stderr: {result.stderr.decode('utf-8')}")
+        return result.returncode == 0
 
     def load_configuration(self, conf_path: str) -> bool:
         if not os.path.exists(conf_path):
             raise Exception(f"Configuration not found: {conf_path}")
 
-        # TODO: if the server is already started -> "-k reload"
-        #       else -> just start
-        rc = self._proc.run(f"-f {conf_path}").returncode
-        return rc == 0
+        # First, try to stop any existing Apache instance to ensure clean state
+        # This handles stale processes or PID files from previous runs
+        self._proc.run(f"-f {conf_path} -k stop")
+
+        # Give Apache time to fully stop
+        import time
+        time.sleep(0.5)
+
+        # Start Apache as a daemon
+        result = self._proc.run(f"-f {conf_path} -k start")
+
+        # Check if the command succeeded
+        if result.returncode != 0:
+            print(f"[error] Apache start command failed with exit code {result.returncode}:")
+            print(f"[error] stdout: {result.stdout.decode('utf-8')}")
+            print(f"[error] stderr: {result.stderr.decode('utf-8')}")
+            # Continue anyway - sometimes apachectl returns non-zero but Apache starts
+            # We'll verify below with HTTP requests
+
+        # Wait for Apache to fully start and verify it's running
+        # Give Apache up to 5 seconds to start
+        max_wait = 5
+        start_time = time.time()
+
+        while time.time() - start_time < max_wait:
+            # Check if Apache is responding by making a simple HTTP request
+            try:
+                import requests
+                response = requests.get(self.make_url("/"), timeout=1)
+                # If we get any response, Apache is running
+                print(f"[debug] Apache started successfully, responding with status {response.status_code}")
+                return True
+            except requests.exceptions.RequestException:
+                # Apache not ready yet, wait a bit
+                time.sleep(0.2)
+
+        # If we get here, Apache didn't start properly
+        print(f"[error] Apache failed to respond after {max_wait} seconds")
+        # Try to get error log content to understand why
+        error_log = os.path.join(os.path.dirname(conf_path), "error_log")
+        if os.path.exists(error_log):
+            try:
+                with open(error_log, "r") as f:
+                    error_content = f.read()
+                    if error_content:
+                        print(f"[error] Error log content:")
+                        print(error_content[-1000:])  # Last 1000 chars
+            except Exception as e:
+                print(f"[error] Could not read error log: {e}")
+        return False
 
     def stop(self, conf_path) -> None:
         rc = self._proc.run(f"-f {conf_path} -k stop").returncode
@@ -130,6 +182,14 @@ class TestAgent:
             pool_trace_check_failures=False,
             disable_error_responses=False,
             snapshot_removed_attrs="",
+            snapshot_regex_placeholders="",
+            vcr_cassettes_directory="",
+            vcr_ci_mode=False,
+            vcr_provider_map="",
+            vcr_ignore_headers="",
+            dd_site="",
+            dd_api_key="",
+            disable_llmobs_data_forwarding=False,
         )
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
@@ -190,13 +250,13 @@ def pytest_addoption(parser, pluginmanager) -> None:
     parser.addoption(
         "--bin-path",
         help="binary under test. Example: apachectl",
-        required=True,
+        required=False,
         type=extant_file,
     )
     parser.addoption(
         "--module-path",
-        help="mod_datadog.so under test",
-        required=True,
+        help="mod_datadog.so under test (auto-built for RUM tests)",
+        required=False,
         type=extant_file,
     )
     parser.addoption(
@@ -222,7 +282,10 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     Called after the Session object has been created and
     before performing collection and entering the run test loop.
     """
-    module_path = session.config.getoption("--module-path")
+    # Use module_path from plugin if auto-built, otherwise use command-line option
+    if not hasattr(session.config, 'module_path') or session.config.module_path is None:
+        session.config.module_path = session.config.getoption("--module-path")
+
     apachectl_bin = session.config.getoption("--bin-path")
 
     log_dir = session.config.getoption("--log-dir")
@@ -235,8 +298,6 @@ def pytest_sessionstart(session: pytest.Session) -> None:
         log_dir = tempfile.mkdtemp(prefix="log-httpd-tests-", dir=".")
 
     session.config.log_dir = log_dir
-
-    session.config.module_path = module_path
 
     session.config.test_agent = TestAgent("127.0.0.1", 8136)
     session.config.test_agent.run()
