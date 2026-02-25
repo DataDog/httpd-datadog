@@ -3,6 +3,7 @@
 #include <fmt/core.h>
 #include <httpd.h>
 
+#include <algorithm>
 #include <string>
 #include <string_view>
 

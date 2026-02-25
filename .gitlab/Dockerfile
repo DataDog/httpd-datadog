@@ -5,6 +5,7 @@
 #   - httpd 2.4 source code
 #   - Tools necessary to build httpd and mod_datadog
 #   - Rust toolchain for RUM (inject-browser-sdk requires Rust 1.73+)
+#   - uv (fast Python package manager for tests)
 #
 # Toolchain files are sourced from deps/nginx-datadog/build_env/
 #
@@ -88,6 +89,9 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -yq --d
 
 RUN cargo install --locked cbindgen --version 0.26.0 \
   && ln -s ~/.cargo/bin/cbindgen /usr/local/bin/cbindgen
+
+# Install uv (fast Python package manager)
+COPY --from=ghcr.io/astral-sh/uv:0.9.28 /uv /usr/local/bin/uv
 
 # Setup httpd 2.4 source
 COPY scripts/setup-httpd.py setup-httpd.py
