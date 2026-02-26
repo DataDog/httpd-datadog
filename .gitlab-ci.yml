@@ -215,6 +215,8 @@ configure-branch-snapshot-expiry:
   stage: aws
   tags: ["arch:amd64"]
   image: registry.ddbuild.io/images/aws-cli:2.33.12
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq jq > /dev/null
   script:
     - |
       BUCKET=rum-auto-instrumentation
@@ -241,5 +243,3 @@ configure-branch-snapshot-expiry:
         --lifecycle-configuration "{\"Rules\": $UPDATED}"
 
       echo "Lifecycle rule '$RULE_ID' configured: expire httpd/branch-snapshots/ after 30 days"
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
