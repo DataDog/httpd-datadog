@@ -1,21 +1,26 @@
 variables:
-  DOCKER_REGISTRY: registry.ddbuild.io
-  CI_DOCKER_IMAGE_BASE: $DOCKER_REGISTRY/ci/httpd-datadog
+  CI_DOCKER_IMAGE_BASE: registry.ddbuild.io/ci/httpd-datadog
   GIT_SUBMODULE_STRATEGY: recursive
   GIT_SUBMODULE_DEPTH: 1
   GIT_CONFIG_COUNT: 1
   GIT_CONFIG_KEY_0: url.https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.ddbuild.io/DataDog/.insteadOf
   GIT_CONFIG_VALUE_0: https://github.com/DataDog/
 
+default:
+  id_tokens:
+    DDSIGN_ID_TOKEN:
+      aud: image-integrity
+
 stages:
   - ci-image
   - build
   - test
+  - aws
 
 # Template jobs (hidden, reusable)
 .build-template:
   stage: build
-  image: $CI_DOCKER_IMAGE_BASE/$ARCH:$DOCKERFILE_HASH
+  image: $CI_DOCKER_IMAGE_BASE:$CI_IMAGE_HASH
   script:
     - git config --global --add safe.directory $PWD
     - >
@@ -25,25 +30,26 @@ stages:
       -B build .
     - cmake --build build -j --verbose
     - cmake --install build --prefix dist
-    - mkdir -p artifacts/$ARCH
+    - mkdir -p artifacts/$ARCH upload
     - cp dist/lib/mod_datadog.so artifacts/$ARCH/
     - cp dist/lib/mod_datadog.so.debug artifacts/$ARCH/ || true
+    - cd artifacts/$ARCH && zip ../../upload/mod_datadog-${ARCH}.zip mod_datadog.so && cd -
   artifacts:
     paths:
       - artifacts/$ARCH/mod_datadog.so
       - artifacts/$ARCH/mod_datadog.so.debug
+      - upload/mod_datadog-${ARCH}.zip
 
 .test-rum-template:
   stage: test
-  image: $CI_DOCKER_IMAGE_BASE/$ARCH:$DOCKERFILE_HASH
+  image: $CI_DOCKER_IMAGE_BASE:$CI_IMAGE_HASH
   script:
     - cd $CI_PROJECT_DIR/test/integration-test && uv sync && uv run pytest scenarios --module-path $CI_PROJECT_DIR/artifacts/$ARCH/mod_datadog.so --bin-path /httpd/httpd-build/bin/apachectl --log-dir $CI_PROJECT_DIR/logs -m requires_rum -v
 
 build-ci-image:
   stage: ci-image
-  allow_failure: true
   tags: ["arch:$ARCH"]
-  image: $DOCKER_REGISTRY/docker:20.10.13
+  image: registry.ddbuild.io/images/docker:27.3.1
   parallel:
     matrix:
       - ARCH: amd64
@@ -51,30 +57,81 @@ build-ci-image:
       - ARCH: arm64
         TOOLCHAIN_ARCH: aarch64
   script:
-    - HASH=$(sha256sum .gitlab/Dockerfile | cut -d ' ' -f 1)
-    - echo "DOCKERFILE_HASH=$HASH" >> docker.env
+    - |
+      FILES=$(find .gitlab/Dockerfile deps/nginx-datadog/build_env/ scripts/setup-httpd.py -type f | sort)
+      HASH=$(for f in $FILES; do echo "--- $f ---"; cat "$f"; done | sha256sum | cut -d ' ' -f 1)
+    - echo "CI_IMAGE_HASH=$HASH" >> ci-image.env
     - IMAGE_TAG="$CI_DOCKER_IMAGE_BASE/$ARCH:$HASH"
     - |
       if docker buildx imagetools inspect "$IMAGE_TAG" > /dev/null 2>&1; then
         echo "Image $IMAGE_TAG already exists. Skipping build."
-        exit 0
+      else
+        docker buildx build \
+          --tag $IMAGE_TAG \
+          --platform linux/$ARCH \
+          --build-arg ARCH=$TOOLCHAIN_ARCH \
+          --push \
+          --file .gitlab/Dockerfile \
+          .
       fi
-    - >
-      docker buildx build
-      --tag $IMAGE_TAG
-      --platform linux/$ARCH
-      --build-arg ARCH=$TOOLCHAIN_ARCH
-      --push
-      --file .gitlab/Dockerfile
-      .
   artifacts:
     reports:
-      dotenv: docker.env
+      dotenv: ci-image.env
+
+create-ci-manifest:
+  stage: ci-image
+  needs:
+    - build-ci-image
+  tags: ["arch:amd64"]
+  image: registry.ddbuild.io/images/docker:27.3.1
+  script:
+    - MANIFEST_TAG="$CI_DOCKER_IMAGE_BASE:$CI_IMAGE_HASH"
+    - |
+      if docker buildx imagetools inspect "$MANIFEST_TAG" > /dev/null 2>&1; then
+        echo "Multi-arch manifest $MANIFEST_TAG already exists. Skipping."
+      else
+        docker buildx imagetools create \
+          --tag "$MANIFEST_TAG" \
+          "$CI_DOCKER_IMAGE_BASE/amd64:$CI_IMAGE_HASH" \
+          "$CI_DOCKER_IMAGE_BASE/arm64:$CI_IMAGE_HASH"
+      fi
+
+nydusify-ci-image:
+  stage: ci-image
+  needs:
+    - build-ci-image
+    - create-ci-manifest
+  allow_failure: true
+  tags: ["arch:amd64"]
+  image: registry.ddbuild.io/images/nydus:v98111448-6d7c7d0-v2.3.8-dd
+  variables:
+    DDSIGN_SKIP_SIGNING: "true"
+  script:
+    - |
+      IMAGE="$CI_DOCKER_IMAGE_BASE:$CI_IMAGE_HASH"
+      REPO="${IMAGE%:*}"
+
+      # Resolve a platform manifest digest from the multi-arch index
+      DIGEST=$(crane manifest "$IMAGE" 2>/dev/null | jq -r '(.manifests // [])[0].digest // empty' 2>/dev/null)
+      if [ -n "$DIGEST" ]; then
+        MANIFEST=$(crane manifest "${REPO}@${DIGEST}" 2>/dev/null)
+      else
+        MANIFEST=$(crane manifest "$IMAGE" 2>/dev/null)
+      fi
+
+      # Check if the platform manifest already contains nydus layers
+      if echo "$MANIFEST" | jq -e '[.layers[].mediaType] | any(contains("nydus"))' > /dev/null 2>&1; then
+        echo "$IMAGE is already nydusified. Skipping."
+      else
+        echo "Converting $IMAGE with nydusify..."
+        nydus-convert "$IMAGE" "$IMAGE"
+      fi
 
 build:amd64:
   extends: .build-template
   needs:
-    - job: "build-ci-image: [amd64, x86_64]"
+    - build-ci-image
+    - create-ci-manifest
   variables:
     ARCH: amd64
     TOOLCHAIN_ARCH: x86_64
@@ -83,7 +140,8 @@ build:amd64:
 build:arm64:
   extends: .build-template
   needs:
-    - job: "build-ci-image: [arm64, aarch64]"
+    - build-ci-image
+    - create-ci-manifest
   variables:
     ARCH: arm64
     TOOLCHAIN_ARCH: aarch64
@@ -92,7 +150,7 @@ build:arm64:
 test-rum:amd64:
   extends: .test-rum-template
   needs:
-    - job: "build-ci-image: [amd64, x86_64]"
+    - build-ci-image
     - job: "build:amd64"
   variables:
     ARCH: amd64
@@ -101,8 +159,87 @@ test-rum:amd64:
 test-rum:arm64:
   extends: .test-rum-template
   needs:
-    - job: "build-ci-image: [arm64, aarch64]"
+    - build-ci-image
     - job: "build:arm64"
   variables:
     ARCH: arm64
   tags: ["arch:arm64"]
+
+.upload-template:
+  stage: aws
+  needs:
+    - job: "build:amd64"
+      artifacts: true
+    - job: "build:arm64"
+      artifacts: true
+    - job: "test-rum:amd64"
+    - job: "test-rum:arm64"
+  tags: ["arch:amd64"]
+  image: registry.ddbuild.io/images/aws-cli:2.33.12
+  script:
+    - aws s3 cp upload/ "${S3_PATH}/" --recursive --acl public-read
+    - echo "Uploaded to ${S3_PATH}/"
+  after_script:
+    - |
+      PUBLIC_URL=$(echo "${S3_PATH}" | sed 's|s3://\([^/]*\)/|https://\1.s3.amazonaws.com/|')
+      echo "Public URLs:"
+      for f in upload/*; do
+        echo "  ${PUBLIC_URL}/$(basename $f)"
+      done
+      for f in upload/*; do
+        curl -sSfI "${PUBLIC_URL}/$(basename $f)" && echo "  $(basename $f) verified" || echo "  $(basename $f) not accessible"
+      done
+
+upload-branch-snapshots:
+  extends: .upload-template
+  variables:
+    S3_PATH: s3://rum-auto-instrumentation/httpd/branch-snapshots/pipeline-${CI_PIPELINE_ID}
+  rules:
+    - if: $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+
+upload-snapshots:
+  extends: .upload-template
+  variables:
+    S3_PATH: s3://rum-auto-instrumentation/httpd/snapshots/pipeline-${CI_PIPELINE_ID}
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+upload-snapshots-latest:
+  extends: .upload-template
+  variables:
+    S3_PATH: s3://rum-auto-instrumentation/httpd/snapshots/latest
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+configure-branch-snapshot-expiry:
+  stage: aws
+  tags: ["arch:amd64"]
+  image: registry.ddbuild.io/images/aws-cli:2.33.12
+  script:
+    - |
+      BUCKET=rum-auto-instrumentation
+      RULE_ID=expire-httpd-branch-snapshots
+
+      # Fetch existing lifecycle config (empty array if none)
+      EXISTING=$(aws s3api get-bucket-lifecycle-configuration --bucket "$BUCKET" 2>/dev/null | jq '.Rules // []' || echo '[]')
+
+      # Build the desired rule
+      RULE=$(jq -n '{
+        ID: $id,
+        Filter: { Prefix: "httpd/branch-snapshots/" },
+        Status: "Enabled",
+        Expiration: { Days: 30 }
+      }' --arg id "$RULE_ID")
+
+      # Replace existing rule with same ID, or append
+      UPDATED=$(echo "$EXISTING" | jq --argjson rule "$RULE" '
+        [.[] | select(.ID != $rule.ID)] + [$rule]
+      ')
+
+      aws s3api put-bucket-lifecycle-configuration \
+        --bucket "$BUCKET" \
+        --lifecycle-configuration "{\"Rules\": $UPDATED}"
+
+      echo "Lifecycle rule '$RULE_ID' configured: expire httpd/branch-snapshots/ after 30 days"
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

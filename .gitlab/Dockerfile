@@ -80,7 +80,7 @@ RUN clang --sysroot /sysroot/${ARCH}-none-linux-musl/ -fpie -O2 -fno-omit-frame-
 
 
 # Install dependencies for httpd
-RUN apk add --no-cache expat expat-dev autoconf libtool py-pip gpg gpg-agent pcre-dev pcre2-dev
+RUN apk add --no-cache expat expat-dev autoconf libtool py-pip gpg gpg-agent pcre-dev pcre2-dev zip
 
 # Install Rust toolchain
 RUN apk add --no-cache curl
