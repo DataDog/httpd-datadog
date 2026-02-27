@@ -216,9 +216,11 @@ configure-branch-snapshot-expiry:
   tags: ["arch:amd64"]
   image: registry.ddbuild.io/images/aws-cli:2.33.12
   before_script:
-    - apt-get update -qq && apt-get install -y -qq jq > /dev/null
+    - curl -sL https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-linux-amd64 -o /tmp/jq && chmod +x /tmp/jq
+    - export PATH="/tmp:$PATH"
   script:
     - |
+      export PATH="/tmp:$PATH"
       BUCKET=rum-auto-instrumentation
       RULE_ID=expire-httpd-branch-snapshots
 
