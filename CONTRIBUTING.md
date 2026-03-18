@@ -1,4 +1,4 @@
-# Contributing 
+# Contributing
 
 ## Fork, Clone, Branch and Create your PR
 
@@ -8,7 +8,7 @@ git submodule update --init --recursive
 ```
 
 ### Rules
-- **Follow the pattern of what you already see in the code.**
+- Follow the pattern of what you already see in the code.
 - Follow the coding style.
 
 # Development
@@ -27,37 +27,19 @@ Once you got a valid `python` installation, install all the dependencies with
 pip install -r requirements.txt
 ````
 
-Finally, you need HTTPD source code available. Use [scripts/setup-httpd.py](./scripts/setup-httpd.py) script:
-
-````shell
-python scripts/setup-httpd.py
-
-usage: Download Apache HTTP Server and its dependencies [-h] [-v VERBOSE] [-o OUTPUT] version
-
-positional arguments:
-  version               HTTPD version to download
-
-options:
-  -h, --help            show this help message and exit
-  -v VERBOSE, --verbose VERBOSE
-                        Increase verbosity level
-  -o OUTPUT, --output OUTPUT
-                        Directory where HTTPD will be extracted
-````
-
 ## Compiling
 
 ### Setup `httpd`
 
-In order to build the module you have to configure httpd first:
+In order to build the module you have to configure `httpd` with the [scripts/setup-httpd.py](./scripts/setup-httpd.py) script:
+
 ```sh
 python scripts/setup-httpd.py -o httpd $HTTPD_VERSION
-cd httpd 
-
-./configure --with-included-apr --prefix=$(pwd)/httpd-build --enable-mpms-shared="all" 
+cd httpd
+./configure --with-included-apr --prefix=$(pwd)/httpd-build --enable-mpms-shared="all"
 ```
 
-### Build the module
+### Build the Module
 
 CMake is our build system. If you are not familiar with CMake, read [the tutorial.](https://cmake.org/cmake/help/latest/guide/tutorial/index.html)
 
@@ -75,6 +57,6 @@ It should be as simple as:
 ````sh
 pytest test/integration-test
 ````
-## How to debug
-Run with `-X`
 
+## How to Debug
+Run with `-X`.
