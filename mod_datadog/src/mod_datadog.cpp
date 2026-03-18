@@ -292,7 +292,7 @@ void init_tracer(datadog::tracing::TracerConfig& tracer_conf) {
     // default value when no service name has been provided.
     auto& service_name_metadata =
         validated_config->metadata[datadog::tracing::ConfigName::SERVICE_NAME];
-    service_name_metadata.origin =
+    service_name_metadata.back().origin =
         datadog::tracing::ConfigMetadata::Origin::DEFAULT;
   }
 
