@@ -51,12 +51,9 @@ cmake --build build -j
 ```
 
 ### Testing
-For now there are only integration tests. `docker-compose` orchestrate a runtime environment and the test suite interact with
-It should be as simple as:
 
-````sh
-pytest test/integration-test
-````
+For now there are only [integration tests](./test/integration-test/).
 
 ## How to Debug
+
 Run with `-X`.
