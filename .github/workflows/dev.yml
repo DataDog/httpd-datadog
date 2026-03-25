@@ -80,9 +80,9 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
-          curl -L --fail "https://github.com/DataDog/datadog-ci/releases/latest/download/datadog-ci_linux-x64" --output "/usr/local/bin/datadog-ci"
-          chmod +x /usr/local/bin/datadog-ci
-          datadog-ci coverage upload --format=lcov coverage.lcov
+          curl -L --fail "https://github.com/DataDog/datadog-ci/releases/latest/download/datadog-ci_linux-x64" --output /tmp/datadog-ci
+          chmod +x /tmp/datadog-ci
+          /tmp/datadog-ci coverage upload --format=lcov coverage.lcov
         env:
           DD_API_KEY: ${{ secrets.DD_API_KEY_CI_APP }}
 
