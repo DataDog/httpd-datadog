@@ -76,4 +76,12 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: DataDog/httpd-datadog
           fail_ci_if_error: true
+      - name: Upload coverage to Datadog
+        if: always()
+        continue-on-error: true
+        run: |
+          apk add --no-cache nodejs npm
+          npx @datadog/datadog-ci@latest coverage upload --format=lcov coverage.lcov
+        env:
+          DD_API_KEY: ${{ secrets.DD_API_KEY_CI_APP }}
 
