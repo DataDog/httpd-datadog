@@ -79,9 +79,10 @@ jobs:
       - name: Upload coverage to Datadog
         if: always()
         continue-on-error: true
-        uses: DataDog/coverage-upload-github-action@d2cf302a39c05e0ad22063360a2bf6ce0cc4906c # v1
-        with:
-          api_key: ${{ secrets.DD_API_KEY_CI_APP }}
-          files: coverage.lcov
-          format: lcov
+        run: |
+          curl -L --fail "https://github.com/DataDog/datadog-ci/releases/latest/download/datadog-ci_linux-x64" --output "/usr/local/bin/datadog-ci"
+          chmod +x /usr/local/bin/datadog-ci
+          datadog-ci coverage upload --format=lcov coverage.lcov
+        env:
+          DD_API_KEY: ${{ secrets.DD_API_KEY_CI_APP }}
 
