@@ -1,57 +1,39 @@
-# Prerequisites
-*.d
-
-# Compiled Object files
-*.slo
+*.a
+*.app
+*.bak
+*.dll
+*.dylib
+*.exe
+*.la
+*.lai
+*.lib
 *.lo
+*.log
 *.o
 *.obj
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
-
-# Executables
-*.exe
 *.out
-*.app
-
-.DS_Store
+*.slo
+*.so
 
 .cache/
+.claude/
 .vscode/
 
+.DS_Store
+compile_commands.json
+
+__pycache__/
+build-rum/
 build/
 httpd-*/
-__pycache__/
+httpd/
 venv/
 
-compile_commands.json
-build-rum/
-*.bak
-
-# Integration tests
-test/integration-test/.venv/
-test/integration-test/uv.lock
-test/integration-test/.pytest_cache/
 test/integration-test/.coverage
+test/integration-test/.pytest_cache/
+test/integration-test/.venv/
+test/integration-test/*.conf.tmp
 test/integration-test/htmlcov/
 test/integration-test/log-*/
 test/integration-test/logs/
-test/integration-test/*.conf.tmp
-test/integration-test/*.log
+test/integration-test/uv.lock

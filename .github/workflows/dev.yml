@@ -12,7 +12,7 @@ jobs:
     container:
       image: datadog/docker-library:dd-trace-cpp-ci
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - run: ./scripts/codestyle.sh lint
 
   build:
@@ -21,7 +21,7 @@ jobs:
     container:
       image: datadog/docker-library:httpd-datadog-ci-2.4-cdb3cb2
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           submodules: true
       - name: Add cloned repo as safe
@@ -33,7 +33,7 @@ jobs:
           cmake --build build -j --verbose
           cmake --install build --prefix dist
       - name: Export library
-        uses:  actions/upload-artifact@v4
+        uses:  actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: mod_datadog_artifact
           path: dist/lib/mod_datadog.so
@@ -51,12 +51,12 @@ jobs:
       DD_CIVISIBILITY_AGENTLESS_ENABLED: true
       LLVM_PROFILE_FILE: /tmp/httpd.%p-%m.profraw
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - run: |
           pip install -r requirements.txt --break-system-packages
           pip install ddtrace --break-system-packages
       - name: Import library from build job
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: mod_datadog_artifact
           path: dist/lib
@@ -69,7 +69,7 @@ jobs:
           llvm-profdata merge -sparse /tmp/*.profraw -o /tmp/default.profdata 
           llvm-cov export dist/lib/mod_datadog.so -format=lcov -instr-profile=/tmp/default.profdata -ignore-filename-regex=/httpd/ > coverage.lcov
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
         with:
           files: coverage.lcov
           name: github-actions
