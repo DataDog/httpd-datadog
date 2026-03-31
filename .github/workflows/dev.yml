@@ -71,8 +71,6 @@ jobs:
           llvm-profdata merge -sparse /tmp/*.profraw -o /tmp/default.profdata
           llvm-cov export dist/lib/mod_datadog.so -format=lcov -instr-profile=/tmp/default.profdata -ignore-filename-regex=/httpd/ > coverage.lcov
       - name: Upload code coverage report to Datadog
-        run: |
-          apk add --no-cache nodejs npm
-          npx @datadog/datadog-ci@latest coverage upload --format=lcov coverage.lcov
+        run: npx @datadog/datadog-ci@latest coverage upload --format=lcov coverage.lcov
         env:
           DD_API_KEY: ${{ secrets.DD_API_KEY_CI_APP }}
