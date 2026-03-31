@@ -70,17 +70,7 @@ jobs:
         run: |
           llvm-profdata merge -sparse /tmp/*.profraw -o /tmp/default.profdata
           llvm-cov export dist/lib/mod_datadog.so -format=lcov -instr-profile=/tmp/default.profdata -ignore-filename-regex=/httpd/ > coverage.lcov
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
-        with:
-          files: coverage.lcov
-          name: github-actions
-          token: ${{ secrets.CODECOV_TOKEN }}
-          slug: DataDog/httpd-datadog
-          fail_ci_if_error: true
-      - name: Upload coverage to Datadog
-        if: always()
-        continue-on-error: true
+      - name: Upload code coverage report to Datadog
         run: |
           apk add --no-cache nodejs npm
           npx @datadog/datadog-ci@latest coverage upload --format=lcov coverage.lcov
