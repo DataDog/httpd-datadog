@@ -78,9 +78,11 @@ RUN clang --sysroot /sysroot/${ARCH}-none-linux-musl/ -fpie -O2 -fno-omit-frame-
     ar rcs /sysroot/${ARCH}-none-linux-musl/usr/lib/libglibc_compat.a /tmp/glibc_compat.o && \
     rm /tmp/glibc_compat.o
 
-
 # Install dependencies for httpd
-RUN apk add --no-cache expat expat-dev autoconf libtool py-pip gpg gpg-agent pcre-dev pcre2-dev zip
+RUN apk add --no-cache autoconf expat expat-dev gpg gpg-agent libtool pcre-dev pcre2-dev py-pip zip
+
+# Install dependencies for code coverage upload
+RUN apk add --no-cache nodejs npm
 
 # Install Rust toolchain
 RUN apk add --no-cache curl
@@ -90,7 +92,7 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -yq --d
 RUN cargo install --locked cbindgen --version 0.26.0 \
   && ln -s ~/.cargo/bin/cbindgen /usr/local/bin/cbindgen
 
-# Install uv (fast Python package manager)
+# Install uv (Python package manager)
 COPY --from=ghcr.io/astral-sh/uv:0.9.28 /uv /usr/local/bin/uv
 
 # Setup httpd 2.4 source

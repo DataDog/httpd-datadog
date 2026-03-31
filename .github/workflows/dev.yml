@@ -19,7 +19,8 @@ jobs:
     needs: format
     runs-on: ubuntu-22.04
     container:
-      image: datadog/docker-library:httpd-datadog-ci-2.4-cdb3cb2
+      # See in Makefile where this image comes from.
+      image: datadog/docker-library:httpd-datadog-ci-28219c0ef3e00f1e3d5afcab61a73a5e9bd2a9b957d7545556711cce2a6262cd
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -43,7 +44,8 @@ jobs:
     needs: build
     runs-on: ubuntu-22.04
     container:
-      image: datadog/docker-library:httpd-datadog-ci-2.4-cdb3cb2
+      # See in Makefile where this image comes from.
+      image: datadog/docker-library:httpd-datadog-ci-28219c0ef3e00f1e3d5afcab61a73a5e9bd2a9b957d7545556711cce2a6262cd
     env:
       DD_ENV: ci
       DD_API_KEY: ${{ secrets.DD_API_KEY_CI_APP }}
@@ -66,7 +68,7 @@ jobs:
         run: pytest --ddtrace test/integration-test --module-path dist/lib/mod_datadog.so --bin-path /httpd/httpd-build/bin/apachectl --log-dir $(pwd)/logs -m ci
       - name: Generate code coverage
         run: |
-          llvm-profdata merge -sparse /tmp/*.profraw -o /tmp/default.profdata 
+          llvm-profdata merge -sparse /tmp/*.profraw -o /tmp/default.profdata
           llvm-cov export dist/lib/mod_datadog.so -format=lcov -instr-profile=/tmp/default.profdata -ignore-filename-regex=/httpd/ > coverage.lcov
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de # v5.5.2
@@ -76,4 +78,3 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: DataDog/httpd-datadog
           fail_ci_if_error: true
-
