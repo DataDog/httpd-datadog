@@ -73,6 +73,7 @@ build-ci-image:
           --push \
           --file .gitlab/Dockerfile \
           .
+        echo "Image $IMAGE_TAG built for $ARCH."
       fi
   artifacts:
     reports:
