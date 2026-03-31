@@ -51,7 +51,7 @@ if (HTTPD_DATADOG_ENABLE_RUM)
   )
 
   execute_process (
-    COMMAND cargo pkgid --package inject-browser-sdk --manifest-path "${injectbrowsersdk_SOURCE_DIR}/Cargo.toml"
+    COMMAND cargo pkgid --package inject-browser-sdk --manifest-path "${INJECT_BROWSER_SDK_DIR}/Cargo.toml"
     OUTPUT_VARIABLE RUM_SDK_INJECTOR_PKGID
   )
 

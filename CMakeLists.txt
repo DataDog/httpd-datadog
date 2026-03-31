@@ -28,15 +28,26 @@ include(cmake/deps/fmt.cmake)
 if (HTTPD_DATADOG_ENABLE_RUM)
   include(FetchContent)
 
-  set(INJECT_BROWSER_SDK_GIT_REF "49245e1c6ed8275990bb910125187e0aaad09e3d" CACHE STRING
-      "Git tag/branch for inject-browser-sdk")
-
+  # Corrosion builds the Rust FFI crate and generates the C/C++ header via cbindgen.
   FetchContent_Declare(
-    InjectBrowserSDK
-    GIT_REPOSITORY https://github.com/DataDog/inject-browser-sdk.git
-    GIT_TAG        ${INJECT_BROWSER_SDK_GIT_REF}
+    Corrosion
+    GIT_REPOSITORY https://github.com/corrosion-rs/corrosion.git
+    GIT_TAG v0.5
   )
-  FetchContent_MakeAvailable(InjectBrowserSDK)
+  FetchContent_MakeAvailable(Corrosion)
+
+  set(INJECT_BROWSER_SDK_DIR "${CMAKE_SOURCE_DIR}/deps/inject-browser-sdk" CACHE PATH
+      "Path to inject-browser-sdk source")
+
+  corrosion_import_crate(MANIFEST_PATH "${INJECT_BROWSER_SDK_DIR}/Cargo.toml"
+                         CRATES inject-browser-sdk-ffi
+                         CRATE_TYPES staticlib)
+
+  corrosion_experimental_cbindgen(
+    TARGET inject_browser_sdk_ffi
+    HEADER_NAME injectbrowsersdk.h
+    FLAGS --config "${CMAKE_SOURCE_DIR}/deps/cbindgen.toml"
+  )
 
   include(cmake/deps/rapidjson.cmake)
 endif ()

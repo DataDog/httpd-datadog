@@ -17,8 +17,12 @@ To run these tests, you must:
 For more information: https://www.datadoghq.com/private-beta/rum-sdk-auto-injection/
 """
 import os
+import asyncio
+import threading
+from queue import Queue
 import requests
 import pytest
+from aiohttp import web
 from conftest import Server, AgentSession
 from helper import (
     relpath,
@@ -180,6 +184,85 @@ def test_rum_configuration_validation(server: Server, log_dir: str, module_path:
 
     with make_temporary_configuration(valid_config, module_path) as conf_path:
         assert server.check_configuration(conf_path)
+
+
+class AioHTTPServer:
+    def __init__(self, app, host, port) -> None:
+        self._thread = None
+        self._stop = asyncio.Event()
+        self._host = host
+        self._port = port
+        self._app = app
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+
+    def internal_run(self) -> None:
+        runner = web.AppRunner(self._app)
+        self.loop.run_until_complete(runner.setup())
+        site = web.TCPSite(runner, self._host, self._port)
+        self.loop.run_until_complete(site.start())
+        self.loop.run_until_complete(self._stop.wait())
+        self.loop.run_until_complete(self._app.cleanup())
+        self.loop.close()
+
+    def run(self) -> None:
+        self._thread = threading.Thread(target=self.internal_run)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self.loop.call_soon_threadsafe(self._stop.set)
+
+
+@pytest.mark.requires_rum
+def test_rum_proxy_injection_pending_header(server: Server, agent: AgentSession, log_dir: str, module_path: str) -> None:
+    """
+    Verify that proxied requests include the x-datadog-rum-injection-pending
+    request header when RUM is enabled. This signals upstream servers that
+    the proxy will handle RUM SDK injection.
+    """
+    host = "127.0.0.1"
+    port = 8082
+    q = Queue()
+
+    async def upstream_handler(request):
+        q.put(dict(request.headers))
+        return web.Response(
+            body="<html><head><title>Upstream</title></head><body>Hello</body></html>",
+            content_type="text/html",
+        )
+
+    app = web.Application()
+    app.add_routes([web.get("/", upstream_handler)])
+    http_server = AioHTTPServer(app, host, port)
+    http_server.run()
+
+    config = {
+        "path": relpath("conf/rum_proxy.conf"),
+        "var": {"upstream_url": f"http://{host}:{port}"},
+    }
+
+    conf_path = os.path.join(log_dir, "httpd.conf")
+    save_configuration(make_configuration(config, log_dir, module_path), conf_path)
+
+    assert server.check_configuration(conf_path)
+    assert server.load_configuration(conf_path)
+
+    r = requests.get(server.make_url("/proxy"), timeout=2)
+    assert r.status_code == 200
+
+    http_server.stop()
+    server.stop(conf_path)
+
+    # Verify the upstream server received the injection-pending header
+    assert not q.empty()
+    upstream_headers = q.get()
+    assert upstream_headers.get("x-datadog-rum-injection-pending") == "1", (
+        f"Expected x-datadog-rum-injection-pending header to be '1' but got "
+        f"'{upstream_headers.get('x-datadog-rum-injection-pending')}'"
+    )
+
+    # Verify RUM SDK was injected into the response
+    assert_rum_injected(r)
 
 
 # Helper functions
