@@ -17,8 +17,6 @@ To run these tests, you must:
 For more information: https://www.datadoghq.com/private-beta/rum-sdk-auto-injection/
 """
 import os
-import asyncio
-import threading
 from queue import Queue
 import requests
 import pytest
@@ -28,6 +26,8 @@ from helper import (
     relpath,
     make_configuration,
     save_configuration,
+    AioHTTPServer,
+    free_port,
 )
 
 
@@ -186,42 +186,15 @@ def test_rum_configuration_validation(server: Server, log_dir: str, module_path:
         assert server.check_configuration(conf_path)
 
 
-class AioHTTPServer:
-    def __init__(self, app, host, port) -> None:
-        self._thread = None
-        self._stop = asyncio.Event()
-        self._host = host
-        self._port = port
-        self._app = app
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.loop)
-
-    def internal_run(self) -> None:
-        runner = web.AppRunner(self._app)
-        self.loop.run_until_complete(runner.setup())
-        site = web.TCPSite(runner, self._host, self._port)
-        self.loop.run_until_complete(site.start())
-        self.loop.run_until_complete(self._stop.wait())
-        self.loop.run_until_complete(self._app.cleanup())
-        self.loop.close()
-
-    def run(self) -> None:
-        self._thread = threading.Thread(target=self.internal_run)
-        self._thread.start()
-
-    def stop(self) -> None:
-        self.loop.call_soon_threadsafe(self._stop.set)
-
-
 @pytest.mark.requires_rum
 def test_rum_proxy_injection_pending_header(server: Server, agent: AgentSession, log_dir: str, module_path: str) -> None:
     """
     Verify that proxied requests include the x-datadog-rum-injection-pending
-    request header when RUM is enabled. This signals upstream servers that
-    the proxy will handle RUM SDK injection.
+    request header when RUM is enabled, and that it is absent when RUM is
+    disabled for a specific location.
     """
     host = "127.0.0.1"
-    port = 8082
+    port = free_port()
     q = Queue()
 
     async def upstream_handler(request):
@@ -247,22 +220,30 @@ def test_rum_proxy_injection_pending_header(server: Server, agent: AgentSession,
     assert server.check_configuration(conf_path)
     assert server.load_configuration(conf_path)
 
+    # Test 1: RUM enabled path — header should be present
     r = requests.get(server.make_url("/proxy"), timeout=2)
     assert r.status_code == 200
 
-    http_server.stop()
-    server.stop(conf_path)
-
-    # Verify the upstream server received the injection-pending header
-    assert not q.empty()
-    upstream_headers = q.get()
-    assert upstream_headers.get("x-datadog-rum-injection-pending") == "1", (
+    upstream_headers_rum = q.get(timeout=2)
+    assert upstream_headers_rum.get("x-datadog-rum-injection-pending") == "1", (
         f"Expected x-datadog-rum-injection-pending header to be '1' but got "
-        f"'{upstream_headers.get('x-datadog-rum-injection-pending')}'"
+        f"'{upstream_headers_rum.get('x-datadog-rum-injection-pending')}'"
+    )
+    # Header should not leak into the client response
+    assert "x-datadog-rum-injection-pending" not in r.headers
+    assert_rum_injected(r)
+
+    # Test 2: RUM disabled path — header should be absent
+    r_no_rum = requests.get(server.make_url("/proxy-no-rum"), timeout=2)
+    assert r_no_rum.status_code == 200
+
+    upstream_headers_no_rum = q.get(timeout=2)
+    assert "x-datadog-rum-injection-pending" not in upstream_headers_no_rum, (
+        "x-datadog-rum-injection-pending should not be sent when RUM is disabled"
     )
 
-    # Verify RUM SDK was injected into the response
-    assert_rum_injected(r)
+    http_server.stop()
+    assert server.stop(conf_path)
 
 
 # Helper functions
