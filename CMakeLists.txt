@@ -36,10 +36,17 @@ if (HTTPD_DATADOG_ENABLE_RUM)
   )
   FetchContent_MakeAvailable(Corrosion)
 
-  set(INJECT_BROWSER_SDK_DIR "${CMAKE_SOURCE_DIR}/deps/inject-browser-sdk" CACHE PATH
-      "Path to inject-browser-sdk source")
+  set(INJECT_BROWSER_SDK_GIT_REF "d6f95968037ecfa28fc1b52ef1648a0efac727ba" CACHE STRING
+      "Git ref for inject-browser-sdk")
 
-  corrosion_import_crate(MANIFEST_PATH "${INJECT_BROWSER_SDK_DIR}/Cargo.toml"
+  FetchContent_Declare(
+    InjectBrowserSDK
+    GIT_REPOSITORY https://github.com/DataDog/inject-browser-sdk.git
+    GIT_TAG        ${INJECT_BROWSER_SDK_GIT_REF}
+  )
+  FetchContent_Populate(InjectBrowserSDK)
+
+  corrosion_import_crate(MANIFEST_PATH "${injectbrowsersdk_SOURCE_DIR}/Cargo.toml"
                          CRATES inject-browser-sdk-ffi
                          CRATE_TYPES staticlib)
 

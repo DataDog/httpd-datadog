@@ -6,12 +6,17 @@ Building requires the CI Docker image (Alpine with LLVM toolchain, httpd source,
 The image is auto-detected for the host architecture (arm64/amd64).
 
 ```bash
+make vendor                # Pre-fetch RUM deps (corrosion, inject-browser-sdk) to vendor/
 make docker-build          # Build mod_datadog.so (no RUM)
-make docker-build-rum      # Build mod_datadog.so with RUM enabled
+make docker-build-rum      # Build mod_datadog.so with RUM (runs vendor automatically)
 make docker-test           # Build + run all integration tests (non-RUM)
 make docker-test-rum       # Build + run RUM integration tests
 make docker-shell          # Interactive shell in the CI image
 ```
+
+RUM builds use vendored dependencies (`vendor/` directory) so Docker doesn't need
+network access to private repos. `make docker-build-rum` runs `make vendor` automatically.
+To refresh vendored deps: `rm -rf vendor && make vendor`.
 
 ### Running specific tests inside Docker
 

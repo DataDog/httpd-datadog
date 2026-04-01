@@ -22,16 +22,22 @@ else
 endif
 CI_IMAGE ?= registry.ddbuild.io/ci/httpd-datadog/$(CI_ARCH):$(CI_DOCKER_IMAGE_HASH)
 
+VENDOR_DIR ?= $(PWD)/vendor
 DOCKER_RUN = docker run --rm -v $(PWD):/src -w /src $(CI_IMAGE)
 DOCKER_RUN_IT = docker run --rm -it -v $(PWD):/src -w /src $(CI_IMAGE)
 DOCKER_GIT_SAFE = git config --global --add safe.directory /src
 DOCKER_CMAKE_ARGS = -DCMAKE_TOOLCHAIN_FILE=/sysroot/$(TOOLCHAIN_ARCH)-none-linux-musl/Toolchain.cmake -DHTTPD_SRC_DIR=/httpd -DHTTPD_DATADOG_PATCH_AWAY_LIBC=1
+DOCKER_VENDOR_ARGS = -DFETCHCONTENT_SOURCE_DIR_CORROSION=/src/vendor/corrosion -DFETCHCONTENT_SOURCE_DIR_INJECTBROWSERSDK=/src/vendor/inject-browser-sdk
 
 .PHONY: replicate-ci-image-for-github
 replicate-ci-image-for-github:
 	docker pull $(CI_IMAGE_FROM_GITLAB)
 	docker tag $(CI_IMAGE_FROM_GITLAB) $(CI_IMAGE_IN_PUBLIC_REPO_FOR_GITHUB)
 	docker push $(CI_IMAGE_IN_PUBLIC_REPO_FOR_GITHUB)
+
+.PHONY: vendor
+vendor:
+	cmake -DVENDOR_DIR=$(VENDOR_DIR) -P scripts/prefetch-deps.cmake
 
 .PHONY: docker-shell
 docker-shell:
@@ -44,9 +50,9 @@ docker-build:
 		cmake --build build -j'
 
 .PHONY: docker-build-rum
-docker-build-rum:
+docker-build-rum: vendor
 	$(DOCKER_RUN) sh -c '$(DOCKER_GIT_SAFE) && \
-		cmake -B build-rum $(DOCKER_CMAKE_ARGS) -DHTTPD_DATADOG_ENABLE_RUM=ON -G Ninja . && \
+		cmake -B build-rum $(DOCKER_CMAKE_ARGS) $(DOCKER_VENDOR_ARGS) -DHTTPD_DATADOG_ENABLE_RUM=ON -G Ninja . && \
 		cmake --build build-rum -j'
 
 .PHONY: docker-test
