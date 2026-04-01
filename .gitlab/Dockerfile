@@ -82,10 +82,9 @@ RUN clang --sysroot /sysroot/${ARCH}-none-linux-musl/ -fpie -O2 -fno-omit-frame-
 RUN apk add --no-cache autoconf expat expat-dev gpg gpg-agent libtool pcre-dev pcre2-dev py-pip zip
 
 # Install dependencies for code coverage upload
-RUN apk add --no-cache nodejs npm
+RUN apk add --no-cache curl jq
 
 # Install Rust toolchain
-RUN apk add --no-cache curl
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -yq --default-toolchain 1.73.0 \
   && ln -s ~/.cargo/bin/cargo /usr/bin/cargo
 
