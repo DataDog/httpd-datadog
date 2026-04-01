@@ -14,9 +14,9 @@ make docker-test-rum       # Build + run RUM integration tests
 make docker-shell          # Interactive shell in the CI image
 ```
 
-RUM builds use vendored dependencies (`vendor/` directory) so Docker doesn't need
+RUM builds use vendored dependencies (`.deps/` directory) so Docker doesn't need
 network access to private repos. `make docker-build-rum` runs `make vendor` automatically.
-To refresh vendored deps: `rm -rf vendor && make vendor`.
+To refresh vendored deps: `rm -rf .deps && make vendor`.
 
 ### Running specific tests inside Docker
 

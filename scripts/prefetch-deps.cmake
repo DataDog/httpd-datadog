@@ -17,7 +17,7 @@ cmake_minimum_required(VERSION 3.14)
 include(FetchContent)
 
 if(NOT VENDOR_DIR)
-  set(VENDOR_DIR "${CMAKE_CURRENT_LIST_DIR}/../vendor")
+  set(VENDOR_DIR "${CMAKE_CURRENT_LIST_DIR}/../.deps")
 endif()
 
 get_filename_component(VENDOR_DIR "${VENDOR_DIR}" ABSOLUTE)

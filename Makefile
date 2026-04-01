@@ -22,12 +22,12 @@ else
 endif
 CI_IMAGE ?= registry.ddbuild.io/ci/httpd-datadog/$(CI_ARCH):$(CI_DOCKER_IMAGE_HASH)
 
-VENDOR_DIR ?= $(PWD)/vendor
+VENDOR_DIR ?= $(PWD)/.deps
 DOCKER_RUN = docker run --rm -v $(PWD):/src -w /src $(CI_IMAGE)
 DOCKER_RUN_IT = docker run --rm -it -v $(PWD):/src -w /src $(CI_IMAGE)
 DOCKER_GIT_SAFE = git config --global --add safe.directory /src
 DOCKER_CMAKE_ARGS = -DCMAKE_TOOLCHAIN_FILE=/sysroot/$(TOOLCHAIN_ARCH)-none-linux-musl/Toolchain.cmake -DHTTPD_SRC_DIR=/httpd -DHTTPD_DATADOG_PATCH_AWAY_LIBC=1
-DOCKER_VENDOR_ARGS = -DFETCHCONTENT_SOURCE_DIR_CORROSION=/src/vendor/corrosion -DFETCHCONTENT_SOURCE_DIR_INJECTBROWSERSDK=/src/vendor/inject-browser-sdk
+DOCKER_VENDOR_ARGS = -DFETCHCONTENT_SOURCE_DIR_CORROSION=/src/.deps/corrosion -DFETCHCONTENT_SOURCE_DIR_INJECTBROWSERSDK=/src/.deps/inject-browser-sdk
 
 .PHONY: replicate-ci-image-for-github
 replicate-ci-image-for-github:

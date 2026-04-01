@@ -28,7 +28,7 @@ build/
 httpd-*/
 httpd/
 logs/
-vendor/
+.deps/
 venv/
 
 test/integration-test/.coverage
