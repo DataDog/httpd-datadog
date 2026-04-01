@@ -6,7 +6,7 @@ jobs:
     runs-on: ubuntu-22.04
     container:
       # See in Makefile where this image comes from.
-      image: datadog/docker-library:httpd-datadog-ci-28219c0ef3e00f1e3d5afcab61a73a5e9bd2a9b957d7545556711cce2a6262cd
+      image: datadog/docker-library:httpd-datadog-ci-bf4e353dec1442b7864fddc3c2618b8541eed4c04fe2ab88f2a4c2ebea61df91
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
