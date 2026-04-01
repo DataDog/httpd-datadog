@@ -100,7 +100,6 @@ class AioHTTPServer:
         self._port = port
         self._app = app
         self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.loop)
 
     def internal_run(self) -> None:
         runner = web.AppRunner(self._app)

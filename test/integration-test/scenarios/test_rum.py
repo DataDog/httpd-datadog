@@ -241,6 +241,7 @@ def test_rum_proxy_injection_pending_header(server: Server, agent: AgentSession,
     assert "x-datadog-rum-injection-pending" not in upstream_headers_no_rum, (
         "x-datadog-rum-injection-pending should not be sent when RUM is disabled"
     )
+    assert_rum_not_injected(r_no_rum)
 
     http_server.stop()
     assert server.stop(conf_path)
