@@ -62,7 +62,7 @@ docker-test: docker-build
 		uv run pytest scenarios \
 			--module-path /src/build/mod_datadog/mod_datadog.so \
 			--bin-path /httpd/httpd-build/bin/apachectl \
-			--log-dir /src/logs -v'
+			--log-dir /src/logs -m "not requires_rum" -v'
 
 .PHONY: docker-test-rum
 docker-test-rum: docker-build-rum
