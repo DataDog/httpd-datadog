@@ -1,9 +1,14 @@
+import asyncio
 import os
+import socket
+import threading
 from datetime import datetime
 from string import Template
 from pathlib import Path
 import tempfile
 from contextlib import contextmanager
+
+from aiohttp import web
 
 
 def relpath(p: str) -> str:
@@ -76,3 +81,39 @@ def make_temporary_configuration(config, module_path):
     with tempfile.NamedTemporaryFile() as f:
         save_configuration(make_configuration(config, "", module_path), f.name)
         yield f.name
+
+
+def free_port() -> int:
+    """Return an available TCP port on localhost."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+class AioHTTPServer:
+    """Lightweight aiohttp server that runs in a background thread."""
+
+    def __init__(self, app, host, port) -> None:
+        self._thread = None
+        self._stop = asyncio.Event()
+        self._host = host
+        self._port = port
+        self._app = app
+        self.loop = asyncio.new_event_loop()
+
+    def internal_run(self) -> None:
+        runner = web.AppRunner(self._app)
+        self.loop.run_until_complete(runner.setup())
+        site = web.TCPSite(runner, self._host, self._port)
+        self.loop.run_until_complete(site.start())
+        self.loop.run_until_complete(self._stop.wait())
+        self.loop.run_until_complete(self._app.cleanup())
+        self.loop.close()
+
+    def run(self) -> None:
+        self._thread = threading.Thread(target=self.internal_run)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self.loop.call_soon_threadsafe(self._stop.set)
+        self._thread.join()

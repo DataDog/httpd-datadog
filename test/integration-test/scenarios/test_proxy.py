@@ -3,65 +3,27 @@
 Test related to proxy
 """
 from queue import Queue
-import time
 import requests
-import pytest
 import os
-from helper import relpath, make_configuration, save_configuration
-
 from aiohttp import web
-import asyncio
-import threading
-
-
-class AioHTTPServer:
-    def __init__(self, app, host, port) -> None:
-        self._thread = None
-        self._stop = asyncio.Event()
-        self._host = host
-        self._port = port
-        self._app = app
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.loop)
-
-    def internal_run(self) -> None:
-        runner = web.AppRunner(self._app)
-        self.loop.run_until_complete(runner.setup())
-        site = web.TCPSite(runner, self._host, self._port)
-        self.loop.run_until_complete(site.start())
-        self.loop.run_until_complete(self._stop.wait())
-        self.loop.run_until_complete(self._app.cleanup())
-        self.loop.close()
-
-    def run(self) -> None:
-        self._thread = threading.Thread(target=self.internal_run)
-        self._thread.start()
-
-    def stop(self) -> None:
-        self.loop.call_soon_threadsafe(self._stop.set)
+from helper import relpath, make_configuration, save_configuration, AioHTTPServer, free_port
 
 
 def test_http_proxy(server, agent, log_dir, module_path):
     """
     Verify proxified HTTP requests propagate tracing context
     """
-
-    # TODO: support `with` syntax
-    def make_temporary_http_server(host: str, port: int):
-        q = Queue()
-
-        async def index(request):
-            q.put(request.headers)
-            return web.Response(text="Hello, Dog!")
-
-        app = web.Application()
-        app.add_routes([web.get("/", index)])
-
-        return q, AioHTTPServer(app, host, port)
-
     host = "127.0.0.1"
-    port = 8081
-    queue, http_server = make_temporary_http_server(host, port)
+    port = free_port()
+    q = Queue()
+
+    async def index(request):
+        q.put(request.headers)
+        return web.Response(text="Hello, Dog!")
+
+    app = web.Application()
+    app.add_routes([web.get("/", index)])
+    http_server = AioHTTPServer(app, host, port)
     http_server.run()
 
     config = {
@@ -79,13 +41,15 @@ def test_http_proxy(server, agent, log_dir, module_path):
     assert r.status_code == 200
 
     http_server.stop()
-    server.stop(conf_path)
+    assert server.stop(conf_path)
 
-    assert not queue.empty()
+    assert not q.empty()
 
-    upstream_headers = queue.get()
+    upstream_headers = q.get()
     assert "x-datadog-trace-id" in upstream_headers
     assert "x-datadog-parent-id" in upstream_headers
+    # Non-RUM build should not leak injection-pending header
+    assert "x-datadog-rum-injection-pending" not in upstream_headers
 
     traces = agent.get_traces(timeout=5)
     assert len(traces) == 1

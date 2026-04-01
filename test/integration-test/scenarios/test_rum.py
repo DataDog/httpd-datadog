@@ -17,13 +17,17 @@ To run these tests, you must:
 For more information: https://www.datadoghq.com/private-beta/rum-sdk-auto-injection/
 """
 import os
+from queue import Queue
 import requests
 import pytest
+from aiohttp import web
 from conftest import Server, AgentSession
 from helper import (
     relpath,
     make_configuration,
     save_configuration,
+    AioHTTPServer,
+    free_port,
 )
 
 
@@ -180,6 +184,67 @@ def test_rum_configuration_validation(server: Server, log_dir: str, module_path:
 
     with make_temporary_configuration(valid_config, module_path) as conf_path:
         assert server.check_configuration(conf_path)
+
+
+@pytest.mark.requires_rum
+def test_rum_proxy_injection_pending_header(server: Server, agent: AgentSession, log_dir: str, module_path: str) -> None:
+    """
+    Verify that proxied requests include the x-datadog-rum-injection-pending
+    request header when RUM is enabled, and that it is absent when RUM is
+    disabled for a specific location.
+    """
+    host = "127.0.0.1"
+    port = free_port()
+    q = Queue()
+
+    async def upstream_handler(request):
+        q.put(dict(request.headers))
+        return web.Response(
+            body="<html><head><title>Upstream</title></head><body>Hello</body></html>",
+            content_type="text/html",
+        )
+
+    app = web.Application()
+    app.add_routes([web.get("/", upstream_handler)])
+    http_server = AioHTTPServer(app, host, port)
+    http_server.run()
+
+    config = {
+        "path": relpath("conf/rum_proxy.conf"),
+        "var": {"upstream_url": f"http://{host}:{port}"},
+    }
+
+    conf_path = os.path.join(log_dir, "httpd.conf")
+    save_configuration(make_configuration(config, log_dir, module_path), conf_path)
+
+    assert server.check_configuration(conf_path)
+    assert server.load_configuration(conf_path)
+
+    # Test 1: RUM enabled path — header should be present
+    r = requests.get(server.make_url("/proxy"), timeout=2)
+    assert r.status_code == 200
+
+    upstream_headers_rum = q.get(timeout=2)
+    assert upstream_headers_rum.get("x-datadog-rum-injection-pending") == "1", (
+        f"Expected x-datadog-rum-injection-pending header to be '1' but got "
+        f"'{upstream_headers_rum.get('x-datadog-rum-injection-pending')}'"
+    )
+    # Header should not leak into the client response
+    assert "x-datadog-rum-injection-pending" not in r.headers
+    assert_rum_injected(r)
+
+    # Test 2: RUM disabled path — header should be absent
+    r_no_rum = requests.get(server.make_url("/proxy-no-rum"), timeout=2)
+    assert r_no_rum.status_code == 200
+
+    upstream_headers_no_rum = q.get(timeout=2)
+    assert "x-datadog-rum-injection-pending" not in upstream_headers_no_rum, (
+        "x-datadog-rum-injection-pending should not be sent when RUM is disabled"
+    )
+    assert_rum_not_injected(r_no_rum)
+
+    http_server.stop()
+    assert server.stop(conf_path)
 
 
 # Helper functions
