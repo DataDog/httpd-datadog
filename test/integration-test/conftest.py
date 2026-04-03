@@ -290,12 +290,13 @@ def pytest_sessionstart(session: pytest.Session) -> None:
 
     log_dir = session.config.getoption("--log-dir")
     if log_dir:
+        log_dir = os.path.abspath(log_dir)
         if os.path.exists(log_dir):
             # TODO: Warn old logs will be removed and manage error
             shutil.rmtree(log_dir)
         os.mkdir(log_dir)
     else:
-        log_dir = tempfile.mkdtemp(prefix="log-httpd-tests-", dir=".")
+        log_dir = tempfile.mkdtemp(prefix="log-httpd-tests-")
 
     session.config.log_dir = log_dir
 
