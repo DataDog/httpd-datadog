@@ -41,6 +41,16 @@ cd httpd
 ./configure --with-included-apr --prefix=$(pwd)/httpd-build --enable-mpms-shared="all"
 ```
 
+### Install Rust
+
+The RUM variant requires Rust to build:
+
+```sh
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+Relaunch your terminal (or do `source ~/.cargo/env`).
+
 ### Build the Module
 
 CMake is our build system. If you are not familiar with CMake, read [the tutorial.](https://cmake.org/cmake/help/latest/guide/tutorial/index.html)

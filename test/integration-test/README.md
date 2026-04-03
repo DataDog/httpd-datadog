@@ -4,17 +4,6 @@ Integration tests for Apache httpd Datadog module using pytest.
 
 ## Quick Start
 
-### Prerequisites
-
-For local testing, install Apache development packages:
-```bash
-# Ubuntu/Debian
-sudo apt-get install apache2 apache2-dev libapr1-dev libaprutil1-dev
-
-# macOS
-brew install httpd
-```
-
 ### Setup
 
 ```bash
@@ -24,19 +13,25 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # Install test dependencies
 cd test/integration-test && uv sync
 
-# Run all tests (auto-builds module variants as needed)
-uv run pytest --bin-path=/usr/sbin/apachectl -v
+# Run smoke tests (auto-builds module variants as needed)
+uv run pytest --bin-path=../../httpd/httpd-build/bin/apachectl -v -m smoke
+
+# Run CI tests
+uv run pytest --bin-path=../../httpd/httpd-build/bin/apachectl -v -m ci
 
 # Run RUM tests only (auto-builds with RUM support)
-uv run pytest --bin-path=/usr/sbin/apachectl -m requires_rum -v
+uv run pytest --bin-path=../../httpd/httpd-build/bin/apachectl -v -m requires_rum
+
+# Run all tests (auto-builds module variants as needed)
+uv run pytest --bin-path=../../httpd/httpd-build/bin/apachectl -v
 
 # Run with pre-built module (skip auto-build)
-uv run pytest --bin-path=/usr/sbin/apachectl \
-  --module-path=/path/to/mod_datadog.so -v
+uv run pytest --bin-path=../../httpd/httpd-build/bin/apachectl -v \
+  --module-path=/path/to/mod_datadog.so
 
 # Run specific test file
-uv run pytest --bin-path=/usr/sbin/apachectl \
-  scenarios/test_rum.py -v
+uv run pytest --bin-path=../../httpd/httpd-build/bin/apachectl -v \
+  scenarios/test_rum.py
 ```
 
 **Auto-Build Behavior:**

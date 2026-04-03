@@ -47,6 +47,9 @@ def _build_module(
         # Configure
         print(f"   Configuring CMake...")
         cmake_args = ["cmake", "-B", str(build_dir)]
+        httpd_src_dir = project_root / "httpd"
+        if httpd_src_dir.exists():
+            cmake_args.append(f"-DHTTPD_SRC_DIR={httpd_src_dir}")
         if enable_rum:
             cmake_args.append("-DHTTPD_DATADOG_ENABLE_RUM=ON")
         cmake_args.append(".")
@@ -97,7 +100,7 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
     # Find project root
     test_dir = Path(__file__).parent.parent
-    project_root = test_dir.parent.parent
+    project_root = test_dir.parent.parent.resolve()
 
     if not (project_root / "CMakeLists.txt").exists():
         pytest.exit("Cannot find project root CMakeLists.txt", returncode=1)
@@ -131,14 +134,9 @@ def pytest_sessionstart(session: pytest.Session) -> None:
         session.config.module_path = explicit_path
         return
 
-    # Otherwise, use the auto-built modules
-    # Default to non-RUM module if both were built
-    if session.config._module_paths.get("no_rum"):
-        session.config.module_path = str(session.config._module_paths["no_rum"])
-    elif session.config._module_paths.get("rum"):
-        session.config.module_path = str(session.config._module_paths["rum"])
-    else:
-        pytest.exit("No module path available", returncode=1)
+    # Module paths are populated later in pytest_collection_modifyitems (after collection).
+    # Set a placeholder here; pytest_runtest_setup will assign the correct variant per test.
+    session.config.module_path = None
 
 
 def pytest_runtest_setup(item: pytest.Item) -> None:
