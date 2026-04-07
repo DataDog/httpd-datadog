@@ -82,7 +82,7 @@ DatadogRum On
 
 ## Docker Testing
 
-```bash
+```sh
 docker run --rm -v "$PWD:/workspace" -w /workspace \
   datadog/docker-library:httpd-datadog-ci-2.4-cdb3cb2 \
   sh -c "
@@ -100,12 +100,12 @@ docker run --rm -v "$PWD:/workspace" -w /workspace \
 **RUM build fails:** Check CMake output for missing dependencies (inject-browser-sdk is fetched automatically via CMake FetchContent)
 
 **Tests hang:** Port 8136 in use
-```bash
+```sh
 lsof -i :8136
 ```
 
 **Module issues:**
-```bash
+```sh
 ldd /path/to/mod_datadog.so
 apachectl -f /path/to/config.conf -t
 ```
