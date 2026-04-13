@@ -48,6 +48,7 @@ jobs:
       TEST_OPTIMIZATION_API_KEY: ${{ secrets.DD_API_KEY_CI_APP }}
       DD_API_KEY: ${{ secrets.DD_API_KEY_CI_APP }}
     permissions:
+      contents: read
       id-token: write
     with:
       library: cpp_httpd
