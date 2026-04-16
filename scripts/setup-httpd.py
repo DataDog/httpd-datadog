@@ -72,6 +72,9 @@ def main():
     args = parser.parse_args()
 
     args.output = os.path.abspath(args.output)
+    if os.path.exists(args.output):
+        print(f"Output directory '{args.output}' already exists. Please remove it before running this script.")
+        return 1
 
     if not subprocess.run("git -v", shell=True, stdout=subprocess.DEVNULL):
         print("git command must be available")

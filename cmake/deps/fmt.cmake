@@ -13,6 +13,6 @@ if(NOT fmt_POPULATED)
   set(BUILD_SHARED_LIBS OFF)
   set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-  add_subdirectory(${fmt_SOURCE_DIR} EXCLUDE_FROM_ALL)
+  add_subdirectory(${fmt_SOURCE_DIR} ${fmt_BINARY_DIR} EXCLUDE_FROM_ALL)
 endif()
 
