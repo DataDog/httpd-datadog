@@ -72,7 +72,7 @@ jobs:
           llvm-cov export dist/lib/mod_datadog.so -format=lcov -instr-profile=/tmp/default.profdata -ignore-filename-regex=/httpd/ > coverage.lcov
       - name: Upload code coverage report to Datadog
         # The commit hash comes from the release of the action: https://github.com/DataDog/coverage-upload-github-action/releases
-        uses: DataDog/coverage-upload-github-action@f80c0e6e64e5d20d6af251ba00361eeaebc7ff99 # v1.0.2
+        uses: DataDog/coverage-upload-github-action@6c4bd935248daa6f0ef94e3e6ba71ad5ad079998 # v1.0.3
         with:
           api_key: ${{ secrets.DD_API_KEY_CI_APP }}
           files: coverage.lcov
