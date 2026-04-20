@@ -30,7 +30,11 @@ devcontainer-image:
       HASH=$(for f in $FILES; do echo "--- $f ---"; cat "$f"; done | sha256sum | cut -d ' ' -f 1)
     - IMAGE_TAG="$CI_DOCKER_IMAGE_BASE/$ARCH:$HASH"
     - echo "CI_IMAGE_HASH=$HASH" >> ci-image.env
-    - echo "DEVCONTAINER_IMAGE=$CI_DOCKER_IMAGE_BASE:$HASH" >> ci-image.env
+    # Export DEVCONTAINER_IMAGE as the arch-specific ref so each consumer
+    # runs on its own arch's image without blocking on create-ci-manifest.
+    # Downstream jobs scope their `needs:` to their matrix slot to pick up
+    # the matching value.
+    - echo "DEVCONTAINER_IMAGE=$IMAGE_TAG" >> ci-image.env
     - |
       if crane manifest "$IMAGE_TAG" >/dev/null 2>&1; then
         echo "Image $IMAGE_TAG already exists. Skipping build."
@@ -61,8 +65,10 @@ devcontainer-image:
       dotenv: ci-image.env
 
 # Combine the per-arch (nydusified) images into a single multi-arch manifest
-# at $CI_DOCKER_IMAGE_BASE:$CI_IMAGE_HASH so downstream jobs can pin by tag
-# alone and let the runtime pick the right arch.
+# at $CI_DOCKER_IMAGE_BASE:$CI_IMAGE_HASH so external consumers (other
+# pipelines, GitHub Actions) can pin by the bare tag. Internal build/test
+# jobs reference the per-arch image directly via $DEVCONTAINER_IMAGE and
+# don't wait for this job.
 create-ci-manifest:
   stage: ci-image
   needs:
@@ -70,7 +76,7 @@ create-ci-manifest:
   tags: ["arch:amd64"]
   image: $NYDUS_DD_IMAGE
   script:
-    - MANIFEST_TAG="$DEVCONTAINER_IMAGE"
+    - MANIFEST_TAG="$CI_DOCKER_IMAGE_BASE:$CI_IMAGE_HASH"
     - |
       if crane manifest "$MANIFEST_TAG" >/dev/null 2>&1 && \
          docker buildx imagetools inspect "$MANIFEST_TAG" --format '{{json .Manifest}}' 2>/dev/null | jq -e '.manifests | length >= 2' >/dev/null 2>&1; then
