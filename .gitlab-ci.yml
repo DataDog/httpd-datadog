@@ -124,7 +124,12 @@ test-rum:arm64:
 test-integration:amd64:
   extends: .test-integration-template
   needs:
-    - devcontainer-image
+    - job: devcontainer-image
+      parallel:
+        matrix:
+          - ARCH: amd64
+            TOOLCHAIN_ARCH: x86_64
+      artifacts: true
     - job: "build:amd64"
   variables:
     ARCH: amd64
@@ -133,7 +138,12 @@ test-integration:amd64:
 test-integration:arm64:
   extends: .test-integration-template
   needs:
-    - devcontainer-image
+    - job: devcontainer-image
+      parallel:
+        matrix:
+          - ARCH: arm64
+            TOOLCHAIN_ARCH: aarch64
+      artifacts: true
     - job: "build:arm64"
   variables:
     ARCH: arm64
