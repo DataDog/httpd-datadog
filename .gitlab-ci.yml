@@ -58,7 +58,7 @@ build-ci-image:
         TOOLCHAIN_ARCH: aarch64
   script:
     - |
-      FILES=$(find .gitlab/Dockerfile deps/nginx-datadog/build_env/ scripts/setup-httpd.py -type f | sort)
+      FILES=$(find .devcontainer/Dockerfile deps/nginx-datadog/build_env/ scripts/setup-httpd.py -type f | sort)
       HASH=$(for f in $FILES; do echo "--- $f ---"; cat "$f"; done | sha256sum | cut -d ' ' -f 1)
     - echo "CI_IMAGE_HASH=$HASH" >> ci-image.env
     - IMAGE_TAG="$CI_DOCKER_IMAGE_BASE/$ARCH:$HASH"
@@ -71,7 +71,7 @@ build-ci-image:
           --platform linux/$ARCH \
           --build-arg ARCH=$TOOLCHAIN_ARCH \
           --push \
-          --file .gitlab/Dockerfile \
+          --file .devcontainer/Dockerfile \
           .
         echo "Image $IMAGE_TAG built for $ARCH."
       fi
