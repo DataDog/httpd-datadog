@@ -103,7 +103,8 @@ int on_fixups(request_rec* r, Tracer& g_tracer, module* datadog_module) {
 
     auto* dir_conf = static_cast<conf::Directory*>(
         ap_get_module_config(main_r->per_dir_config, datadog_module));
-    if (dir_conf == nullptr || !dir_conf->tracing_enabled) return DECLINED;
+    if (dir_conf == nullptr || !dir_conf->tracing_enabled.value_or(true))
+      return DECLINED;
 
     void* data = ap_get_module_config(main_r->request_config, datadog_module);
     if (!data) return DECLINED;
@@ -116,7 +117,8 @@ int on_fixups(request_rec* r, Tracer& g_tracer, module* datadog_module) {
     // Trace request
     auto* dir_conf = static_cast<datadog::conf::Directory*>(
         ap_get_module_config(r->per_dir_config, datadog_module));
-    if (dir_conf == nullptr || !dir_conf->tracing_enabled) return DECLINED;
+    if (dir_conf == nullptr || !dir_conf->tracing_enabled.value_or(true))
+      return DECLINED;
 
     void* data = ap_get_module_config(r->request_config, datadog_module);
     if (data)
@@ -127,7 +129,7 @@ int on_fixups(request_rec* r, Tracer& g_tracer, module* datadog_module) {
 
     // In case we fail to use the inbound span, then, start a new trace
     // ¯\_(ツ)_/¯ There is nothing we can do about it.
-    if (dir_conf->trust_inbound_span) {
+    if (dir_conf->trust_inbound_span.value_or(true)) {
       auto extracted_span =
           g_tracer.extract_span(utils::HeaderReader(r->headers_in), options);
       if (auto error = extracted_span.if_error()) {

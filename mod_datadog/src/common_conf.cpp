@@ -15,10 +15,15 @@ void* merge_dir_conf(apr_pool_t* pool, void* base, void* add) {
   void* final_ptr = init_dir_conf(pool, nullptr);
   auto conf = static_cast<Directory*>(final_ptr);
 
-  conf->tracing_enabled = child->tracing_enabled || parent->tracing_enabled;
+  // Tri-state merge: an explicit directive in the child scope wins over
+  // whatever the parent had (including the default). Only fall back to the
+  // parent when the child never set the directive.
+  conf->tracing_enabled =
+      child->tracing_enabled ? child->tracing_enabled : parent->tracing_enabled;
 
-  conf->trust_inbound_span =
-      child->trust_inbound_span || parent->trust_inbound_span;
+  conf->trust_inbound_span = child->trust_inbound_span
+                                 ? child->trust_inbound_span
+                                 : parent->trust_inbound_span;
 
   conf->tags = child->tags;
   auto tmp = parent->tags;
