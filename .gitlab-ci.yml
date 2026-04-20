@@ -53,6 +53,18 @@ stages:
   script:
     - cd $CI_PROJECT_DIR/test/integration-test && uv sync && uv run pytest scenarios --module-path=$CI_PROJECT_DIR/artifacts/$ARCH/mod_datadog.so --bin-path=/httpd/httpd-build/bin/apachectl --log-dir=$CI_PROJECT_DIR/logs -m requires_rum -v
 
+# Runs the full integration-test suite via the same entrypoint local
+# developers use (`make test-integration` -> run-integration-tests.sh).
+# The script is pointed at the artifact from build:$ARCH via MODULE_PATH so
+# the cmake build is skipped and only pytest runs.
+.test-integration-template:
+  stage: test
+  image: $DEVCONTAINER_IMAGE
+  variables:
+    MODULE_PATH: $CI_PROJECT_DIR/artifacts/$ARCH/mod_datadog.so
+  script:
+    - .devcontainer/run-integration-tests.sh
+
 build:amd64:
   extends: .build-template
   needs:
@@ -109,6 +121,24 @@ test-rum:arm64:
     ARCH: arm64
   tags: ["arch:arm64"]
 
+test-integration:amd64:
+  extends: .test-integration-template
+  needs:
+    - devcontainer-image
+    - job: "build:amd64"
+  variables:
+    ARCH: amd64
+  tags: ["arch:amd64"]
+
+test-integration:arm64:
+  extends: .test-integration-template
+  needs:
+    - devcontainer-image
+    - job: "build:arm64"
+  variables:
+    ARCH: arm64
+  tags: ["arch:arm64"]
+
 .upload-template:
   stage: aws
   needs:
@@ -118,6 +148,8 @@ test-rum:arm64:
       artifacts: true
     - job: "test-rum:amd64"
     - job: "test-rum:arm64"
+    - job: "test-integration:amd64"
+    - job: "test-integration:arm64"
   tags: ["arch:amd64"]
   image: registry.ddbuild.io/images/aws-cli:2.33.12
   script:
