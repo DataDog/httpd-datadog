@@ -1,0 +1,89 @@
+---
+# Build pipeline for the devcontainer image used by every downstream CI
+# job that compiles mod_datadog or runs integration tests. The image is
+# content-addressed: its tag is a sha256 over the Dockerfile plus the
+# upstream toolchain files it pulls from, so the jobs here only rebuild
+# when one of those inputs actually changes.
+
+variables:
+  NYDUS_DD_IMAGE: registry.ddbuild.io/images/nydus:v98111448-6d7c7d0-v2.3.8-dd
+
+# Build (or reuse) the devcontainer image per arch: hash the inputs, skip if
+# the registry already has the tag, otherwise buildx build + push + nydusify
+# in-place. The nydusified per-arch images are then stitched into a
+# multi-arch manifest by `create-ci-manifest` below.
+devcontainer-image:
+  stage: ci-image
+  tags: ["arch:$ARCH"]
+  image: $NYDUS_DD_IMAGE
+  variables:
+    DDSIGN_SKIP_SIGNING: "true"
+  parallel:
+    matrix:
+      - ARCH: amd64
+        TOOLCHAIN_ARCH: x86_64
+      - ARCH: arm64
+        TOOLCHAIN_ARCH: aarch64
+  script:
+    - |
+      FILES=$(find .devcontainer/Dockerfile deps/nginx-datadog/build_env/ scripts/setup-httpd.py -type f | sort)
+      HASH=$(for f in $FILES; do echo "--- $f ---"; cat "$f"; done | sha256sum | cut -d ' ' -f 1)
+    - IMAGE_TAG="$CI_DOCKER_IMAGE_BASE/$ARCH:$HASH"
+    - echo "CI_IMAGE_HASH=$HASH" >> ci-image.env
+    # Export DEVCONTAINER_IMAGE as the arch-specific ref so each consumer
+    # runs on its own arch's image without blocking on create-ci-manifest.
+    # Downstream jobs scope their `needs:` to their matrix slot to pick up
+    # the matching value.
+    - echo "DEVCONTAINER_IMAGE=$IMAGE_TAG" >> ci-image.env
+    - |
+      if crane manifest "$IMAGE_TAG" >/dev/null 2>&1; then
+        echo "Image $IMAGE_TAG already exists. Skipping build."
+      else
+        docker buildx build \
+          --tag "$IMAGE_TAG" \
+          --platform linux/$ARCH \
+          --build-arg ARCH=$TOOLCHAIN_ARCH \
+          --push \
+          --file .devcontainer/Dockerfile \
+          .
+        echo "Image $IMAGE_TAG built for $ARCH."
+      fi
+    - |
+      MANIFEST=$(crane manifest "$IMAGE_TAG" 2>/dev/null) || {
+        echo "WARNING: failed to fetch manifest for $IMAGE_TAG — skipping nydus conversion"
+        exit 0
+      }
+      if echo "$MANIFEST" | jq -e '[.layers[].mediaType] | any(contains("nydus"))' >/dev/null 2>&1; then
+        echo "$IMAGE_TAG already has nydus layers. Skipping conversion."
+      else
+        echo "Converting $IMAGE_TAG to nydus in place..."
+        nydus-convert "$IMAGE_TAG" "$IMAGE_TAG" || \
+          echo "WARNING: nydus conversion failed — continuing without nydus layers"
+      fi
+  artifacts:
+    reports:
+      dotenv: ci-image.env
+
+# Combine the per-arch (nydusified) images into a single multi-arch manifest
+# at $CI_DOCKER_IMAGE_BASE:$CI_IMAGE_HASH so external consumers (other
+# pipelines, GitHub Actions) can pin by the bare tag. Internal build/test
+# jobs reference the per-arch image directly via $DEVCONTAINER_IMAGE and
+# don't wait for this job.
+create-ci-manifest:
+  stage: ci-image
+  needs:
+    - devcontainer-image
+  tags: ["arch:amd64"]
+  image: $NYDUS_DD_IMAGE
+  script:
+    - MANIFEST_TAG="$CI_DOCKER_IMAGE_BASE:$CI_IMAGE_HASH"
+    - |
+      if crane manifest "$MANIFEST_TAG" >/dev/null 2>&1 && \
+         docker buildx imagetools inspect "$MANIFEST_TAG" --format '{{json .Manifest}}' 2>/dev/null | jq -e '.manifests | length >= 2' >/dev/null 2>&1; then
+        echo "Multi-arch manifest $MANIFEST_TAG already exists. Skipping."
+      else
+        docker buildx imagetools create \
+          --tag "$MANIFEST_TAG" \
+          "$CI_DOCKER_IMAGE_BASE/amd64:$CI_IMAGE_HASH" \
+          "$CI_DOCKER_IMAGE_BASE/arm64:$CI_IMAGE_HASH"
+      fi

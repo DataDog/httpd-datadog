@@ -1,0 +1,10 @@
+{
+  "name": "httpd-datadog",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "..",
+    "args": {
+      "ARCH": "${localEnv:ARCH:x86_64}"
+    }
+  }
+}

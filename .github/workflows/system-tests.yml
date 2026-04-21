@@ -19,7 +19,10 @@ jobs:
   build-artifacts:
     runs-on: ubuntu-22.04
     container:
-      # See in Makefile where this image comes from.
+      # Public mirror of the GitLab-built image defined in .devcontainer/Dockerfile
+      # (hash-computed by .gitlab/devcontainer.yml). Bump by copying a newer tag
+      # via `docker pull registry.ddbuild.io/ci/httpd-datadog:<hash> && docker tag
+      # ... && docker push datadog/docker-library:httpd-datadog-ci-<hash>`.
       image: datadog/docker-library:httpd-datadog-ci-28219c0ef3e00f1e3d5afcab61a73a5e9bd2a9b957d7545556711cce2a6262cd
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1

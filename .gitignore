@@ -23,10 +23,13 @@
 compile_commands.json
 
 __pycache__/
+build-container/
 build-rum/
 build/
+dist-container/
 httpd-*/
 httpd/
+/logs/
 venv/
 
 test/integration-test/.coverage

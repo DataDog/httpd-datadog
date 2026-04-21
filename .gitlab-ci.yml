@@ -1,3 +1,6 @@
+include:
+  - local: .gitlab/devcontainer.yml
+
 variables:
   CI_DOCKER_IMAGE_BASE: registry.ddbuild.io/ci/httpd-datadog
   GIT_SUBMODULE_STRATEGY: recursive
@@ -20,7 +23,7 @@ stages:
 # Template jobs (hidden, reusable)
 .build-template:
   stage: build
-  image: $CI_DOCKER_IMAGE_BASE:$CI_IMAGE_HASH
+  image: $DEVCONTAINER_IMAGE
   script:
     - git config --global --add safe.directory $PWD
     - >
@@ -42,97 +45,23 @@ stages:
 
 .test-rum-template:
   stage: test
-  image: $CI_DOCKER_IMAGE_BASE:$CI_IMAGE_HASH
+  image: $DEVCONTAINER_IMAGE
+  # Same `--flag=VALUE` reasoning as run-integration-tests.sh: pytest's early
+  # arg parser runs before conftest registers these custom options, so the
+  # space-separated form gets read as a positional test path and skips
+  # conftest.
   script:
-    - cd $CI_PROJECT_DIR/test/integration-test && uv sync && uv run pytest scenarios --module-path $CI_PROJECT_DIR/artifacts/$ARCH/mod_datadog.so --bin-path /httpd/httpd-build/bin/apachectl --log-dir $CI_PROJECT_DIR/logs -m requires_rum -v
-
-build-ci-image:
-  stage: ci-image
-  tags: ["arch:$ARCH"]
-  image: registry.ddbuild.io/images/docker:27.3.1
-  parallel:
-    matrix:
-      - ARCH: amd64
-        TOOLCHAIN_ARCH: x86_64
-      - ARCH: arm64
-        TOOLCHAIN_ARCH: aarch64
-  script:
-    - |
-      FILES=$(find .gitlab/Dockerfile deps/nginx-datadog/build_env/ scripts/setup-httpd.py -type f | sort)
-      HASH=$(for f in $FILES; do echo "--- $f ---"; cat "$f"; done | sha256sum | cut -d ' ' -f 1)
-    - echo "CI_IMAGE_HASH=$HASH" >> ci-image.env
-    - IMAGE_TAG="$CI_DOCKER_IMAGE_BASE/$ARCH:$HASH"
-    - |
-      if docker buildx imagetools inspect "$IMAGE_TAG" > /dev/null 2>&1; then
-        echo "Image $IMAGE_TAG already exists. Skipping build."
-      else
-        docker buildx build \
-          --tag $IMAGE_TAG \
-          --platform linux/$ARCH \
-          --build-arg ARCH=$TOOLCHAIN_ARCH \
-          --push \
-          --file .gitlab/Dockerfile \
-          .
-        echo "Image $IMAGE_TAG built for $ARCH."
-      fi
-  artifacts:
-    reports:
-      dotenv: ci-image.env
-
-create-ci-manifest:
-  stage: ci-image
-  needs:
-    - build-ci-image
-  tags: ["arch:amd64"]
-  image: registry.ddbuild.io/images/docker:27.3.1
-  script:
-    - MANIFEST_TAG="$CI_DOCKER_IMAGE_BASE:$CI_IMAGE_HASH"
-    - |
-      if docker buildx imagetools inspect "$MANIFEST_TAG" > /dev/null 2>&1; then
-        echo "Multi-arch manifest $MANIFEST_TAG already exists. Skipping."
-      else
-        docker buildx imagetools create \
-          --tag "$MANIFEST_TAG" \
-          "$CI_DOCKER_IMAGE_BASE/amd64:$CI_IMAGE_HASH" \
-          "$CI_DOCKER_IMAGE_BASE/arm64:$CI_IMAGE_HASH"
-      fi
-
-nydusify-ci-image:
-  stage: ci-image
-  needs:
-    - build-ci-image
-    - create-ci-manifest
-  allow_failure: true
-  tags: ["arch:amd64"]
-  image: registry.ddbuild.io/images/nydus:v98111448-6d7c7d0-v2.3.8-dd
-  variables:
-    DDSIGN_SKIP_SIGNING: "true"
-  script:
-    - |
-      IMAGE="$CI_DOCKER_IMAGE_BASE:$CI_IMAGE_HASH"
-      REPO="${IMAGE%:*}"
-
-      # Resolve a platform manifest digest from the multi-arch index
-      DIGEST=$(crane manifest "$IMAGE" 2>/dev/null | jq -r '(.manifests // [])[0].digest // empty' 2>/dev/null)
-      if [ -n "$DIGEST" ]; then
-        MANIFEST=$(crane manifest "${REPO}@${DIGEST}" 2>/dev/null)
-      else
-        MANIFEST=$(crane manifest "$IMAGE" 2>/dev/null)
-      fi
-
-      # Check if the platform manifest already contains nydus layers
-      if echo "$MANIFEST" | jq -e '[.layers[].mediaType] | any(contains("nydus"))' > /dev/null 2>&1; then
-        echo "$IMAGE is already nydusified. Skipping."
-      else
-        echo "Converting $IMAGE with nydusify..."
-        nydus-convert "$IMAGE" "$IMAGE"
-      fi
+    - cd $CI_PROJECT_DIR/test/integration-test && uv sync && uv run pytest scenarios --module-path=$CI_PROJECT_DIR/artifacts/$ARCH/mod_datadog.so --bin-path=/httpd/httpd-build/bin/apachectl --log-dir=$CI_PROJECT_DIR/logs -m requires_rum -v
 
 build:amd64:
   extends: .build-template
   needs:
-    - build-ci-image
-    - create-ci-manifest
+    - job: devcontainer-image
+      parallel:
+        matrix:
+          - ARCH: amd64
+            TOOLCHAIN_ARCH: x86_64
+      artifacts: true
   variables:
     ARCH: amd64
     TOOLCHAIN_ARCH: x86_64
@@ -141,8 +70,12 @@ build:amd64:
 build:arm64:
   extends: .build-template
   needs:
-    - build-ci-image
-    - create-ci-manifest
+    - job: devcontainer-image
+      parallel:
+        matrix:
+          - ARCH: arm64
+            TOOLCHAIN_ARCH: aarch64
+      artifacts: true
   variables:
     ARCH: arm64
     TOOLCHAIN_ARCH: aarch64
@@ -151,7 +84,12 @@ build:arm64:
 test-rum:amd64:
   extends: .test-rum-template
   needs:
-    - build-ci-image
+    - job: devcontainer-image
+      parallel:
+        matrix:
+          - ARCH: amd64
+            TOOLCHAIN_ARCH: x86_64
+      artifacts: true
     - job: "build:amd64"
   variables:
     ARCH: amd64
@@ -160,7 +98,12 @@ test-rum:amd64:
 test-rum:arm64:
   extends: .test-rum-template
   needs:
-    - build-ci-image
+    - job: devcontainer-image
+      parallel:
+        matrix:
+          - ARCH: arm64
+            TOOLCHAIN_ARCH: aarch64
+      artifacts: true
     - job: "build:arm64"
   variables:
     ARCH: arm64
