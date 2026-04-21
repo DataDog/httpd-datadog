@@ -101,7 +101,7 @@ int on_fixups(request_rec* r, Tracer& g_tracer, module* datadog_module) {
     //       subrequests/internal redirection?
     request_rec* main_r = r->prev ? r->prev : r->main;
 
-    auto* dir_conf = static_cast<conf::Directory*>(
+    auto* dir_conf = static_cast<datadog::conf::Directory*>(
         ap_get_module_config(main_r->per_dir_config, datadog_module));
     if (dir_conf == nullptr || !dir_conf->tracing_enabled.value_or(true))
       return DECLINED;
