@@ -94,11 +94,11 @@ class Server:
             # Continue anyway - sometimes apachectl returns non-zero but Apache starts
             # We'll verify below with HTTP requests
 
-        # Probe readiness with a bare TCP connect rather than an HTTP GET —
-        # mod_datadog's `DatadogTracing Off` inside a <Location> is silently
-        # dropped by the config merge in common_conf.cpp (child Off is ORed
-        # with parent On), so any HTTP probe would emit a trace and pollute
-        # the per-test agent session.
+        # Probe readiness with a bare TCP connect rather than an HTTP GET:
+        # HTTP probes run through mod_datadog's handlers and can emit a
+        # trace into the per-test agent session, contaminating assertions
+        # tests make about per-request trace counts. A raw TCP connect
+        # doesn't reach any request handler, so it stays out of traces.
         import socket
         max_wait = 5
         start_time = time.time()
