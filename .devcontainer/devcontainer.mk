@@ -13,11 +13,21 @@ dev-image:
 
 else
 
+# Fail fast with actionable guidance if deps/nginx-datadog isn't populated —
+# without this check, the DEV_CONTAINER_HASH `find` below emits warnings and
+# silently hashes an incomplete input set, producing a tag that doesn't
+# match what CI computed and triggering confusing pull-then-fall-back-to-
+# build behavior.
+ifeq ($(wildcard $(DEV_CONTAINER_REPO_ROOT)/deps/nginx-datadog/build_env/Toolchain.cmake.x86_64),)
+$(error deps/nginx-datadog submodule is not initialized. Run: git submodule update --init --recursive)
+endif
+
 DEV_CONTAINER_REGISTRY ?= registry.ddbuild.io
 DEV_CONTAINER_IMAGE_NAME ?= $(DEV_CONTAINER_REGISTRY)/ci/httpd-datadog
 
-# Match the hash computation in .gitlab-ci.yml (build-ci-image job): sha256 over
-# .devcontainer/Dockerfile, deps/nginx-datadog/build_env/, and scripts/setup-httpd.py.
+# Match the hash computation in .gitlab/devcontainer.yml (devcontainer-image
+# job): sha256 over .devcontainer/Dockerfile, deps/nginx-datadog/build_env/,
+# and scripts/setup-httpd.py.
 DEV_CONTAINER_HASH := $(shell cd $(DEV_CONTAINER_REPO_ROOT) && \
   find .devcontainer/Dockerfile deps/nginx-datadog/build_env/ scripts/setup-httpd.py -type f | sort | \
   while IFS= read -r f; do echo "--- $$f ---"; cat "$$f"; done | \
@@ -83,13 +93,10 @@ dev-image:
 dev-shell: dev-image
 	docker run --rm -it \
 		-v $(DEV_CONTAINER_REPO_ROOT):$(DEV_CONTAINER_REPO_ROOT) \
+		$(DEV_CONTAINER_GIT_MOUNT) \
 		-w $(DEV_CONTAINER_REPO_ROOT) \
 		$(DEV_CONTAINER_IMAGE) \
 		/bin/sh
-
-.PHONY: test-integration
-test-integration: dev-image
-	$(DEVCONTAINER_RUN) .devcontainer/run-integration-tests.sh
 
 .PHONY: dev-image-clean
 dev-image-clean:
@@ -102,3 +109,10 @@ dev-image-clean:
 	fi
 
 endif
+
+# Always-available targets: $(DEVCONTAINER_RUN) is empty inside the container
+# (the script runs directly) and `docker run …` outside, so one definition
+# works in both modes.
+.PHONY: test-integration
+test-integration: dev-image
+	$(DEVCONTAINER_RUN) .devcontainer/run-integration-tests.sh

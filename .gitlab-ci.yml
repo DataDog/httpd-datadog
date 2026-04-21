@@ -46,8 +46,12 @@ stages:
 .test-rum-template:
   stage: test
   image: $DEVCONTAINER_IMAGE
+  # Same `--flag=VALUE` reasoning as run-integration-tests.sh: pytest's early
+  # arg parser runs before conftest registers these custom options, so the
+  # space-separated form gets read as a positional test path and skips
+  # conftest.
   script:
-    - cd $CI_PROJECT_DIR/test/integration-test && uv sync && uv run pytest scenarios --module-path $CI_PROJECT_DIR/artifacts/$ARCH/mod_datadog.so --bin-path /httpd/httpd-build/bin/apachectl --log-dir $CI_PROJECT_DIR/logs -m requires_rum -v
+    - cd $CI_PROJECT_DIR/test/integration-test && uv sync && uv run pytest scenarios --module-path=$CI_PROJECT_DIR/artifacts/$ARCH/mod_datadog.so --bin-path=/httpd/httpd-build/bin/apachectl --log-dir=$CI_PROJECT_DIR/logs -m requires_rum -v
 
 build:amd64:
   extends: .build-template
