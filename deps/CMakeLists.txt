@@ -8,7 +8,7 @@ add_subdirectory(dd-trace-cpp)
 set_target_properties(dd-trace-cpp-objects PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 if (HTTPD_DATADOG_ENABLE_RUM)
-  if (NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/inject-browser-sdk/CMakeLists.txt)
+  if (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/inject-browser-sdk/CMakeLists.txt")
     message(FATAL_ERROR
       "deps/inject-browser-sdk submodule is not initialized. "
       "Run: git submodule update --init --recursive")

@@ -4,9 +4,14 @@ FetchContent_Declare(
   fmt
   GIT_REPOSITORY https://github.com/fmtlib/fmt.git
   GIT_TAG        10.2.1
-  EXCLUDE_FROM_ALL
 )
 
-set(BUILD_SHARED_LIBS OFF)
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-FetchContent_MakeAvailable(fmt)
+FetchContent_GetProperties(fmt)
+if(NOT fmt_POPULATED)
+  FetchContent_Populate(fmt)
+
+  set(BUILD_SHARED_LIBS OFF)
+  set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+  add_subdirectory(${fmt_SOURCE_DIR} ${fmt_BINARY_DIR} EXCLUDE_FROM_ALL)
+endif()
