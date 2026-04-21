@@ -27,6 +27,8 @@ build-rum/
 build/
 httpd-*/
 httpd/
+logs/
+.deps/
 venv/
 
 test/integration-test/.coverage

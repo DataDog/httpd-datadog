@@ -50,21 +50,7 @@ if (HTTPD_DATADOG_ENABLE_RUM)
       rapidjson
   )
 
-  execute_process (
-    COMMAND cargo pkgid --package inject-browser-sdk --manifest-path "${injectbrowsersdk_SOURCE_DIR}/Cargo.toml"
-    OUTPUT_VARIABLE RUM_SDK_INJECTOR_PKGID
-  )
-
-  string(REGEX REPLACE ".*@" "" _VERSION_STRING_CANDIDATE "${RUM_SDK_INJECTOR_PKGID}")
-  if(_VERSION_STRING_CANDIDATE MATCHES "([0-9]+\\.[0-9]+\\.[0-9]+)")
-    set(RUM_SDK_INJECTOR_VERSION "${CMAKE_MATCH_1}")
-  else()
-    message(FATAL_ERROR "Could not extract a maj.min.patch version from string: '${_VERSION_STRING_CANDIDATE}' derived from PkgID: '${RUM_SDK_INJECTOR_PKGID}'")
-  endif()
-  string(STRIP "${RUM_SDK_INJECTOR_VERSION}" RUM_SDK_INJECTOR_VERSION)
-
-  unset(_VERSION_STRING_CANDIDATE)
-  unset(RUM_SDK_INJECTOR_PKGID)
+  set(RUM_SDK_INJECTOR_VERSION "${INJECT_BROWSER_SDK_VERSION}")
 endif ()
 
 configure_file(src/version.cpp.in ${CMAKE_BINARY_DIR}/version.cpp)

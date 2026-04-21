@@ -28,8 +28,8 @@ include(cmake/deps/fmt.cmake)
 if (HTTPD_DATADOG_ENABLE_RUM)
   include(FetchContent)
 
-  set(INJECT_BROWSER_SDK_GIT_REF "49245e1c6ed8275990bb910125187e0aaad09e3d" CACHE STRING
-      "Git tag/branch for inject-browser-sdk")
+  set(INJECT_BROWSER_SDK_GIT_REF "758c1aba91950461f6a617c626930a7ba8da3014" CACHE STRING
+      "Git ref for inject-browser-sdk")
 
   FetchContent_Declare(
     InjectBrowserSDK
