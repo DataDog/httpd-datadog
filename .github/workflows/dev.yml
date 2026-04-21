@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-22.04
     container:
       # See in Makefile where this image comes from.
-      image: datadog/docker-library:httpd-datadog-ci-28219c0ef3e00f1e3d5afcab61a73a5e9bd2a9b957d7545556711cce2a6262cd
+      image: datadog/docker-library:httpd-datadog-ci-bf4e353dec1442b7864fddc3c2618b8541eed4c04fe2ab88f2a4c2ebea61df91
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -45,7 +45,7 @@ jobs:
     runs-on: ubuntu-22.04
     container:
       # See in Makefile where this image comes from.
-      image: datadog/docker-library:httpd-datadog-ci-28219c0ef3e00f1e3d5afcab61a73a5e9bd2a9b957d7545556711cce2a6262cd
+      image: datadog/docker-library:httpd-datadog-ci-bf4e353dec1442b7864fddc3c2618b8541eed4c04fe2ab88f2a4c2ebea61df91
     env:
       DD_ENV: ci
       DD_API_KEY: ${{ secrets.DD_API_KEY_CI_APP }}
@@ -71,6 +71,9 @@ jobs:
           llvm-profdata merge -sparse /tmp/*.profraw -o /tmp/default.profdata
           llvm-cov export dist/lib/mod_datadog.so -format=lcov -instr-profile=/tmp/default.profdata -ignore-filename-regex=/httpd/ > coverage.lcov
       - name: Upload code coverage report to Datadog
-        run: npx @datadog/datadog-ci@latest coverage upload --format=lcov coverage.lcov
-        env:
-          DD_API_KEY: ${{ secrets.DD_API_KEY_CI_APP }}
+        # The commit hash comes from the release of the action: https://github.com/DataDog/coverage-upload-github-action/releases
+        uses: DataDog/coverage-upload-github-action@6c4bd935248daa6f0ef94e3e6ba71ad5ad079998 # v1.0.3
+        with:
+          api_key: ${{ secrets.DD_API_KEY_CI_APP }}
+          files: coverage.lcov
+          format: lcov
