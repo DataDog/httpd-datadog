@@ -2,11 +2,13 @@
 
 ## Fork, Clone, Branch and Create your PR
 
-When cloning the repo, you have to initialize the submodules:
+When cloning the repo, initialize the submodules you need. For a standard build:
 
 ```sh
-git submodule update --init --recursive
+git submodule update --init deps/dd-trace-cpp deps/nginx-datadog
 ```
+
+The `deps/inject-browser-sdk` submodule is a private repo and is only required when building with `-DHTTPD_DATADOG_ENABLE_RUM=ON`. If you have access, use `--recursive` instead to pull it as well.
 
 ### Rules
 - Follow the pattern of what you already see in the code.
