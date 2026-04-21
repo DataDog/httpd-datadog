@@ -1,0 +1,8 @@
+.git/
+build/
+build-rum/
+!build-rum/_deps/injectbrowsersdk-src/
+httpd/
+test/integration-test/.venv/
+test/integration-test/.pytest_cache/
+test/integration-test/__pycache__/
