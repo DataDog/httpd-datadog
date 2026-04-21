@@ -9,10 +9,10 @@ jobs:
       image: datadog/docker-library:httpd-datadog-ci-28219c0ef3e00f1e3d5afcab61a73a5e9bd2a9b957d7545556711cce2a6262cd
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          submodules: true
       - name: Add cloned repo as safe
         run: sh -c "git config --global --add safe.directory $PWD"
+      - name: Init required submodules
+        run: git submodule update --init --depth=1 deps/dd-trace-cpp deps/nginx-datadog
       - name: Configure
         run: cmake --preset ci-release -B build .
       - name: Build
