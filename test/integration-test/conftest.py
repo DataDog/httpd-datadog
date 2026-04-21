@@ -94,22 +94,22 @@ class Server:
             # Continue anyway - sometimes apachectl returns non-zero but Apache starts
             # We'll verify below with HTTP requests
 
-        # Wait for Apache to fully start and verify it's running
-        # Give Apache up to 5 seconds to start
+        # Probe readiness with a bare TCP connect rather than an HTTP GET —
+        # mod_datadog's `DatadogTracing Off` inside a <Location> is silently
+        # dropped by the config merge in common_conf.cpp (child Off is ORed
+        # with parent On), so any HTTP probe would emit a trace and pollute
+        # the per-test agent session.
+        import socket
         max_wait = 5
         start_time = time.time()
 
         while time.time() - start_time < max_wait:
-            # Check if Apache is responding by making a simple HTTP request
             try:
-                import requests
-                response = requests.get(self.make_url("/"), timeout=1)
-                # If we get any response, Apache is running
-                print(f"[debug] Apache started successfully, responding with status {response.status_code}")
-                return True
-            except requests.exceptions.RequestException:
-                # Apache not ready yet, wait a bit
-                time.sleep(0.2)
+                with socket.create_connection((self.host, int(self.port)), timeout=0.5):
+                    print(f"[debug] Apache accepting connections on {self.host}:{self.port}")
+                    return True
+            except (ConnectionRefusedError, OSError):
+                time.sleep(0.1)
 
         # If we get here, Apache didn't start properly
         print(f"[error] Apache failed to respond after {max_wait} seconds")
@@ -198,19 +198,29 @@ class TestAgent:
     def internal_run(self) -> None:
         runner = web.AppRunner(self._app)
         self.loop.run_until_complete(runner.setup())
-        site = web.TCPSite(runner, self.host, self.port)
+        # shutdown_timeout bounds how long aiohttp will wait for active
+        # keep-alive connections to close on teardown. The default is 60s;
+        # Apache workers that got SIGKILL leave sockets lingering and make
+        # that timeout show up as a 60s hang at end-of-session.
+        site = web.TCPSite(runner, self.host, self.port, shutdown_timeout=1.0)
         self.loop.run_until_complete(site.start())
         self.loop.run_until_complete(self._stop.wait())
-        self.loop.run_until_complete(self._app.cleanup())
+        # runner.cleanup() stops sites, closes the TCP listener, and runs the
+        # app's cleanup handlers. Calling only app.cleanup() leaves the
+        # listener open and the event loop blocks forever on exit.
+        self.loop.run_until_complete(runner.cleanup())
         self.loop.close()
 
     def run(self) -> None:
-        self._thread = threading.Thread(target=self.internal_run)
+        # daemon=True so a stuck event loop (e.g. aiohttp refusing to close)
+        # can't block interpreter shutdown after pytest_sessionfinish. The
+        # explicit stop() path below is still the intended cleanup.
+        self._thread = threading.Thread(target=self.internal_run, daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
         self.loop.call_soon_threadsafe(self._stop.set)
-        self._thread.join()
+        self._thread.join(timeout=3.0)
 
     def new_session(self, token=None) -> AgentSession:
         if token is None:
