@@ -2,6 +2,7 @@
 
 #include <datadog/tracer_config.h>
 
+#include <optional>
 #include <string>
 #include <unordered_map>
 
@@ -18,8 +19,11 @@ struct Module final {
 };
 
 struct Directory final {
-  bool tracing_enabled = true;
-  bool trust_inbound_span = true;
+  // `std::nullopt` means "inherit from the enclosing scope"; any concrete
+  // value (true/false) was set explicitly via a directive and wins over the
+  // parent during merge. The effective default at read sites is `true`.
+  std::optional<bool> tracing_enabled;
+  std::optional<bool> trust_inbound_span;
   std::unordered_map<std::string, std::string> tags;
 
   // RUM
