@@ -1,0 +1,106 @@
+# DO NOT EDIT. Synced from DataDog/libdatadog-build by the
+# libdatadog-build devcontainer-bundle campaigner into
+# `.gitlab/devcontainer.yml` — edits here will be overwritten.
+#
+# Shared devcontainer pipeline. One job does everything: stage the
+# context, compute the tag, check the cache, build + nydusify on miss,
+# emit ci-image.env for downstream jobs.
+#
+# Consumer repo wires this in via:
+#   variables:
+#     DEVCONTAINER_REPO_NAME: my-repo
+#     # optional:
+#     # DEVCONTAINER_IMAGE_NAME: registry.ddbuild.io/ci/my-repo     # flat path
+#     # DEVCONTAINER_PER_ARCH: "true"                               # arch matrix
+#   include:
+#     - local: .gitlab/devcontainer.yml
+#
+# Per-repo inputs live in:
+#   .devcontainer/Dockerfile          the dockerfile
+#   .devcontainer/context.files       rsync --files-from list (one path per line;
+#                                     '#'/blank lines are comments, stripped
+#                                     before being handed to rsync)
+#   .devcontainer/context.filter      optional rsync filter rules
+
+variables:
+  DEVCONTAINER_IMAGE_NAME: registry.ddbuild.io/ci/${DEVCONTAINER_REPO_NAME}/devcontainer
+  DEVCONTAINER_PER_ARCH: ""
+  # Bootstrap image used by the devcontainer_image job itself. Update
+  # DEVCONTAINER_BOOTSTRAP_IMAGE_TAG by PR after each manual
+  # publish-devcontainer-bootstrap-image run (same workflow as
+  # CI_TESTING_IMAGE_TAG).
+  DEVCONTAINER_BOOTSTRAP_IMAGE_BASE: registry.ddbuild.io/ci/libdatadog-build/devcontainer-bootstrap
+  DEVCONTAINER_BOOTSTRAP_IMAGE_TAG: ""
+  DEVCONTAINER_BOOTSTRAP_IMAGE: registry.ddbuild.io/images/nydus:v2.4.0-dd.3
+
+devcontainer_image:
+  stage: .pre
+  image: $DEVCONTAINER_BOOTSTRAP_IMAGE
+  needs: []
+  tags: ["arch:amd64"]
+  script:
+    - |
+      set -euo pipefail
+
+      # Bootstrap image doesn't ship rsync (or other deps) — install quietly.
+      command -v rsync >/dev/null || apt-get update -qq && apt-get install -y -qq --no-install-recommends rsync
+
+      # ---- stage context per .devcontainer/context.files ----
+      ctx=$(mktemp -d)
+      if [ ! -f .devcontainer/context.files ]; then
+        echo "ERROR: .devcontainer/context.files not found" >&2; exit 1
+      fi
+      filter_flag=()
+      if [ -f .devcontainer/context.filter ]; then
+        filter_flag=(--filter="merge .devcontainer/context.filter")
+      fi
+      grep -Ev '^\s*(#|$)' .devcontainer/context.files |
+        rsync -aR --files-from=- "${filter_flag[@]}" "$CI_PROJECT_DIR/" "$ctx/"
+      if [ ! -f "$ctx/.devcontainer/Dockerfile" ]; then
+        echo "ERROR: .devcontainer/Dockerfile not staged; check .devcontainer/context.files" >&2
+        exit 1
+      fi
+      TAG=$(cd "$ctx" && find . -type f | sort |
+        while IFS= read -r f; do printf -- '--- %s ---\n' "$f"; cat "$f"; done |
+        sha256sum | cut -c1-12)
+      echo "Devcontainer tag: $TAG"
+
+      # ---- build-or-skip per arch ----
+      build_and_nydusify() {
+        local ref=$1 platform=$2 arch_arg=$3
+        echo "Building $ref ..."
+        # shellcheck disable=SC2086
+        docker buildx build \
+          --platform "$platform" \
+          --file "$ctx/.devcontainer/Dockerfile" \
+          --build-context "repo=$ctx" \
+          $arch_arg \
+          --push -t "$ref" \
+          "$ctx"
+        nydus-convert "$ref" "$ref"
+      }
+
+      if [ -n "$DEVCONTAINER_PER_ARCH" ]; then
+        AMD_REF="${DEVCONTAINER_IMAGE_NAME}:amd64-${TAG}"
+        ARM_REF="${DEVCONTAINER_IMAGE_NAME}:arm64-${TAG}"
+        crane manifest "$AMD_REF" >/dev/null 2>&1 \
+          || build_and_nydusify "$AMD_REF" linux/amd64 "--build-arg ARCH=x86_64"
+        crane manifest "$ARM_REF" >/dev/null 2>&1 \
+          || build_and_nydusify "$ARM_REF" linux/arm64 "--build-arg ARCH=aarch64"
+        {
+          echo "DEVCONTAINER_IMAGE_AMD64=$AMD_REF"
+          echo "DEVCONTAINER_IMAGE_ARM64=$ARM_REF"
+          echo "CI_IMAGE_HASH=$TAG"
+        } > ci-image.env
+      else
+        REF="${DEVCONTAINER_IMAGE_NAME}:${TAG}"
+        crane manifest "$REF" >/dev/null 2>&1 \
+          || build_and_nydusify "$REF" linux/amd64,linux/arm64 ""
+        {
+          echo "DEVCONTAINER_IMAGE=$REF"
+          echo "CI_IMAGE_HASH=$TAG"
+        } > ci-image.env
+      fi
+  artifacts:
+    reports:
+      dotenv: ci-image.env
