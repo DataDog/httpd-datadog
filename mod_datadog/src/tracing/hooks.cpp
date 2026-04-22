@@ -103,8 +103,9 @@ int on_fixups(request_rec* r, Tracer& g_tracer, module* datadog_module) {
 
     auto* dir_conf = static_cast<datadog::conf::Directory*>(
         ap_get_module_config(main_r->per_dir_config, datadog_module));
-    if (dir_conf == nullptr || !dir_conf->tracing_enabled.value_or(true))
+    if (dir_conf == nullptr || !dir_conf->tracing_enabled.value_or(true)) {
       return DECLINED;
+    }
 
     void* data = ap_get_module_config(main_r->request_config, datadog_module);
     if (!data) return DECLINED;
@@ -117,8 +118,9 @@ int on_fixups(request_rec* r, Tracer& g_tracer, module* datadog_module) {
     // Trace request
     auto* dir_conf = static_cast<datadog::conf::Directory*>(
         ap_get_module_config(r->per_dir_config, datadog_module));
-    if (dir_conf == nullptr || !dir_conf->tracing_enabled.value_or(true))
+    if (dir_conf == nullptr || !dir_conf->tracing_enabled.value_or(true)) {
       return DECLINED;
+    }
 
     void* data = ap_get_module_config(r->request_config, datadog_module);
     if (data)
