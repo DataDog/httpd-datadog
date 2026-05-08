@@ -10,19 +10,21 @@ variables:
   # is too slow under qemu to run any other way.
   DEVCONTAINER_REPO_NAME: httpd-datadog
   DEVCONTAINER_PER_ARCH: "true"
-  # Pin the bootstrap image to the hash-tagged nydus build that the
-  # previous (hand-rolled) devcontainer job ran on. The upstream default
-  # (registry.ddbuild.io/images/nydus:v2.4.0-dd.3) doesn't have whatever
-  # gitretriever credential helper get_sources needs for submodule clones,
-  # so it dies with `terminal prompts disabled` before our script runs
-  # (see pipeline #420). Drop this override once dd-repo-tools' bootstrap
-  # image (or its retag flow) ships with the right auth.
-  DEVCONTAINER_BOOTSTRAP_IMAGE: registry.ddbuild.io/images/nydus:v98111448-6d7c7d0-v2.3.8-dd
   GIT_SUBMODULE_STRATEGY: recursive
   GIT_SUBMODULE_DEPTH: 1
-  GIT_CONFIG_COUNT: 1
+  # Two insteadOf rules pointed at the same authenticated gitlab.ddbuild.io
+  # base. The first catches GitHub URLs (legacy, used by some submodule
+  # configs); the second catches the gitretriever URL the runner rewrites
+  # relative submodule paths to — gitretriever's fetch path requires an
+  # auth helper that isn't available to plain `git clone`, and DDbuild
+  # has stopped letting get_sources fall back to GitLab/Gitaly when that
+  # fails (see pipeline #420). Rewriting the URL up-front lets the
+  # submodule clones go directly through the authenticated mirror.
+  GIT_CONFIG_COUNT: 2
   GIT_CONFIG_KEY_0: url.https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.ddbuild.io/DataDog/.insteadOf
   GIT_CONFIG_VALUE_0: https://github.com/DataDog/
+  GIT_CONFIG_KEY_1: url.https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.ddbuild.io/DataDog/.insteadOf
+  GIT_CONFIG_VALUE_1: http://gitretriever.codesync.all-clusters.local-dc.fabric.dog:8080/DataDog/
 
 default:
   id_tokens:
