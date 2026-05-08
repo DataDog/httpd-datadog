@@ -2,7 +2,12 @@ include:
   - local: .gitlab/devcontainer.yml
 
 variables:
-  CI_DOCKER_IMAGE_BASE: registry.ddbuild.io/ci/httpd-datadog
+  # Inputs to .gitlab/devcontainer.yml (the dd-repo-tools shared
+  # devcontainer template). DEVCONTAINER_PER_ARCH=true splits the image
+  # build into native amd64+arm64 jobs because the LLVM+musl sysroot,
+  # cbindgen, and httpd compile stages are too slow under qemu emulation.
+  DEVCONTAINER_REPO_NAME: httpd-datadog
+  DEVCONTAINER_PER_ARCH: "true"
   GIT_SUBMODULE_STRATEGY: recursive
   GIT_SUBMODULE_DEPTH: 1
   GIT_CONFIG_COUNT: 1
@@ -15,7 +20,6 @@ default:
       aud: image-integrity
 
 stages:
-  - ci-image
   - build
   - test
   - aws
@@ -23,7 +27,9 @@ stages:
 # Template jobs (hidden, reusable)
 .build-template:
   stage: build
-  image: $DEVCONTAINER_IMAGE
+  needs:
+    - job: devcontainer_image
+      artifacts: true
   script:
     - git config --global --add safe.directory $PWD
     - >
@@ -45,7 +51,6 @@ stages:
 
 .test-rum-template:
   stage: test
-  image: $DEVCONTAINER_IMAGE
   # Same `--flag=VALUE` reasoning as run-integration-tests.sh: pytest's early
   # arg parser runs before conftest registers these custom options, so the
   # space-separated form gets read as a positional test path and skips
@@ -55,13 +60,7 @@ stages:
 
 build:amd64:
   extends: .build-template
-  needs:
-    - job: devcontainer-image
-      parallel:
-        matrix:
-          - ARCH: amd64
-            TOOLCHAIN_ARCH: x86_64
-      artifacts: true
+  image: $DEVCONTAINER_IMAGE_AMD64
   variables:
     ARCH: amd64
     TOOLCHAIN_ARCH: x86_64
@@ -69,13 +68,7 @@ build:amd64:
 
 build:arm64:
   extends: .build-template
-  needs:
-    - job: devcontainer-image
-      parallel:
-        matrix:
-          - ARCH: arm64
-            TOOLCHAIN_ARCH: aarch64
-      artifacts: true
+  image: $DEVCONTAINER_IMAGE_ARM64
   variables:
     ARCH: arm64
     TOOLCHAIN_ARCH: aarch64
@@ -83,28 +76,24 @@ build:arm64:
 
 test-rum:amd64:
   extends: .test-rum-template
+  image: $DEVCONTAINER_IMAGE_AMD64
   needs:
-    - job: devcontainer-image
-      parallel:
-        matrix:
-          - ARCH: amd64
-            TOOLCHAIN_ARCH: x86_64
+    - job: devcontainer_image
       artifacts: true
     - job: "build:amd64"
+      artifacts: true
   variables:
     ARCH: amd64
   tags: ["arch:amd64"]
 
 test-rum:arm64:
   extends: .test-rum-template
+  image: $DEVCONTAINER_IMAGE_ARM64
   needs:
-    - job: devcontainer-image
-      parallel:
-        matrix:
-          - ARCH: arm64
-            TOOLCHAIN_ARCH: aarch64
+    - job: devcontainer_image
       artifacts: true
     - job: "build:arm64"
+      artifacts: true
   variables:
     ARCH: arm64
   tags: ["arch:arm64"]

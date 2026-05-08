@@ -1,8 +1,9 @@
 {
   "name": "httpd-datadog",
+  "initializeCommand": "make -f .devcontainer/devcontainer.mk .devcontainer-stage-context",
   "build": {
-    "dockerfile": "Dockerfile",
-    "context": "..",
+    "dockerfile": ".staged/.devcontainer/Dockerfile",
+    "context": ".staged",
     "args": {
       "ARCH": "${localEnv:ARCH:x86_64}"
     }

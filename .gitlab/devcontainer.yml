@@ -1,89 +1,123 @@
----
-# Build pipeline for the devcontainer image used by every downstream CI
-# job that compiles mod_datadog or runs integration tests. The image is
-# content-addressed: its tag is a sha256 over the Dockerfile plus the
-# upstream toolchain files it pulls from, so the jobs here only rebuild
-# when one of those inputs actually changes.
+# DO NOT EDIT. Synced from DataDog/dd-repo-tools by the
+# dd-repo-tools devcontainer-bundle campaigner into
+# `.gitlab/devcontainer.yml` — edits here will be overwritten.
+#
+# Shared devcontainer pipeline. One job does everything: stage the
+# context, compute the tag, check the cache, build + nydusify on miss,
+# emit ci-image.env for downstream jobs.
+#
+# Consumer repo wires this in via:
+#   variables:
+#     DEVCONTAINER_REPO_NAME: my-repo
+#     # optional:
+#     # DEVCONTAINER_IMAGE_NAME: registry.ddbuild.io/ci/my-repo     # flat path
+#     # DEVCONTAINER_PER_ARCH: "true"                               # arch matrix
+#   include:
+#     - local: .gitlab/devcontainer.yml
+#
+# DEVCONTAINER_PER_ARCH=true splits the build into a parallel:matrix over
+# amd64 and arm64, each pinned to its native runner via tags:[arch:$ARCH].
+# Use it when the Dockerfile's `RUN` steps are slow under qemu emulation —
+# httpd-datadog is the canonical case (LLVM+musl sysroot + cbindgen +
+# httpd compile). Default off because most repos build fast enough that
+# one multi-arch buildx run is cheaper than two native runner slots.
+#
+# Per-repo inputs live in:
+#   .devcontainer/Dockerfile          the dockerfile
+#   .devcontainer/context.files       rsync --files-from list (one path per line;
+#                                     '#'/blank lines are comments, stripped
+#                                     before being handed to rsync)
+#   .devcontainer/context.filter      optional rsync filter rules
 
 variables:
-  NYDUS_DD_IMAGE: registry.ddbuild.io/images/nydus:v98111448-6d7c7d0-v2.3.8-dd
+  DEVCONTAINER_IMAGE_NAME: registry.ddbuild.io/ci/${DEVCONTAINER_REPO_NAME}/devcontainer
+  DEVCONTAINER_PER_ARCH: ""
+  # Bootstrap image used by the devcontainer_image job itself. Update
+  # DEVCONTAINER_BOOTSTRAP_IMAGE_TAG by PR after each manual
+  # publish-devcontainer-bootstrap-image run (same workflow as
+  # CI_TESTING_IMAGE_TAG).
+  DEVCONTAINER_BOOTSTRAP_IMAGE_BASE: registry.ddbuild.io/ci/dd-repo-tools/devcontainer-bootstrap
+  DEVCONTAINER_BOOTSTRAP_IMAGE_TAG: ""
+  DEVCONTAINER_BOOTSTRAP_IMAGE: registry.ddbuild.io/images/nydus:v2.4.0-dd.3
 
-# Build (or reuse) the devcontainer image per arch: hash the inputs, skip if
-# the registry already has the tag, otherwise buildx build + push + nydusify
-# in-place. The nydusified per-arch images are then stitched into a
-# multi-arch manifest by `create-ci-manifest` below.
-devcontainer-image:
-  stage: ci-image
-  tags: ["arch:$ARCH"]
-  image: $NYDUS_DD_IMAGE
-  variables:
-    DDSIGN_SKIP_SIGNING: "true"
-  parallel:
-    matrix:
-      - ARCH: amd64
-        TOOLCHAIN_ARCH: x86_64
-      - ARCH: arm64
-        TOOLCHAIN_ARCH: aarch64
+devcontainer_image:
+  stage: .pre
+  image: $DEVCONTAINER_BOOTSTRAP_IMAGE
+  needs: []
+  tags: ["arch:amd64"]
+  # Compose the bootstrap image from BASE:TAG when a tag is pinned (the
+  # post-`publish-devcontainer-bootstrap-image` workflow), otherwise fall
+  # back to the upstream nydus image defined in `variables:` above.
+  rules:
+    - if: '$DEVCONTAINER_BOOTSTRAP_IMAGE_TAG'
+      variables:
+        DEVCONTAINER_BOOTSTRAP_IMAGE: $DEVCONTAINER_BOOTSTRAP_IMAGE_BASE:$DEVCONTAINER_BOOTSTRAP_IMAGE_TAG
+    - when: always
   script:
     - |
-      FILES=$(find .devcontainer/Dockerfile deps/nginx-datadog/build_env/ scripts/setup-httpd.py -type f | sort)
-      HASH=$(for f in $FILES; do echo "--- $f ---"; cat "$f"; done | sha256sum | cut -d ' ' -f 1)
-    - IMAGE_TAG="$CI_DOCKER_IMAGE_BASE/$ARCH:$HASH"
-    - echo "CI_IMAGE_HASH=$HASH" >> ci-image.env
-    # Export DEVCONTAINER_IMAGE as the arch-specific ref so each consumer
-    # runs on its own arch's image without blocking on create-ci-manifest.
-    # Downstream jobs scope their `needs:` to their matrix slot to pick up
-    # the matching value.
-    - echo "DEVCONTAINER_IMAGE=$IMAGE_TAG" >> ci-image.env
-    - |
-      if crane manifest "$IMAGE_TAG" >/dev/null 2>&1; then
-        echo "Image $IMAGE_TAG already exists. Skipping build."
-      else
-        docker buildx build \
-          --tag "$IMAGE_TAG" \
-          --platform linux/$ARCH \
-          --build-arg ARCH=$TOOLCHAIN_ARCH \
-          --push \
-          --file .devcontainer/Dockerfile \
-          .
-        echo "Image $IMAGE_TAG built for $ARCH."
+      set -euo pipefail
+
+      # Bootstrap image is minimal — install make (and rsync, which the
+      # staging step needs) on demand. Each `command -v` guards a single
+      # apt-get so a re-run on an image that already has them is a no-op.
+      missing=""
+      command -v make  >/dev/null || missing="$missing make"
+      command -v rsync >/dev/null || missing="$missing rsync"
+      if [ -n "$missing" ]; then
+        apt-get update -qq
+        # shellcheck disable=SC2086
+        apt-get install -y -qq --no-install-recommends $missing
       fi
-    - |
-      MANIFEST=$(crane manifest "$IMAGE_TAG" 2>/dev/null) || {
-        echo "WARNING: failed to fetch manifest for $IMAGE_TAG — skipping nydus conversion"
-        exit 0
+
+      # Stage + hash via devcontainer.mk so CI and local `make` use the
+      # same code. `-f` is explicit so we don't depend on the consumer's
+      # root Makefile including the fragment. .devcontainer-stage-context
+      # writes to .devcontainer/.staged/; .devcontainer-image-hash reads
+      # from the same path and prints the 12-char tag.
+      MK="-f .devcontainer/devcontainer.mk"
+      # shellcheck disable=SC2086
+      make $MK .devcontainer-stage-context
+      ctx=.devcontainer/.staged
+      # shellcheck disable=SC2086
+      TAG=$(make $MK -s .devcontainer-image-hash)
+      echo "Devcontainer tag: $TAG"
+
+      # ---- build-or-skip per arch ----
+      build_and_nydusify() {
+        local ref=$1 platform=$2 arch_arg=$3
+        echo "Building $ref ..."
+        # shellcheck disable=SC2086
+        docker buildx build \
+          --platform "$platform" \
+          --file "$ctx/.devcontainer/Dockerfile" \
+          --build-context "repo=$ctx" \
+          $arch_arg \
+          --push -t "$ref" \
+          "$ctx"
+        nydus-convert "$ref" "$ref"
       }
-      if echo "$MANIFEST" | jq -e '[.layers[].mediaType] | any(contains("nydus"))' >/dev/null 2>&1; then
-        echo "$IMAGE_TAG already has nydus layers. Skipping conversion."
+
+      if [ -n "$DEVCONTAINER_PER_ARCH" ]; then
+        AMD_REF="${DEVCONTAINER_IMAGE_NAME}:amd64-${TAG}"
+        ARM_REF="${DEVCONTAINER_IMAGE_NAME}:arm64-${TAG}"
+        crane manifest "$AMD_REF" >/dev/null 2>&1 \
+          || build_and_nydusify "$AMD_REF" linux/amd64 "--build-arg ARCH=x86_64"
+        crane manifest "$ARM_REF" >/dev/null 2>&1 \
+          || build_and_nydusify "$ARM_REF" linux/arm64 "--build-arg ARCH=aarch64"
+        {
+          echo "DEVCONTAINER_IMAGE_AMD64=$AMD_REF"
+          echo "DEVCONTAINER_IMAGE_ARM64=$ARM_REF"
+          echo "CI_IMAGE_HASH=$TAG"
+        } > ci-image.env
       else
-        echo "Converting $IMAGE_TAG to nydus in place..."
-        nydus-convert "$IMAGE_TAG" "$IMAGE_TAG" || \
-          echo "WARNING: nydus conversion failed — continuing without nydus layers"
+        REF="${DEVCONTAINER_IMAGE_NAME}:${TAG}"
+        crane manifest "$REF" >/dev/null 2>&1 \
+          || build_and_nydusify "$REF" linux/amd64,linux/arm64 ""
+        {
+          echo "DEVCONTAINER_IMAGE=$REF"
+          echo "CI_IMAGE_HASH=$TAG"
+        } > ci-image.env
       fi
   artifacts:
     reports:
       dotenv: ci-image.env
-
-# Combine the per-arch (nydusified) images into a single multi-arch manifest
-# at $CI_DOCKER_IMAGE_BASE:$CI_IMAGE_HASH so external consumers (other
-# pipelines, GitHub Actions) can pin by the bare tag. Internal build/test
-# jobs reference the per-arch image directly via $DEVCONTAINER_IMAGE and
-# don't wait for this job.
-create-ci-manifest:
-  stage: ci-image
-  needs:
-    - devcontainer-image
-  tags: ["arch:amd64"]
-  image: $NYDUS_DD_IMAGE
-  script:
-    - MANIFEST_TAG="$CI_DOCKER_IMAGE_BASE:$CI_IMAGE_HASH"
-    - |
-      if crane manifest "$MANIFEST_TAG" >/dev/null 2>&1 && \
-         docker buildx imagetools inspect "$MANIFEST_TAG" --format '{{json .Manifest}}' 2>/dev/null | jq -e '.manifests | length >= 2' >/dev/null 2>&1; then
-        echo "Multi-arch manifest $MANIFEST_TAG already exists. Skipping."
-      else
-        docker buildx imagetools create \
-          --tag "$MANIFEST_TAG" \
-          "$CI_DOCKER_IMAGE_BASE/amd64:$CI_IMAGE_HASH" \
-          "$CI_DOCKER_IMAGE_BASE/arm64:$CI_IMAGE_HASH"
-      fi
