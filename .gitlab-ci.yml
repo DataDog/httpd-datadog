@@ -10,14 +10,6 @@ variables:
   # is too slow under qemu to run any other way.
   DEVCONTAINER_REPO_NAME: httpd-datadog
   DEVCONTAINER_PER_ARCH: "true"
-  # Pin the bootstrap image to the hash-tagged nydus build that the
-  # previous (hand-rolled) devcontainer job ran on. The upstream default
-  # (registry.ddbuild.io/images/nydus:v2.4.0-dd.3) doesn't have whatever
-  # gitretriever credential helper get_sources needs for submodule clones,
-  # so it dies with `terminal prompts disabled` before our script runs
-  # (see pipeline #420). Drop this override once dd-repo-tools' bootstrap
-  # image (or its retag flow) ships with the right auth.
-  DEVCONTAINER_BOOTSTRAP_IMAGE: registry.ddbuild.io/images/nydus:v98111448-6d7c7d0-v2.3.8-dd
   GIT_SUBMODULE_STRATEGY: recursive
   GIT_SUBMODULE_DEPTH: 1
   GIT_CONFIG_COUNT: 1
