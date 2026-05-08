@@ -20,22 +20,8 @@ endif
 
 include .devcontainer/devcontainer.mk
 
-# Fast-path for hot callers (test-integration, pre-commit hooks, …):
-# skip the stage+hash+docker-pull cycle when .image-ref is already
-# resolved. Run `make dev-image` explicitly to refresh after a
-# Dockerfile or context.files change. Lives here (not in devcontainer.mk)
-# because that file is upstream-synced.
-.PHONY: dev-image-cached
-ifeq ($(_DEV_CONTAINER_INSIDE),1)
-dev-image-cached:
-	@:
-else
-dev-image-cached:
-	@[ -f $(DEV_CONTAINER_REPO_ROOT)/.devcontainer/.image-ref ] || $(MAKE) dev-image
-endif
-
 .PHONY: test-integration
-test-integration: dev-image-cached
+test-integration: dev-image
 	$(IN_DEVCONTAINER) .devcontainer/run-integration-tests.sh
 
 # One-shot CI build: trust the workdir, init the submodules cmake
