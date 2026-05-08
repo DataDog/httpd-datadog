@@ -1,17 +1,60 @@
-# The CI image used for some GitHub jobs is built by the GitLab build-ci-image job.
-# The hash is computed by this GitLab job from the files used to build the image.
+# Pin the image name so it doesn't drift with the worktree directory name
+# (the upstream default is derived from $(notdir $(CURDIR)) — fine for a
+# canonical clone called `httpd-datadog`, wrong for any feature-branch
+# worktree). Matches DEVCONTAINER_IMAGE_NAME in .gitlab-ci.yml.
+DEV_CONTAINER_IMAGE_NAME := registry.ddbuild.io/ci/httpd-datadog/devcontainer
+
+# The devcontainer Dockerfile pulls toolchain files from the
+# nginx-datadog submodule's build_env/. Without this guard the staging
+# step silently produces a tree missing those files and the resulting
+# tag mismatches what CI computes — fail loudly instead.
 #
-# Whenever this image needs to be updated, one should:
-#   - Get the hash from a run of the GitLab build-ci-image job.
-#   - Copy this hash here, and in the GitHub workflow files.
-#   - Run: make replicate-ci-image-for-github.
+# Skipped for `ci-build`, which runs its own `git submodule update`
+# inline (the GitHub workflows checkout without submodules and init
+# them as part of the build). All other targets (dev-image,
+# test-integration, mirror-public-image) genuinely need build_env
+# already present and keep the guard.
+ifneq ($(MAKECMDGOALS),ci-build)
+DEV_CONTAINER_REQUIRED_PATHS := deps/nginx-datadog/build_env/Toolchain.cmake.x86_64
+endif
 
-CI_DOCKER_IMAGE_HASH ?= 28219c0ef3e00f1e3d5afcab61a73a5e9bd2a9b957d7545556711cce2a6262cd
-CI_IMAGE_FROM_GITLAB ?= registry.ddbuild.io/ci/httpd-datadog/amd64:$(CI_DOCKER_IMAGE_HASH)
-CI_IMAGE_IN_PUBLIC_REPO_FOR_GITHUB ?= datadog/docker-library:httpd-datadog-ci-$(CI_DOCKER_IMAGE_HASH)
+include .devcontainer/devcontainer.mk
 
-.PHONY: replicate-ci-image-for-github
-replicate-ci-image-for-github:
-	docker pull $(CI_IMAGE_FROM_GITLAB)
-	docker tag $(CI_IMAGE_FROM_GITLAB) $(CI_IMAGE_IN_PUBLIC_REPO_FOR_GITHUB)
-	docker push $(CI_IMAGE_IN_PUBLIC_REPO_FOR_GITHUB)
+.PHONY: test-integration
+test-integration: dev-image
+	$(IN_DEVCONTAINER) .devcontainer/run-integration-tests.sh
+
+# One-shot CI build: trust the workdir, init the submodules cmake
+# actually consumes, configure/build/install. Used by every job in
+# .github/workflows/ that produces mod_datadog.so. Switch presets via
+# PRESET=ci-release. inject-browser-sdk is omitted from the submodule
+# list because RUM is off by default (HTTPD_DATADOG_ENABLE_RUM=OFF).
+PRESET ?= ci-dev
+.PHONY: ci-build
+ci-build:
+	git config --global --add safe.directory $(CURDIR)
+	git submodule update --init --depth=1 deps/dd-trace-cpp deps/nginx-datadog
+	cmake --preset=$(PRESET) -B build .
+	cmake --build build -j --verbose
+	cmake --install build --prefix dist
+
+# GitHub-hosted runners can't pull from registry.ddbuild.io; the workflows
+# in .github/workflows/ pin to a public Docker Hub mirror at
+# datadog/docker-library:httpd-datadog-ci-<hash>. After a new tag is built
+# by .gitlab/devcontainer.yml (any change to .devcontainer/context.files
+# inputs invalidates the cache), run this target to copy the amd64 variant
+# to Docker Hub and bump the workflows.
+# See .github/workflows/CI_IMAGE.md for the bump procedure.
+.PHONY: mirror-public-image
+mirror-public-image:
+	@$(MAKE) -s -f .devcontainer/devcontainer.mk .devcontainer-stage-context
+	@hash=$$($(MAKE) -s -f .devcontainer/devcontainer.mk .devcontainer-image-hash); \
+	src="$(DEV_CONTAINER_IMAGE_NAME):amd64-$$hash"; \
+	public="datadog/docker-library:httpd-datadog-ci-$$hash"; \
+	echo "Mirroring $$src -> $$public"; \
+	docker pull --platform linux/amd64 "$$src"; \
+	docker tag "$$src" "$$public"; \
+	docker push "$$public"; \
+	echo ""; \
+	echo "Update image: in .github/workflows/{dev,release,system-tests}.yml to:"; \
+	echo "  $$public"
