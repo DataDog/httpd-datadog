@@ -28,6 +28,9 @@ if [ -z "${MODULE_PATH:-}" ]; then
 		-DCMAKE_TOOLCHAIN_FILE="/sysroot/${ARCH}-none-linux-musl/Toolchain.cmake" \
 		-B "$BUILD_DIR" .
 	cmake --build "$BUILD_DIR" -j
+	# Wipe DIST_DIR so a removed/renamed file in the build doesn't
+	# linger from a previous install and silently get used by tests.
+	rm -rf "$DIST_DIR"
 	cmake --install "$BUILD_DIR" --prefix "$DIST_DIR"
 	MODULE_PATH="$DIST_DIR/lib/mod_datadog.so"
 fi
