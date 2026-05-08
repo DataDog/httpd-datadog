@@ -3,9 +3,11 @@ include:
 
 variables:
   # Inputs to .gitlab/devcontainer.yml (the dd-repo-tools shared
-  # devcontainer template). DEVCONTAINER_PER_ARCH=true splits the image
-  # build into native amd64+arm64 jobs because the LLVM+musl sysroot,
-  # cbindgen, and httpd compile stages are too slow under qemu emulation.
+  # devcontainer template). DEVCONTAINER_PER_ARCH=true publishes
+  # $IMAGE:amd64-$TAG and $IMAGE:arm64-$TAG; the downstream build / test
+  # jobs below then pull the matching arch and run on native runners
+  # (`tags: ["arch:$ARCH"]`). The cmake compile + integration-test suite
+  # is too slow under qemu to run any other way.
   DEVCONTAINER_REPO_NAME: httpd-datadog
   DEVCONTAINER_PER_ARCH: "true"
   GIT_SUBMODULE_STRATEGY: recursive

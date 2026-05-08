@@ -1,7 +1,7 @@
 # DO NOT EDIT. Synced from DataDog/dd-repo-tools by the
 # dd-repo-tools devcontainer-bundle campaigner — edits here will be
 # overwritten on the next run.
-# Source of truth: https://github.com/DataDog/dd-repo-tools/blob/main/repository-tools/devcontainer/devcontainer.mk
+# Source of truth: https://github.com/DataDog/dd-repo-tools/blob/main/shared/devcontainer/devcontainer.mk
 #
 # Inputs (set before `include`):
 #   DEV_CONTAINER_REPO_ROOT          Absolute path to the repo root.
@@ -48,13 +48,10 @@ define _dev_container_stage_into_ctx
 if [ ! -f "$(_DEV_CONTAINER_CONTEXT_FILES)" ]; then \
   echo "ERROR: $(_DEV_CONTAINER_CONTEXT_FILES) not found" >&2; exit 1; \
 fi; \
-if [ -f "$(_DEV_CONTAINER_CONTEXT_FILTER)" ]; then \
-  grep -Ev '^[[:space:]]*(#|$$)' "$(_DEV_CONTAINER_CONTEXT_FILES)" | \
-    rsync -aR --files-from=- --filter="merge $(_DEV_CONTAINER_CONTEXT_FILTER)" "$(DEV_CONTAINER_REPO_ROOT)/" "$$ctx/"; \
-else \
-  grep -Ev '^[[:space:]]*(#|$$)' "$(_DEV_CONTAINER_CONTEXT_FILES)" | \
-    rsync -aR --files-from=- "$(DEV_CONTAINER_REPO_ROOT)/" "$$ctx/"; \
-fi; \
+filter_arg=; \
+[ -f "$(_DEV_CONTAINER_CONTEXT_FILTER)" ] && filter_arg="--filter=merge $(_DEV_CONTAINER_CONTEXT_FILTER)"; \
+grep -Ev '^[[:space:]]*(#|$$)' "$(_DEV_CONTAINER_CONTEXT_FILES)" | \
+  rsync -aR --files-from=- $$filter_arg "$(DEV_CONTAINER_REPO_ROOT)/" "$$ctx/"; \
 if [ ! -f "$$ctx/.devcontainer/Dockerfile" ]; then \
   echo "ERROR: .devcontainer/Dockerfile not staged; check .devcontainer/context.files" >&2; \
   exit 1; \
@@ -93,7 +90,7 @@ ifneq ($(strip $(DEV_CONTAINER_REQUIRED_PATHS)),)
   endif
 endif
 
-.PHONY: dev-image dev-shell dev-image-tag \
+.PHONY: dev-image dev-image-x86_64 dev-shell dev-image-tag \
         .devcontainer-stage-context .devcontainer-image-hash
 
 # Stage the build context into a stable path under .devcontainer/.staged/.
@@ -145,10 +142,9 @@ IN_DEVCONTAINER ?= docker run --rm -i $(_DEV_CONTAINER_MOUNTS) \
 # for running cross-compiled x86_64 binaries (e.g. Windows test exes under
 # wine64) on any host. On Apple Silicon, Docker emulates via Rosetta. On
 # native amd64 the platform pin is a no-op and we reuse the regular image.
-# Targets that use this should depend on `dev-image-x86_64-cached`.
-_X86_64_IMAGE_REF_FILE := $(DEV_CONTAINER_REPO_ROOT)/.devcontainer/.image-ref-x86_64
+_DEV_CONTAINER_X86_64_IMAGE_REF_FILE := $(DEV_CONTAINER_REPO_ROOT)/.devcontainer/.image-ref-x86_64
 IN_DEVCONTAINER_X86_64 ?= docker run --rm -i --platform=linux/amd64 $(_DEV_CONTAINER_MOUNTS) \
-  $$(cat $(_X86_64_IMAGE_REF_FILE))
+  $$(cat $(_DEV_CONTAINER_X86_64_IMAGE_REF_FILE))
 
 ifeq ($(_DEV_CONTAINER_INSIDE),1)
   IN_DEVCONTAINER :=
@@ -190,10 +186,12 @@ dev-image:
 
 # Build the linux/amd64 variant. On amd64 hosts this reuses dev-image; on
 # arm64 hosts it produces a separate `:<tag>-x86_64` image so it doesn't
-# clobber the native one. Buildx caches per-platform so repeats are cheap.
+# clobber the native one — built locally only (CI doesn't publish the
+# `-x86_64` ref), so no docker pull attempt. Buildx caches per-platform
+# so repeats are cheap.
 ifeq ($(_DEV_CONTAINER_PLATFORM),linux/amd64)
 dev-image-x86_64: dev-image
-	@cp $(DEV_CONTAINER_REPO_ROOT)/.devcontainer/.image-ref $(_X86_64_IMAGE_REF_FILE)
+	@cp $(DEV_CONTAINER_REPO_ROOT)/.devcontainer/.image-ref $(_DEV_CONTAINER_X86_64_IMAGE_REF_FILE)
 else
 dev-image-x86_64:
 	@$(_dev_container_stage_context); \
@@ -206,11 +204,9 @@ dev-image-x86_64:
 	  $(DOCKER_BUILDX_FLAGS) \
 	  --load -t "$$ref" \
 	  "$$ctx"; \
-	echo "$$ref" > $(_X86_64_IMAGE_REF_FILE)
+	echo "$$ref" > $(_DEV_CONTAINER_X86_64_IMAGE_REF_FILE)
 endif
 
-# Interactive shell in the built image. Mirrors IN_DEVCONTAINER but with
-# `-it` for terminal handling.
 dev-shell: dev-image
 	@ref=$$(cat $(DEV_CONTAINER_REPO_ROOT)/.devcontainer/.image-ref); \
 	docker run --rm -it $(_DEV_CONTAINER_MOUNTS) "$$ref" /bin/sh

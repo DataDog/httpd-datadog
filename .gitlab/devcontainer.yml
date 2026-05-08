@@ -15,12 +15,14 @@
 #   include:
 #     - local: .gitlab/devcontainer.yml
 #
-# DEVCONTAINER_PER_ARCH=true splits the build into a parallel:matrix over
-# amd64 and arm64, each pinned to its native runner via tags:[arch:$ARCH].
-# Use it when the Dockerfile's `RUN` steps are slow under qemu emulation —
-# httpd-datadog is the canonical case (LLVM+musl sysroot + cbindgen +
-# httpd compile). Default off because most repos build fast enough that
-# one multi-arch buildx run is cheaper than two native runner slots.
+# DEVCONTAINER_PER_ARCH=true builds two single-arch refs ($IMAGE:amd64-$TAG
+# and $IMAGE:arm64-$TAG) instead of one multi-arch manifest. Downstream
+# jobs pulling the matching ref can then run on a native-arch runner,
+# avoiding qemu emulation at consume time. Both builds still happen
+# sequentially in this single .pre job pinned to arch:amd64 — moving the
+# build itself to a parallel:matrix on native runners is future work.
+# Default off because most repos build fast enough that the single
+# multi-arch buildx run is the cheaper option.
 #
 # Per-repo inputs live in:
 #   .devcontainer/Dockerfile          the dockerfile
@@ -32,10 +34,9 @@
 variables:
   DEVCONTAINER_IMAGE_NAME: registry.ddbuild.io/ci/${DEVCONTAINER_REPO_NAME}/devcontainer
   DEVCONTAINER_PER_ARCH: ""
-  # Bootstrap image used by the devcontainer_image job itself. Update
-  # DEVCONTAINER_BOOTSTRAP_IMAGE_TAG by PR after each manual
-  # publish-devcontainer-bootstrap-image run (same workflow as
-  # CI_TESTING_IMAGE_TAG).
+  # Bootstrap image used by the devcontainer_image job. The signed-retag
+  # flow (DEVCONTAINER_BOOTSTRAP_IMAGE_TAG) is wired up but the producing
+  # job is on hold along with template publishing.
   DEVCONTAINER_BOOTSTRAP_IMAGE_BASE: registry.ddbuild.io/ci/dd-repo-tools/devcontainer-bootstrap
   DEVCONTAINER_BOOTSTRAP_IMAGE_TAG: ""
   DEVCONTAINER_BOOTSTRAP_IMAGE: registry.ddbuild.io/images/nydus:v2.4.0-dd.3
