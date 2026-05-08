@@ -16,6 +16,26 @@ include .devcontainer/devcontainer.mk
 test-integration: dev-image
 	$(IN_DEVCONTAINER) .devcontainer/run-integration-tests.sh
 
+# One-shot CI build: configure + build + install mod_datadog. Used by
+# every job in .github/workflows/ that produces the shared library
+# artifact (dev/release/system-tests). Assumes it runs inside the
+# pinned devcontainer image (toolchain + httpd already present);
+# callers pick the preset via PRESET=ci-dev|ci-release.
+#
+# `safe.directory` is a noop on hosts but required when actions/checkout
+# clones into a path GitHub's runner UID doesn't own — the case for our
+# container jobs. The submodule list deliberately omits inject-browser-sdk;
+# the GitHub workflows here build without RUM (HTTPD_DATADOG_ENABLE_RUM=OFF
+# by default in the cmake presets), so pulling it would be wasted bytes.
+PRESET ?= ci-dev
+.PHONY: ci-build
+ci-build:
+	git config --global --add safe.directory $(CURDIR)
+	git submodule update --init --depth=1 deps/dd-trace-cpp deps/nginx-datadog
+	cmake --preset=$(PRESET) -B build .
+	cmake --build build -j --verbose
+	cmake --install build --prefix dist
+
 # GitHub-hosted runners can't pull from registry.ddbuild.io; the workflows
 # in .github/workflows/ pin to a public Docker Hub mirror at
 # datadog/docker-library:httpd-datadog-ci-<hash>. After a new tag is built
