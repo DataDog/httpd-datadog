@@ -8,25 +8,41 @@ DEV_CONTAINER_IMAGE_NAME := registry.ddbuild.io/ci/httpd-datadog/devcontainer
 # nginx-datadog submodule's build_env/. Without this guard the staging
 # step silently produces a tree missing those files and the resulting
 # tag mismatches what CI computes — fail loudly instead.
+#
+# Skipped for `ci-build`, which runs its own `git submodule update`
+# inline (the GitHub workflows checkout without submodules and init
+# them as part of the build). All other targets (dev-image,
+# test-integration, mirror-public-image) genuinely need build_env
+# already present and keep the guard.
+ifneq ($(MAKECMDGOALS),ci-build)
 DEV_CONTAINER_REQUIRED_PATHS := deps/nginx-datadog/build_env/Toolchain.cmake.x86_64
+endif
 
 include .devcontainer/devcontainer.mk
 
+# Fast-path for hot callers (test-integration, pre-commit hooks, …):
+# skip the stage+hash+docker-pull cycle when .image-ref is already
+# resolved. Run `make dev-image` explicitly to refresh after a
+# Dockerfile or context.files change. Lives here (not in devcontainer.mk)
+# because that file is upstream-synced.
+.PHONY: dev-image-cached
+ifeq ($(_DEV_CONTAINER_INSIDE),1)
+dev-image-cached:
+	@:
+else
+dev-image-cached:
+	@[ -f $(DEV_CONTAINER_REPO_ROOT)/.devcontainer/.image-ref ] || $(MAKE) dev-image
+endif
+
 .PHONY: test-integration
-test-integration: dev-image
+test-integration: dev-image-cached
 	$(IN_DEVCONTAINER) .devcontainer/run-integration-tests.sh
 
-# One-shot CI build: configure + build + install mod_datadog. Used by
-# every job in .github/workflows/ that produces the shared library
-# artifact (dev/release/system-tests). Assumes it runs inside the
-# pinned devcontainer image (toolchain + httpd already present);
-# callers pick the preset via PRESET=ci-dev|ci-release.
-#
-# `safe.directory` is a noop on hosts but required when actions/checkout
-# clones into a path GitHub's runner UID doesn't own — the case for our
-# container jobs. The submodule list deliberately omits inject-browser-sdk;
-# the GitHub workflows here build without RUM (HTTPD_DATADOG_ENABLE_RUM=OFF
-# by default in the cmake presets), so pulling it would be wasted bytes.
+# One-shot CI build: trust the workdir, init the submodules cmake
+# actually consumes, configure/build/install. Used by every job in
+# .github/workflows/ that produces mod_datadog.so. Switch presets via
+# PRESET=ci-release. inject-browser-sdk is omitted from the submodule
+# list because RUM is off by default (HTTPD_DATADOG_ENABLE_RUM=OFF).
 PRESET ?= ci-dev
 .PHONY: ci-build
 ci-build:
