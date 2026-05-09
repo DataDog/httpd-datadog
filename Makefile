@@ -7,16 +7,11 @@ DEV_CONTAINER_IMAGE_NAME := registry.ddbuild.io/ci/httpd-datadog/devcontainer
 # The devcontainer Dockerfile pulls toolchain files from the
 # nginx-datadog submodule's build_env/. Without this guard the staging
 # step silently produces a tree missing those files and the resulting
-# tag mismatches what CI computes — fail loudly instead.
-#
-# Skipped for `ci-build`, which runs its own `git submodule update`
-# inline (the GitHub workflows checkout without submodules and init
-# them as part of the build). All other targets (dev-image,
-# test-integration, mirror-public-image) genuinely need build_env
-# already present and keep the guard.
-ifneq ($(MAKECMDGOALS),ci-build)
+# tag mismatches what CI computes — fail loudly instead. Upstream gates
+# this check to devcontainer-touching targets only, so `ci-build` (which
+# inits its own submodules in the recipe) and unrelated targets aren't
+# blocked at parse time.
 DEV_CONTAINER_REQUIRED_PATHS := deps/nginx-datadog/build_env/Toolchain.cmake.x86_64
-endif
 
 CI_DOCKER_IMAGE_HASH ?= bf4e353dec1442b7864fddc3c2618b8541eed4c04fe2ab88f2a4c2ebea61df91
 CI_IMAGE_FROM_GITLAB ?= registry.ddbuild.io/ci/httpd-datadog/amd64:$(CI_DOCKER_IMAGE_HASH)
