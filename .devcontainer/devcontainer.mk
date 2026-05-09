@@ -90,16 +90,25 @@ ifneq ($(_DEV_CONTAINER_GIT_COMMON_DIR),)
   endif
 endif
 
-# Precondition check for caller-declared required paths.
-ifneq ($(strip $(DEV_CONTAINER_REQUIRED_PATHS)),)
-  _DEV_CONTAINER_MISSING_PATHS := $(foreach p,$(DEV_CONTAINER_REQUIRED_PATHS),$(if $(wildcard $(DEV_CONTAINER_REPO_ROOT)/$(p)),,$(p)))
-  ifneq ($(strip $(_DEV_CONTAINER_MISSING_PATHS)),)
-    $(error Missing required paths (did you init submodules?): $(_DEV_CONTAINER_MISSING_PATHS))
-  endif
-endif
+# Precondition check for caller-declared required paths. Wired as a
+# phony prereq below so it fires only when a devcontainer-touching
+# target is actually built — not at parse time, which would block
+# unrelated `make` invocations (lint, format) and CI-entrypoint
+# targets whose own recipe initializes the submodules before
+# sub-making dev-image.
+.PHONY: _dev-container-check-required-paths
+_dev-container-check-required-paths:
+	@missing="$(strip $(foreach p,$(DEV_CONTAINER_REQUIRED_PATHS),$(if $(wildcard $(DEV_CONTAINER_REPO_ROOT)/$(p)),,$(p))))"; \
+	if [ -n "$$missing" ]; then \
+	  echo "Missing required paths (did you init submodules?): $$missing" >&2; \
+	  exit 1; \
+	fi
 
 .PHONY: dev-image dev-image-x86_64 dev-shell dev-image-tag \
         .devcontainer-stage-context .devcontainer-image-hash
+
+dev-image dev-image-x86_64 dev-shell dev-image-tag \
+.devcontainer-stage-context .devcontainer-image-hash: _dev-container-check-required-paths
 
 # Stage the build context into a stable path under .devcontainer/.staged/.
 # Invoked from VS Code's initializeCommand (so build.context = `.staged`
