@@ -7,16 +7,22 @@
 #   - Rust toolchain for RUM (inject-browser-sdk requires Rust 1.73+)
 #   - uv (fast Python package manager for tests)
 #
-# Toolchain files are sourced from deps/nginx-datadog/build_env/
+# Toolchain files are sourced from deps/nginx-datadog/build_env/.
 #
+# Arch is auto-derived from `uname -m` inside each RUN (matches the
+# buildx --platform the container runs on), so callers don't have to
+# pass --build-arg ARCH=. The VSCode "Reopen in Container" flow can't
+# auto-detect host arch from devcontainer.json, so relying on uname
+# keeps it correct without env-var gymnastics. `ARG ARCH` stays declared
+# (as an override) so external callers that already pass it — e.g. the
+# dd-repo-tools template's auto-detected build-arg — don't trigger
+# "ARG not declared" warnings.
 FROM alpine:3.20.3 AS sysroot
 
 ARG LLVM_VERSION=17.0.6
 ARG ARCH
 
 COPY deps/nginx-datadog/build_env/CHECKSUMS /CHECKSUMS
-
-RUN echo "Building LLVM ${LLVM_VERSION} on ${ARCH}"
 
 RUN apk --no-cache add alpine-sdk coreutils sudo bash samurai python3 linux-headers \
 	compiler-rt clang llvm lld wget cmake make binutils musl-dev git patchelf xz lit
@@ -60,22 +66,32 @@ RUN cd /usr/lib && ln -s clang/${LLVM_VERSION%%.*}/lib/linux/libclang_rt.builtin
 RUN rm -rf /llvm-project-${LLVM_VERSION}.src
 RUN rm -f llvm-project-${LLVM_VERSION}.src.tar.xz
 
-RUN mkdir -p /sysroot/${ARCH}-none-linux-musl/usr
-RUN ln -s /usr/lib /sysroot/${ARCH}-none-linux-musl/usr/
-RUN ln -s /usr/include /sysroot/${ARCH}-none-linux-musl/usr/
-RUN ln -s /lib /sysroot/${ARCH}-none-linux-musl/
-RUN ln -s /usr/lib/llvm${LLVM_VERSION%%.*}/lib/clang/${LLVM_VERSION%%.*}/lib /sysroot/${ARCH}-none-linux-musl/usr/lib/resource_dir/lib
+RUN arch=${ARCH:-$(uname -m)} && \
+    mkdir -p /sysroot/${arch}-none-linux-musl/usr && \
+    ln -s /usr/lib /sysroot/${arch}-none-linux-musl/usr/ && \
+    ln -s /usr/include /sysroot/${arch}-none-linux-musl/usr/ && \
+    ln -s /lib /sysroot/${arch}-none-linux-musl/ && \
+    ln -s /usr/lib/llvm${LLVM_VERSION%%.*}/lib/clang/${LLVM_VERSION%%.*}/lib /sysroot/${arch}-none-linux-musl/usr/lib/resource_dir/lib
 
-COPY deps/nginx-datadog/build_env/Toolchain.cmake.${ARCH} /sysroot/${ARCH}-none-linux-musl/Toolchain.cmake
+# Both Toolchain.cmake variants are staged; the RUN below picks the one
+# matching the build platform. (COPY can't use a shell-derived path, so
+# we copy both and select at RUN-time instead.)
+COPY deps/nginx-datadog/build_env/Toolchain.cmake.x86_64 /tmp/Toolchain.cmake.x86_64
+COPY deps/nginx-datadog/build_env/Toolchain.cmake.aarch64 /tmp/Toolchain.cmake.aarch64
+RUN arch=${ARCH:-$(uname -m)} && \
+    cp /tmp/Toolchain.cmake.${arch} /sysroot/${arch}-none-linux-musl/Toolchain.cmake && \
+    rm /tmp/Toolchain.cmake.x86_64 /tmp/Toolchain.cmake.aarch64
 
 # see https://github.com/llvm/llvm-project/issues/60572
-RUN mv /usr/lib/gcc/${ARCH}-alpine-linux-musl/13.2.1/include/stdatomic.h /usr/lib/gcc/${ARCH}-alpine-linux-musl/13.2.1/include/stdatomic.h_
-RUN cp /usr/lib/llvm${LLVM_VERSION%%.*}/lib/clang/${LLVM_VERSION%%.*}/include/stdatomic.h /usr/lib/gcc/${ARCH}-alpine-linux-musl/13.2.1/include/stdatomic.h
+RUN arch=${ARCH:-$(uname -m)} && \
+    mv /usr/lib/gcc/${arch}-alpine-linux-musl/13.2.1/include/stdatomic.h /usr/lib/gcc/${arch}-alpine-linux-musl/13.2.1/include/stdatomic.h_ && \
+    cp /usr/lib/llvm${LLVM_VERSION%%.*}/lib/clang/${LLVM_VERSION%%.*}/include/stdatomic.h /usr/lib/gcc/${arch}-alpine-linux-musl/13.2.1/include/stdatomic.h
 
 COPY deps/nginx-datadog/build_env/glibc_compat.c /sysroot/
-RUN clang --sysroot /sysroot/${ARCH}-none-linux-musl/ -fpie -O2 -fno-omit-frame-pointer \
-    -ggdb3 -c /sysroot/glibc_compat.c -o /tmp/glibc_compat.o && \
-    ar rcs /sysroot/${ARCH}-none-linux-musl/usr/lib/libglibc_compat.a /tmp/glibc_compat.o && \
+RUN arch=${ARCH:-$(uname -m)} && \
+    clang --sysroot /sysroot/${arch}-none-linux-musl/ -fpie -O2 -fno-omit-frame-pointer \
+        -ggdb3 -c /sysroot/glibc_compat.c -o /tmp/glibc_compat.o && \
+    ar rcs /sysroot/${arch}-none-linux-musl/usr/lib/libglibc_compat.a /tmp/glibc_compat.o && \
     rm /tmp/glibc_compat.o
 
 # Install dependencies for httpd

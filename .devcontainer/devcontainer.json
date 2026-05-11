@@ -3,9 +3,6 @@
   "initializeCommand": "make -f .devcontainer/devcontainer.mk .devcontainer-stage-context",
   "build": {
     "dockerfile": ".staged/.devcontainer/Dockerfile",
-    "context": ".staged",
-    "args": {
-      "ARCH": "${localEnv:ARCH:x86_64}"
-    }
+    "context": ".staged"
   }
 }
