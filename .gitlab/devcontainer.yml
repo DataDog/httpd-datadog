@@ -49,9 +49,19 @@ devcontainer_image:
     - |
       set -euo pipefail
 
-      # Bootstrap image is minimal — install make (and rsync, which the
-      # staging step needs) on demand. Each `command -v` guards a single
-      # apt-get so a re-run on an image that already has them is a no-op.
+      # Guard against an empty path component in the resolved image
+      # name — the most common cause is a consumer forgetting to set
+      # DEVCONTAINER_REPO_NAME (default DEVCONTAINER_IMAGE_NAME embeds
+      # it). Docker would accept `…/ci//devcontainer:tag` silently and
+      # push to the wrong place.
+      case "$DEVCONTAINER_IMAGE_NAME" in
+        *//*) echo "ERROR: DEVCONTAINER_IMAGE_NAME has an empty path component ($DEVCONTAINER_IMAGE_NAME). Set DEVCONTAINER_REPO_NAME or override DEVCONTAINER_IMAGE_NAME." >&2; exit 1 ;;
+      esac
+
+      # Some bootstrap images (upstream nydus, etc.) are minimal — guard
+      # each `command -v` so apt-get only runs when the tool's actually
+      # missing. With dd-repo-tools' self-published bootstrap (already
+      # has make + rsync baked in) this whole block is a no-op.
       missing=""
       command -v make  >/dev/null || missing="$missing make"
       command -v rsync >/dev/null || missing="$missing rsync"

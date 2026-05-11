@@ -8,8 +8,10 @@
 #   DEV_CONTAINER_IMAGE_NAME         Override image name. Defaults to
 #                                    registry.ddbuild.io/ci/<repo>/devcontainer.
 #   DEV_CONTAINER_REQUIRED_PATHS     Whitespace-separated paths that must exist
-#                                    (e.g. submodule checkouts). Missing ->
-#                                    $(error).
+#                                    (e.g. submodule checkouts). Checked at
+#                                    recipe time as a prereq of devcontainer-
+#                                    touching targets — missing paths fail
+#                                    that invocation, not parse time.
 #   DOCKER_BUILDX_FLAGS              Extra flags appended to the local build.
 #
 # This file is the single source of truth for staging + hashing. The
