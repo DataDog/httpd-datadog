@@ -5,8 +5,8 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-  # schedule:
-  #   - cron: 0 4 * * *
+  schedule:
+    - cron: 0 4 * * *
 
 concurrency:
   # this ensures that only one workflow runs at a time for a given branch on pull requests
@@ -57,5 +57,5 @@ jobs:
       scenarios_groups: tracer-release
       excluded_scenarios: APM_TRACING_E2E_OTEL,APM_TRACING_E2E_SINGLE_SPAN  # require AWS and datadog credentials
       parametric_job_count: 8
-      skip_empty_scenarios: true
+      skip_empty_scenarios: false
       push_to_test_optimization: ${{ github.actor != 'dependabot[bot]' }}
