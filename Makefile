@@ -27,7 +27,7 @@ test-integration: dev-image
 PRESET ?= ci-dev
 .PHONY: ci-build
 ci-build:
-	git config --global --add safe.directory $(CURDIR)
+	git config --global --add safe.directory "$(CURDIR)"
 	git submodule update --init --depth=1 deps/dd-trace-cpp deps/nginx-datadog
 	cmake --preset=$(PRESET) -B build .
 	cmake --build build -j --verbose

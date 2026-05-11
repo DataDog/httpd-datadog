@@ -27,10 +27,13 @@ class AioHTTPServer:
     def internal_run(self) -> None:
         runner = web.AppRunner(self._app)
         self.loop.run_until_complete(runner.setup())
-        site = web.TCPSite(runner, self._host, self._port)
+        site = web.TCPSite(runner, self._host, self._port, shutdown_timeout=1.0)
         self.loop.run_until_complete(site.start())
         self.loop.run_until_complete(self._stop.wait())
-        self.loop.run_until_complete(self._app.cleanup())
+        # `runner.cleanup()` stops the site and the app together; calling
+        # `app.cleanup()` alone leaves the TCPSite listening, which keeps
+        # the thread alive past stop() and wedges pytest teardown.
+        self.loop.run_until_complete(runner.cleanup())
         self.loop.close()
 
     def run(self) -> None:
