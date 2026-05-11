@@ -1,21 +1,5 @@
-# Build-context allowlist for the devcontainer image. One rsync-relative
-# path per line; '#' comments and blank lines are stripped before rsync
-# sees them. Anything the Dockerfile COPYs has to live under one of these.
-#
-# Only files whose contents affect the image go in this list — anything
-# that's only invoked at runtime via volume mount (e.g.
-# run-integration-tests.sh) is intentionally excluded so editing it
-# doesn't invalidate the cached image tag.
-
-# image recipe
+# rsync --files-from allowlist (anything COPY'd by the Dockerfile).
+# Runtime-only files (bind-mounted at `docker run`) stay out of the hash.
 .devcontainer/Dockerfile
-
-# musl/LLVM toolchain inputs (CHECKSUMS, locale.h.diff, alltypes.h.diff,
-# Toolchain.cmake.<arch>, glibc_compat.c) — sourced from the
-# nginx-datadog submodule's build_env so the cross-compile sysroot here
-# matches what nginx-datadog uses.
 deps/nginx-datadog/build_env/
-
-# Downloads + builds httpd 2.4 inside the image so test jobs have an
-# Apache to load mod_datadog into without rebuilding it per pipeline.
 scripts/setup-httpd.py
