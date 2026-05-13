@@ -6,6 +6,14 @@
 # context, compute the tag, check the cache, build + nydusify on miss,
 # emit ci-image.env for downstream jobs.
 #
+# Each build produces two registry tags:
+#   $TAG     — OCI source, pullable from any client (laptops, the
+#              public Docker Hub mirror flow, GitHub-hosted runners).
+#              Exposed to consumers as DEVCONTAINER_IMAGE[_AMD64|_ARM64].
+#   $TAG-ci  — nydus-converted variant for runners with a nydus
+#              snapshotter. Exposed as DEVCONTAINER_IMAGE_CI
+#              (or *_AMD64_CI / *_ARM64_CI under PER_ARCH).
+#
 # Consumer repo wires this in via:
 #   variables:
 #     DEVCONTAINER_REPO_NAME: my-repo
@@ -14,6 +22,9 @@
 #     # DEVCONTAINER_PER_ARCH: "true"                               # arch matrix
 #   include:
 #     - local: .gitlab/devcontainer.yml
+#
+# Jobs that want nydus acceleration pull $DEVCONTAINER_IMAGE_CI (or
+# the per-arch _CI variant). Everything else can keep using the OCI tag.
 #
 # DEVCONTAINER_PER_ARCH=true builds two single-arch refs ($IMAGE:amd64-$TAG
 # and $IMAGE:arm64-$TAG) instead of one multi-arch manifest. Downstream
@@ -85,6 +96,18 @@ devcontainer_image:
       echo "Devcontainer tag: $TAG"
 
       # ---- build-or-skip per arch ----
+      # Each ref ends up as two registry tags:
+      #   $ref       — OCI source, pullable by any client (laptops,
+      #                GitHub-hosted runners, the public Docker Hub
+      #                mirror flow).
+      #   $ref-ci    — nydus-converted variant for runners with a
+      #                nydus snapshotter (internal GitLab arch:*
+      #                runners). Consumers opt in via the *_CI vars
+      #                emitted below.
+      # The earlier shape (`nydus-convert $ref $ref`) overwrote the OCI
+      # source with a nydus-only manifest, breaking stock `docker pull`.
+      # The two-tag shape matches the pattern used across DataDog
+      # (nbt, inject-browser-sdk, coredns-private, dd-images itself).
       build_and_nydusify() {
         local ref=$1 platform=$2 arch_arg=$3
         echo "Building $ref ..."
@@ -96,12 +119,7 @@ devcontainer_image:
           $arch_arg \
           --push -t "$ref" \
           "$ctx"
-        # MERGE_PLATFORM=true keeps both the OCI source and the nydus
-        # variant under the same tag (single index manifest). Without
-        # it, nydus-convert overwrites $ref with a nydus-only manifest,
-        # which any client without a nydus snapshotter (laptops doing
-        # `docker pull`, GitHub-hosted runners) can't unpack.
-        MERGE_PLATFORM=true nydus-convert "$ref" "$ref"
+        nydus-convert "$ref" "$ref-ci"
       }
 
       if [ "$DEVCONTAINER_PER_ARCH" = "true" ]; then
@@ -114,6 +132,8 @@ devcontainer_image:
         {
           echo "DEVCONTAINER_IMAGE_AMD64=$AMD_REF"
           echo "DEVCONTAINER_IMAGE_ARM64=$ARM_REF"
+          echo "DEVCONTAINER_IMAGE_AMD64_CI=$AMD_REF-ci"
+          echo "DEVCONTAINER_IMAGE_ARM64_CI=$ARM_REF-ci"
           echo "CI_IMAGE_HASH=$TAG"
         } > ci-image.env
       else
@@ -122,6 +142,7 @@ devcontainer_image:
           || build_and_nydusify "$REF" linux/amd64,linux/arm64 ""
         {
           echo "DEVCONTAINER_IMAGE=$REF"
+          echo "DEVCONTAINER_IMAGE_CI=$REF-ci"
           echo "CI_IMAGE_HASH=$TAG"
         } > ci-image.env
       fi

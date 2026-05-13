@@ -1,7 +1,7 @@
 # Build image for httpd-datadog GitLab CI.
-# [verify-nydus-merge-platform] Hash-perturbing comment so CI rebuilds
+# [verify-nydus-merge-platform v2] Hash-perturbing comment so CI rebuilds
 # the image (skip-if-exists in devcontainer.yml would otherwise reuse
-# the existing nydus-only manifest at the original hash).
+# the existing manifest at the prior hash).
 #
 # It contains:
 #   - LLVM 17 toolchain with musl sysroot for cross-compilation
