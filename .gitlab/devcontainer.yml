@@ -6,6 +6,14 @@
 # context, compute the tag, check the cache, build + nydusify on miss,
 # emit ci-image.env for downstream jobs.
 #
+# Each build produces two registry tags:
+#   $TAG     — OCI source, pullable from any client (laptops, the
+#              public Docker Hub mirror flow, GitHub-hosted runners).
+#              Exposed to consumers as DEVCONTAINER_IMAGE[_AMD64|_ARM64].
+#   $TAG-ci  — nydus-converted variant for runners with a nydus
+#              snapshotter. Exposed as DEVCONTAINER_IMAGE_CI
+#              (or *_AMD64_CI / *_ARM64_CI under PER_ARCH).
+#
 # Consumer repo wires this in via:
 #   variables:
 #     DEVCONTAINER_REPO_NAME: my-repo
@@ -96,27 +104,32 @@ devcontainer_image:
           $arch_arg \
           --push -t "$ref" \
           "$ctx"
-        nydus-convert "$ref" "$ref"
+        nydus-convert "$ref" "$ref-ci"
       }
+
+      # Cache hit requires *both* the OCI ref and its -ci variant — a
+      # half-published state (e.g. nydus-convert failed mid-flight)
+      # must trigger a rebuild, not get reused.
+      both_cached() { crane manifest "$1" >/dev/null 2>&1 && crane manifest "$1-ci" >/dev/null 2>&1; }
 
       if [ "$DEVCONTAINER_PER_ARCH" = "true" ]; then
         AMD_REF="${DEVCONTAINER_IMAGE_NAME}:amd64-${TAG}"
         ARM_REF="${DEVCONTAINER_IMAGE_NAME}:arm64-${TAG}"
-        crane manifest "$AMD_REF" >/dev/null 2>&1 \
-          || build_and_nydusify "$AMD_REF" linux/amd64 "--build-arg ARCH=x86_64"
-        crane manifest "$ARM_REF" >/dev/null 2>&1 \
-          || build_and_nydusify "$ARM_REF" linux/arm64 "--build-arg ARCH=aarch64"
+        both_cached "$AMD_REF" || build_and_nydusify "$AMD_REF" linux/amd64 "--build-arg ARCH=x86_64"
+        both_cached "$ARM_REF" || build_and_nydusify "$ARM_REF" linux/arm64 "--build-arg ARCH=aarch64"
         {
           echo "DEVCONTAINER_IMAGE_AMD64=$AMD_REF"
           echo "DEVCONTAINER_IMAGE_ARM64=$ARM_REF"
+          echo "DEVCONTAINER_IMAGE_AMD64_CI=$AMD_REF-ci"
+          echo "DEVCONTAINER_IMAGE_ARM64_CI=$ARM_REF-ci"
           echo "CI_IMAGE_HASH=$TAG"
         } > ci-image.env
       else
         REF="${DEVCONTAINER_IMAGE_NAME}:${TAG}"
-        crane manifest "$REF" >/dev/null 2>&1 \
-          || build_and_nydusify "$REF" linux/amd64,linux/arm64 ""
+        both_cached "$REF" || build_and_nydusify "$REF" linux/amd64,linux/arm64 ""
         {
           echo "DEVCONTAINER_IMAGE=$REF"
+          echo "DEVCONTAINER_IMAGE_CI=$REF-ci"
           echo "CI_IMAGE_HASH=$TAG"
         } > ci-image.env
       fi
