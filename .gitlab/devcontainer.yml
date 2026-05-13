@@ -96,7 +96,12 @@ devcontainer_image:
           $arch_arg \
           --push -t "$ref" \
           "$ctx"
-        nydus-convert "$ref" "$ref"
+        # MERGE_PLATFORM=true keeps both the OCI source and the nydus
+        # variant under the same tag (single index manifest). Without
+        # it, nydus-convert overwrites $ref with a nydus-only manifest,
+        # which any client without a nydus snapshotter (laptops doing
+        # `docker pull`, GitHub-hosted runners) can't unpack.
+        MERGE_PLATFORM=true nydus-convert "$ref" "$ref"
       }
 
       if [ "$DEVCONTAINER_PER_ARCH" = "true" ]; then
