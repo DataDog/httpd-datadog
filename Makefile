@@ -48,7 +48,7 @@ test-integration: dev-image
 		fi; \
 		repo_root=$$PWD; \
 		cd test/integration-test; \
-		export UV_PROJECT_ENVIRONMENT=/root/.venv-httpd-datadog-tests; \
+		export UV_PROJECT_ENVIRONMENT=$$HOME/.venv-httpd-datadog-tests; \
 		uv sync; \
 		uv run pytest \
 			--bin-path=/httpd/httpd-build/bin/apachectl \

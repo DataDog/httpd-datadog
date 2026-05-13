@@ -4,7 +4,9 @@ GitHub-hosted runners can't pull from `registry.ddbuild.io`, so the
 workflows here pin `image:` to a public Docker Hub mirror of the
 GitLab-built devcontainer image.
 
-Bump it with:
+Run this **from `main`** after a `.devcontainer/` change has landed
+(the GitLab pipeline publishes the new tag; this just retags it to
+Docker Hub and updates the workflow `image:` pins):
 
 ```sh
 make mirror-public-image
