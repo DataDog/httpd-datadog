@@ -27,18 +27,33 @@ class AioHTTPServer:
     def internal_run(self) -> None:
         runner = web.AppRunner(self._app)
         self.loop.run_until_complete(runner.setup())
-        site = web.TCPSite(runner, self._host, self._port)
+        site = web.TCPSite(runner, self._host, self._port, shutdown_timeout=1.0)
         self.loop.run_until_complete(site.start())
         self.loop.run_until_complete(self._stop.wait())
-        self.loop.run_until_complete(self._app.cleanup())
+        # `runner.cleanup()` stops the site and the app together; calling
+        # `app.cleanup()` alone leaves the TCPSite listening, which keeps
+        # the thread alive past stop() and wedges pytest teardown.
+        self.loop.run_until_complete(runner.cleanup())
         self.loop.close()
 
     def run(self) -> None:
-        self._thread = threading.Thread(target=self.internal_run)
+        # daemon=True so an early test failure that skips stop() can't keep
+        # the interpreter alive at pytest shutdown — the __exit__ path below
+        # is the intended cleanup, this is just a safety net.
+        self._thread = threading.Thread(target=self.internal_run, daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
         self.loop.call_soon_threadsafe(self._stop.set)
+        if self._thread is not None:
+            self._thread.join(timeout=3.0)
+
+    def __enter__(self) -> "AioHTTPServer":
+        self.run()
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.stop()
 
 
 def test_http_proxy(server, agent, log_dir, module_path):
@@ -46,7 +61,6 @@ def test_http_proxy(server, agent, log_dir, module_path):
     Verify proxified HTTP requests propagate tracing context
     """
 
-    # TODO: support `with` syntax
     def make_temporary_http_server(host: str, port: int):
         q = Queue()
 
@@ -62,7 +76,6 @@ def test_http_proxy(server, agent, log_dir, module_path):
     host = "127.0.0.1"
     port = 8081
     queue, http_server = make_temporary_http_server(host, port)
-    http_server.run()
 
     config = {
         "path": relpath("conf/proxy.conf"),
@@ -72,20 +85,20 @@ def test_http_proxy(server, agent, log_dir, module_path):
     conf_path = os.path.join(log_dir, "httpd.conf")
     save_configuration(make_configuration(config, log_dir, module_path), conf_path)
 
-    assert server.check_configuration(conf_path)
-    assert server.load_configuration(conf_path)
+    with http_server:
+        assert server.check_configuration(conf_path)
+        assert server.load_configuration(conf_path)
 
-    r = requests.get(server.make_url("/http"), timeout=2)
-    assert r.status_code == 200
+        r = requests.get(server.make_url("/http"), timeout=2)
+        assert r.status_code == 200
 
-    http_server.stop()
-    server.stop(conf_path)
+        server.stop(conf_path)
 
-    assert not queue.empty()
+        assert not queue.empty()
 
-    upstream_headers = queue.get()
-    assert "x-datadog-trace-id" in upstream_headers
-    assert "x-datadog-parent-id" in upstream_headers
+        upstream_headers = queue.get()
+        assert "x-datadog-trace-id" in upstream_headers
+        assert "x-datadog-parent-id" in upstream_headers
 
     traces = agent.get_traces(timeout=5)
     assert len(traces) == 1
