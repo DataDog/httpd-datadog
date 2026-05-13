@@ -24,6 +24,11 @@ from aiohttp import web
 
 CWD = os.path.dirname(__file__)
 
+# CI runners pre-set DD_* on the env to tag their own traces; strip so
+# the per-test `dd.service` directive in httpd.conf wins.
+for _dd_var in ("DD_SERVICE", "DD_ENV", "DD_VERSION"):
+    os.environ.pop(_dd_var, None)
+
 
 class DockerProc:
     def __init__(self, container_name: str) -> None:
