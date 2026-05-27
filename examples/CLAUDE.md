@@ -20,20 +20,22 @@ The Apache service loads the `mod_datadog.so` to enable APM tracing for proxy re
 
 ## Prerequisites
 
-Before running any commands, ensure the Datadog API key is set. You can either:
+The Datadog API key is supplied to the agent via a Docker Compose secret (`dd_api_key`) whose source is the `DD_API_KEY` environment variable. Inside the container the key is mounted at `/run/secrets/dd_api_key` and read by the agent through `DD_API_KEY_FILE`, so it never appears in the container environment or image layers.
 
-**Option 1: Export environment variable**
-```bash
-export DD_API_KEY=<your_api_key>
-```
+`DD_API_KEY` must therefore be present in the shell when invoking `docker-compose`:
 
-**Option 2: Use envchain (recommended for security)**
+**Option 1: Use envchain (recommended — OS keychain)**
 ```bash
 # Store API key in keychain (run once)
 envchain --set datadog DD_API_KEY
 
 # Use envchain when running docker-compose commands
 envchain datadog docker-compose up -d
+```
+
+**Option 2: Export environment variable**
+```bash
+export DD_API_KEY=<your_api_key>
 ```
 
 The runtime environment must be linux/amd64 for the Datadog Apache module to work properly.
@@ -53,12 +55,6 @@ envchain datadog docker-compose up -d
 ```bash
 curl localhost:8888
 ```
-
-### Load testing
-```bash
-make stress
-```
-This uses vegeta to send 1000 req/s for 60 seconds to test the tracing under load.
 
 ### View logs
 ```bash
@@ -88,7 +84,7 @@ docker-compose down
 - **Enhanced logging**: Includes Datadog trace and span IDs for correlation
 - Log format: `dd.trace_id="%{datadog_trace_id}e" dd.span_id="%{datadog_span_id}e"`
 - Exposes Apache server-status endpoint on port 81 for Datadog monitoring
-- Configuration: `apache/httpd.conf`
+- Configuration: `apache/apache-config.conf`
 
 ### httpjs (Port 8080)
 - Simple Node.js HTTP server with Datadog APM tracing via dd-trace
@@ -107,5 +103,4 @@ docker-compose down
 - `docker-compose.yml`: Main orchestration configuration
 - `apache/`: Apache configuration and Dockerfile
 - `httpjs/`: Node.js HTTP service with Dockerfile and http.js server
-- `Makefile`: Contains stress testing command
-- `doc/`: Documentation and trace sample images
+- `img/`: Documentation and trace sample images

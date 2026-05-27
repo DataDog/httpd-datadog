@@ -44,13 +44,15 @@ services:
     image: datadog/agent:7
     container_name: sample-ddagent
     environment:
-      - DD_API_KEY
-      - DD_SITE=datadoghq.com
+      - DD_API_KEY_FILE=/run/secrets/dd_api_key
+      - DD_SITE
       - DD_ENV=dev
       - DD_HOSTNAME=local
       - DD_LOGS_ENABLED=true
       - DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL=true
       - DD_APM_NON_LOCAL_TRAFFIC=true
+    secrets:
+      - dd_api_key
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
@@ -58,3 +60,7 @@ services:
       - /sys/fs/cgroup/:/host/sys/fs/cgroup:ro
     ports:
       - "8126:8126/tcp"
+
+secrets:
+  dd_api_key:
+    environment: DD_API_KEY

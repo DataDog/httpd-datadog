@@ -18,7 +18,20 @@ Client → Apache (port 8888) → Node.js (port 8080) → Datadog Agent (port 81
 
 ## Prerequisites
 
-Set your Datadog API key:
+The Datadog API key is passed to the agent as a [Docker Compose secret](https://docs.docker.com/reference/compose-file/secrets/) sourced from the `DD_API_KEY` environment variable, so the key is mounted at `/run/secrets/dd_api_key` inside the container rather than baked into the environment. Optionally set `DD_SITE` to override the default Datadog site.
+
+Provide `DD_API_KEY` to Compose via whichever secrets workflow you prefer:
+
+**Option 1: [envchain](https://github.com/sorah/envchain) (recommended — stores the key in your OS keychain)**
+```bash
+# One-time setup
+envchain --set datadog DD_API_KEY
+
+# Every invocation
+envchain datadog docker-compose up -d
+```
+
+**Option 2: Export inline**
 ```bash
 export DD_API_KEY=<your_api_key>
 ```
@@ -27,7 +40,7 @@ export DD_API_KEY=<your_api_key>
 
 1. Build and start services:
 ```bash
-docker-compose up -d
+envchain datadog docker-compose up -d
 ```
 
 2. Test the setup:
