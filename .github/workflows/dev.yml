@@ -73,6 +73,4 @@ jobs:
       - name: Upload code coverage report to Datadog
         run: |
           # datadog-ci package comes from https://www.npmjs.com/package/@datadog/datadog-ci?activeTab=versions
-          npx @datadog/datadog-ci@5.18.0 coverage upload --format=lcov coverage.lcov
-        env:
-          DD_API_KEY: ${{ secrets.DD_API_KEY_CI_APP }}
+          npx --yes @datadog/datadog-ci@5.18.0 coverage upload --format=lcov coverage.lcov
