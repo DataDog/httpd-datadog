@@ -1,0 +1,125 @@
+# DO NOT EDIT. Synced from DataDog/dd-repo-tools by the
+# dd-repo-tools devcontainer-bundle campaigner into
+# `.gitlab/devcontainer.yml` — edits here will be overwritten.
+#
+# Shared devcontainer pipeline. One job does everything: stage the
+# context, compute the tag, check the cache, build + nydusify on miss,
+# emit ci-image.env for downstream jobs.
+#
+# Consumer repo wires this in via:
+#   variables:
+#     DEVCONTAINER_REPO_NAME: my-repo
+#     # optional:
+#     # DEVCONTAINER_IMAGE_NAME: registry.ddbuild.io/ci/my-repo     # flat path
+#     # DEVCONTAINER_PER_ARCH: "true"                               # arch matrix
+#   include:
+#     - local: .gitlab/devcontainer.yml
+#
+# DEVCONTAINER_PER_ARCH=true builds two single-arch refs ($IMAGE:amd64-$TAG
+# and $IMAGE:arm64-$TAG) instead of one multi-arch manifest. Downstream
+# jobs pulling the matching ref can then run on a native-arch runner,
+# avoiding qemu emulation at consume time. Both builds still happen
+# sequentially in this single .pre job pinned to arch:amd64 — moving the
+# build itself to a parallel:matrix on native runners is future work.
+# Default off because most repos build fast enough that the single
+# multi-arch buildx run is the cheaper option.
+#
+# Per-repo inputs live in:
+#   .devcontainer/Dockerfile          the dockerfile
+#   .devcontainer/context.files       rsync --files-from list (one path per line;
+#                                     '#'/blank lines are comments, stripped
+#                                     before being handed to rsync)
+#   .devcontainer/context.filter      optional rsync filter rules
+
+variables:
+  DEVCONTAINER_IMAGE_NAME: registry.ddbuild.io/ci/${DEVCONTAINER_REPO_NAME}/devcontainer
+  DEVCONTAINER_PER_ARCH: ""
+  # Bootstrap image used by the devcontainer_image job. Self-published —
+  # this is dd-repo-tools' own devcontainer image (re-exports nydus +
+  # adds make + rsync), pinned by content hash so the bootstrap never
+  # silently shifts. Bump after a Dockerfile change rotates the hash.
+  DEVCONTAINER_BOOTSTRAP_IMAGE: registry.ddbuild.io/ci/dd-repo-tools/devcontainer:ff81062ee360
+
+devcontainer_image:
+  stage: .pre
+  image: $DEVCONTAINER_BOOTSTRAP_IMAGE
+  needs: []
+  tags: ["arch:amd64"]
+  script:
+    - |
+      set -euo pipefail
+
+      # Guard against an empty path component in the resolved image
+      # name — the most common cause is a consumer forgetting to set
+      # DEVCONTAINER_REPO_NAME (default DEVCONTAINER_IMAGE_NAME embeds
+      # it). Docker would accept `…/ci//devcontainer:tag` silently and
+      # push to the wrong place.
+      case "$DEVCONTAINER_IMAGE_NAME" in
+        *//*) echo "ERROR: DEVCONTAINER_IMAGE_NAME has an empty path component ($DEVCONTAINER_IMAGE_NAME). Set DEVCONTAINER_REPO_NAME or override DEVCONTAINER_IMAGE_NAME." >&2; exit 1 ;;
+      esac
+
+      # Some bootstrap images (upstream nydus, etc.) are minimal — guard
+      # each `command -v` so apt-get only runs when the tool's actually
+      # missing. With dd-repo-tools' self-published bootstrap (already
+      # has make + rsync baked in) this whole block is a no-op.
+      missing=""
+      command -v make  >/dev/null || missing="$missing make"
+      command -v rsync >/dev/null || missing="$missing rsync"
+      if [ -n "$missing" ]; then
+        apt-get update -qq
+        # shellcheck disable=SC2086
+        apt-get install -y -qq --no-install-recommends $missing
+      fi
+
+      # Stage + hash via devcontainer.mk so CI and local `make` use the
+      # same code. `-f` is explicit so we don't depend on the consumer's
+      # root Makefile including the fragment. .devcontainer-stage-context
+      # writes to .devcontainer/.staged/; .devcontainer-image-hash reads
+      # from the same path and prints the 12-char tag.
+      MK="-f .devcontainer/devcontainer.mk"
+      # shellcheck disable=SC2086
+      make $MK .devcontainer-stage-context
+      ctx=.devcontainer/.staged
+      # shellcheck disable=SC2086
+      TAG=$(make $MK -s .devcontainer-image-hash)
+      echo "Devcontainer tag: $TAG"
+
+      # ---- build-or-skip per arch ----
+      build_and_nydusify() {
+        local ref=$1 platform=$2 arch_arg=$3
+        echo "Building $ref ..."
+        # shellcheck disable=SC2086
+        docker buildx build \
+          --platform "$platform" \
+          --file "$ctx/.devcontainer/Dockerfile" \
+          --build-context "repo=$ctx" \
+          $arch_arg \
+          --push -t "$ref" \
+          "$ctx"
+        nydus-convert "$ref" "$ref"
+      }
+
+      if [ "$DEVCONTAINER_PER_ARCH" = "true" ]; then
+        AMD_REF="${DEVCONTAINER_IMAGE_NAME}:amd64-${TAG}"
+        ARM_REF="${DEVCONTAINER_IMAGE_NAME}:arm64-${TAG}"
+        crane manifest "$AMD_REF" >/dev/null 2>&1 \
+          || build_and_nydusify "$AMD_REF" linux/amd64 "--build-arg ARCH=x86_64"
+        crane manifest "$ARM_REF" >/dev/null 2>&1 \
+          || build_and_nydusify "$ARM_REF" linux/arm64 "--build-arg ARCH=aarch64"
+        {
+          echo "DEVCONTAINER_IMAGE_AMD64=$AMD_REF"
+          echo "DEVCONTAINER_IMAGE_ARM64=$ARM_REF"
+          echo "CI_IMAGE_HASH=$TAG"
+        } > ci-image.env
+      else
+        REF="${DEVCONTAINER_IMAGE_NAME}:${TAG}"
+        crane manifest "$REF" >/dev/null 2>&1 \
+          || build_and_nydusify "$REF" linux/amd64,linux/arm64 ""
+        {
+          echo "DEVCONTAINER_IMAGE=$REF"
+          echo "CI_IMAGE_HASH=$TAG"
+        } > ci-image.env
+      fi
+  artifacts:
+    reports:
+      dotenv: ci-image.env

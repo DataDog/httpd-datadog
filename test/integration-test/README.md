@@ -2,61 +2,76 @@
 
 Integration tests for Apache httpd Datadog module using pytest.
 
-## Quick Start
+## All Tests
 
-### Setup
+All the commands below must be run from the root the repository, not from the `test/integration-test` directory:
 
-```bash
-# Install uv (Python package manager)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Install test dependencies
-cd test/integration-test && uv sync
-
-# Run smoke tests (auto-builds module variants as needed)
-uv run pytest --bin-path=../../httpd/httpd-build/bin/apachectl -v -m smoke
-
-# Run CI tests
-uv run pytest --bin-path=../../httpd/httpd-build/bin/apachectl -v -m ci
-
-# Run RUM tests only (auto-builds with RUM support)
-uv run pytest --bin-path=../../httpd/httpd-build/bin/apachectl -v -m requires_rum
-
-# Run all tests (auto-builds module variants as needed)
-uv run pytest --bin-path=../../httpd/httpd-build/bin/apachectl -v
-
-# Run with pre-built module (skip auto-build)
-uv run pytest --bin-path=../../httpd/httpd-build/bin/apachectl -v \
-  --module-path=/path/to/mod_datadog.so
-
-# Run specific test file
-uv run pytest --bin-path=../../httpd/httpd-build/bin/apachectl -v \
-  scenarios/test_rum.py
+```sh
+cd httpd-datadog
 ```
 
-**Auto-Build Behavior:**
-- The test suite automatically builds two module variants on demand:
-  - **Without RUM**: `build/mod_datadog/mod_datadog.so` (for regular tests).
-  - **With RUM**: `build-rum/mod_datadog/mod_datadog.so` (for `@pytest.mark.requires_rum` tests).
-- Each variant is only built if tests requiring it are collected.
-- Tests automatically use the correct variant based on markers.
-- Build failures cause tests to fail (not skip).
-- Use `--module-path` to override and skip auto-build.
+### Pre-requisites
 
-## Command-Line Options
+```sh
+git submodule update --init --recursive
+cmake --build build-rum  # populates build-rum/_deps/injectbrowsersdk-src/
+```
 
-Required options:
-- `--bin-path` - Path to apachectl binary (e.g., `/usr/sbin/apachectl`)
+### Build the Docker Image
 
-Optional:
-- `--module-path` - Path to mod_datadog.so (skips auto-build if provided)
-- `--log-dir` - Directory for test logs (defaults to temp directory)
+```sh
+docker build -f test/integration-test/Dockerfile -t httpd-datadog-tests .
+```
 
-## Test Markers
+### Run All Tests
+
+```sh
+docker run --rm httpd-datadog-tests
+```
+
+### Run Tests by Markers
+
+The tests have the following optional markers:
 
 - `@pytest.mark.smoke` - Basic functionality tests
 - `@pytest.mark.ci` - CI-suitable tests
 - `@pytest.mark.requires_rum` - RUM tests (auto-build module with RUM)
+
+So, to run only smoke tests:
+
+```sh
+docker run --rm httpd-datadog-tests uv run pytest --bin-path=/httpd/httpd-build/bin/apachectl -v -m smoke
+```
+
+Similarly, to run only CI tests:
+
+```sh
+docker run --rm httpd-datadog-tests uv run pytest --bin-path=/httpd/httpd-build/bin/apachectl -v -m ci
+```
+
+### Run a Specific Test
+
+To run a specific test file:
+
+```sh
+docker run --rm httpd-datadog-tests uv run pytest --bin-path=/httpd/httpd-build/bin/apachectl -v scenarios/test_smoke.py
+```
+
+To run a specific test function:
+
+```sh
+docker run --rm httpd-datadog-tests uv run pytest --bin-path=/httpd/httpd-build/bin/apachectl -v scenarios/test_smoke.py::test_version_symbol
+```
+
+### Command-Line Options
+
+Required options:
+- `--bin-path` - Path to apachectl binary (e.g., `/usr/sbin/apachectl`)
+
+Optional options:
+- `--module-path` - Path to `mod_datadog.so` (skips auto-build if provided)
+- `--log-dir` - Directory for test logs (defaults to temp directory)
+
 
 ## RUM Tests
 
@@ -80,7 +95,7 @@ DatadogRum On
 - Child `<Location>` overrides parent.
 - Auto-builds module with `-DHTTPD_DATADOG_ENABLE_RUM=ON` when RUM tests are detected.
 
-## Docker Testing
+### Docker Testing
 
 ```sh
 docker run --rm -v "$PWD:/workspace" -w /workspace \
@@ -95,16 +110,18 @@ docker run --rm -v "$PWD:/workspace" -w /workspace \
   "
 ```
 
-## Troubleshooting
+### Troubleshooting
 
 **RUM build fails:** Check CMake output for missing dependencies (inject-browser-sdk is fetched automatically via CMake FetchContent)
 
 **Tests hang:** Port 8136 in use
+
 ```sh
 lsof -i :8136
 ```
 
 **Module issues:**
+
 ```sh
 ldd /path/to/mod_datadog.so
 apachectl -f /path/to/config.conf -t

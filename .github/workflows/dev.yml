@@ -23,10 +23,10 @@ jobs:
       image: datadog/docker-library:httpd-datadog-ci-bf4e353dec1442b7864fddc3c2618b8541eed4c04fe2ab88f2a4c2ebea61df91
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          submodules: true
       - name: Add cloned repo as safe
         run: sh -c "git config --global --add safe.directory $PWD"
+      - name: Init required submodules
+        run: git submodule update --init --depth=1 deps/dd-trace-cpp deps/nginx-datadog
       - name: Configure
         run: cmake --preset=ci-dev -B build .
       - name: Build
@@ -71,9 +71,8 @@ jobs:
           llvm-profdata merge -sparse /tmp/*.profraw -o /tmp/default.profdata
           llvm-cov export dist/lib/mod_datadog.so -format=lcov -instr-profile=/tmp/default.profdata -ignore-filename-regex=/httpd/ > coverage.lcov
       - name: Upload code coverage report to Datadog
-        # The commit hash comes from the release of the action: https://github.com/DataDog/coverage-upload-github-action/releases
+        # See https://github.com/DataDog/coverage-upload-github-action/releases
         uses: DataDog/coverage-upload-github-action@2ba057033351887422f8eb0203d1990c3acbc8c5 # v1.0.4
         with:
-          api_key: ${{ secrets.DD_API_KEY_CI_APP }}
           files: coverage.lcov
           format: lcov

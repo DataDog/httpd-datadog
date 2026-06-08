@@ -5,8 +5,8 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-  # schedule:
-  #   - cron: 0 4 * * *
+  schedule:
+    - cron: 0 4 * * *
 
 concurrency:
   # this ensures that only one workflow runs at a time for a given branch on pull requests
@@ -23,10 +23,10 @@ jobs:
       image: datadog/docker-library:httpd-datadog-ci-bf4e353dec1442b7864fddc3c2618b8541eed4c04fe2ab88f2a4c2ebea61df91
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          submodules: true
       - name: Add cloned repo as safe
         run: sh -c "git config --global --add safe.directory $PWD"
+      - name: Init required submodules
+        run: git submodule update --init --depth=1 deps/dd-trace-cpp deps/nginx-datadog
       - name: Configure
         run: cmake --preset=ci-dev -B build .
       - name: Build
@@ -43,20 +43,16 @@ jobs:
   main:
     needs:
       - build-artifacts
-    uses: DataDog/system-tests/.github/workflows/system-tests.yml@1e5d6b7096279ca43ce4826fda3cc805635b63c1
-    secrets:
-      TEST_OPTIMIZATION_API_KEY: ${{ secrets.DD_API_KEY_CI_APP }}
-      DD_API_KEY: ${{ secrets.DD_API_KEY_CI_APP }}
+    uses: DataDog/system-tests/.github/workflows/system-tests.yml@main
     permissions:
       contents: read
       id-token: write
     with:
       library: cpp_httpd
-      ref: 1e5d6b7096279ca43ce4826fda3cc805635b63c1
       binaries_artifact: system_tests_binaries
       desired_execution_time: 300  # 5 minutes
       scenarios_groups: tracer-release
       excluded_scenarios: APM_TRACING_E2E_OTEL,APM_TRACING_E2E_SINGLE_SPAN  # require AWS and datadog credentials
       parametric_job_count: 8
-      skip_empty_scenarios: true
+      skip_empty_scenarios: false
       push_to_test_optimization: ${{ github.actor != 'dependabot[bot]' }}
