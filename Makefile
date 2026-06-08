@@ -6,7 +6,7 @@
 #   - Copy this hash here, and in the GitHub workflow files.
 #   - Run: make replicate-ci-image-for-github.
 
-CI_DOCKER_IMAGE_HASH ?= 28219c0ef3e00f1e3d5afcab61a73a5e9bd2a9b957d7545556711cce2a6262cd
+CI_DOCKER_IMAGE_HASH ?= bf4e353dec1442b7864fddc3c2618b8541eed4c04fe2ab88f2a4c2ebea61df91
 CI_IMAGE_FROM_GITLAB ?= registry.ddbuild.io/ci/httpd-datadog/amd64:$(CI_DOCKER_IMAGE_HASH)
 CI_IMAGE_IN_PUBLIC_REPO_FOR_GITHUB ?= datadog/docker-library:httpd-datadog-ci-$(CI_DOCKER_IMAGE_HASH)
 
