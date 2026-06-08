@@ -74,5 +74,6 @@ jobs:
         # See https://github.com/DataDog/coverage-upload-github-action/releases
         uses: DataDog/coverage-upload-github-action@2ba057033351887422f8eb0203d1990c3acbc8c5 # v1.0.4
         with:
+          api_key: ${{ secrets.DD_API_KEY_CI_APP }}
           files: coverage.lcov
           format: lcov
