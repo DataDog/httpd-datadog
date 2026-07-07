@@ -8,7 +8,7 @@ dependencies = [
     "requests>=2.33.1",
     "ddapm-test-agent>=1.50.0",
     "aiohttp>=3.14.1",
-    "msgpack>=1.0.0",
+    "msgpack>=1.2.1",
 ]
 
 [dependency-groups]
