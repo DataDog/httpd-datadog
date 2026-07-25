@@ -109,6 +109,13 @@ void register_hooks(apr_pool_t*) {
 }
 
 int on_post_config(apr_pool_t*, apr_pool_t*, apr_pool_t*, server_rec* s) {
+#if defined(HTTPD_DD_RUM)
+  // Above the g_log_module_status guard on purpose: that guard makes everything
+  // below it run only once, but stable configuration must be re-read on every
+  // configuration load, including graceful restarts.
+  datadog::rum::conf::init_stable_config(s);
+#endif
+
   if (!g_log_module_status) {
     return OK;
   }

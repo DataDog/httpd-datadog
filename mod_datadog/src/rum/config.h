@@ -44,4 +44,24 @@ struct Directory final {
 void merge_directory_configuration(Directory& out, const Directory& parent,
                                    const Directory& child);
 
+// Reads the Agent's stable-configuration files (local + fleet-managed
+// application_monitoring.yaml) and caches the resulting snippet, plus whether
+// RUM should be on by default, for the whole process.
+//
+// Call once per configuration load, from post_config. Deliberately not done
+// during directory-config merging the way nginx-datadog does it: httpd merges
+// per-directory configuration inside ap_location_walk, which runs *per request*,
+// so building the snippet there would read YAML off disk on every request.
+// post_config also re-runs on graceful restart, so the cache cannot go stale.
+void init_stable_config(server_rec* s);
+
+// Snippet built from stable configuration alone, or nullptr when stable
+// configuration is absent or unusable. Shared and read-only; never freed.
+Snippet* stable_config_snippet();
+
+// Whether RUM injection applies where no DatadogRum directive said either way.
+// Honours DD_RUM_ENABLED; otherwise true when a stable-config snippet exists, so
+// stable configuration alone is enough to turn RUM on.
+bool enabled_by_default();
+
 }  // namespace datadog::rum::conf

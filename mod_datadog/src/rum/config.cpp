@@ -5,17 +5,60 @@
 #include <rapidjson/stringbuffer.h>
 #include <rapidjson/writer.h>
 
+#include <cstdlib>
+#include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 
 #include "apr_strings.h"
 #include "common_conf.h"
+#include "http_log.h"
 #include "mod_datadog.h"
 #include "utils.h"
+
+APLOG_USE_MODULE(datadog);
 
 using namespace datadog::conf;
 
 namespace {
+
+// Identifies this integration to the stable-config reader, which uses it for
+// rule-based process matching in application_monitoring.yaml. Free-form, not
+// validated against a fixed set; nginx-datadog passes "nginx" here.
+constexpr const char* rum_language = "httpd";
+
+using SnippetPtr = std::unique_ptr<Snippet, decltype(&snippet_cleanup)>;
+
+// Builds a snippet from the Agent's stable configuration. `overlay_json`, when
+// non-null, is merged on top of it and wins; null means use stable config alone.
+SnippetPtr make_stable_config_snippet(const char* overlay_json) {
+  return SnippetPtr(
+      snippet_create_from_stable_config(rum_language, false, overlay_json),
+      snippet_cleanup);
+}
+
+std::optional<bool> parse_bool(std::string_view raw) {
+  std::string value(raw);
+  datadog::common::utils::to_lower(value);
+
+  if (value == "1" || value == "true" || value == "yes" || value == "on") {
+    return true;
+  }
+  if (value == "0" || value == "false" || value == "no" || value == "off") {
+    return false;
+  }
+  return std::nullopt;
+}
+
+// Error code the SDK returns for "no stable-config entries found", i.e. no
+// application_monitoring.yaml was present. That is the ordinary case for anyone
+// not using stable configuration, so it must not be reported as a failure.
+constexpr int stable_config_absent = 6;
+
+Snippet* g_stable_config_snippet = nullptr;
+bool g_enabled_by_default = false;
+
 std::vector<std::string> split(const std::string& str,
                                const std::string& delimiter = ",") {
   std::vector<std::string> result;
@@ -163,18 +206,81 @@ const char* datadog_rum_settings_section(cmd_parms* cmd, void* cfg,
     return "failed to generate the RUM SDK script";
   }
 
-  Snippet* snippet = snippet_create_from_json(json_config.c_str());
-  if (snippet->error_code != 0) {
-    return apr_psprintf(cmd->pool, "Failed to initialize RUM SDK injection: %s",
-                        snippet->error_message);
+  // The directives are an overlay: the SDK merges them on top of the Agent's
+  // stable configuration, and they win on conflict. With no stable
+  // configuration present this behaves exactly as the previous
+  // snippet_create_from_json call did.
+  auto snippet = make_stable_config_snippet(json_config.c_str());
+  if (snippet == nullptr || snippet->error_code != 0) {
+    return apr_psprintf(
+        cmd->pool, "Failed to initialize RUM SDK injection: %s",
+        snippet ? snippet->error_message : "snippet allocation failed");
   }
 
-  dir_conf.rum.snippet = snippet;
+  dir_conf.rum.snippet = snippet.release();
 
   return NULL;
 }
 
 namespace datadog::rum::conf {
+
+Snippet* stable_config_snippet() { return g_stable_config_snippet; }
+
+bool enabled_by_default() { return g_enabled_by_default; }
+
+void init_stable_config(server_rec* s) {
+  // Rebuild from scratch: post_config runs again on graceful restart, and the
+  // on-disk stable configuration may have changed since the last load.
+  g_stable_config_snippet = nullptr;
+  g_enabled_by_default = false;
+
+  auto snippet = make_stable_config_snippet(nullptr);
+  if (snippet == nullptr) {
+    ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
+                 "httpd-datadog: RUM snippet allocation failed while reading "
+                 "stable configuration");
+  } else if (snippet->error_code == stable_config_absent) {
+    // No application_monitoring.yaml. Normal; nothing to report.
+  } else if (snippet->error_code != 0) {
+    ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
+                 "httpd-datadog: ignoring RUM stable configuration: %s",
+                 snippet->error_message);
+  } else {
+    g_stable_config_snippet = snippet.release();
+    ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, s,
+                 "httpd-datadog: RUM configured from stable configuration");
+  }
+
+  // DD_RUM_ENABLED, when set to something recognised, decides the default.
+  // Otherwise RUM defaults on exactly when stable configuration supplied a
+  // snippet, so stable configuration alone is enough and no directive or
+  // environment variable is required.
+  const char* raw = std::getenv("DD_RUM_ENABLED");
+  if (raw == nullptr || raw[0] == '\0') {
+    g_enabled_by_default = (g_stable_config_snippet != nullptr);
+    return;
+  }
+
+  const auto parsed = parse_bool(raw);
+  if (!parsed.has_value()) {
+    ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
+                 "httpd-datadog: unrecognized DD_RUM_ENABLED value '%s'; "
+                 "expected true/false/1/0/yes/no/on/off",
+                 raw);
+    g_enabled_by_default = (g_stable_config_snippet != nullptr);
+    return;
+  }
+
+  if (*parsed && g_stable_config_snippet == nullptr) {
+    // Only a warning, not an error: a <DatadogRumSettings> block elsewhere in
+    // the configuration may still supply a snippet for some scopes.
+    ap_log_error(APLOG_MARK, APLOG_WARNING, 0, s,
+                 "httpd-datadog: DD_RUM_ENABLED is true but stable "
+                 "configuration provided no RUM snippet");
+  }
+
+  g_enabled_by_default = *parsed;
+}
 
 void merge_directory_configuration(Directory& out, const Directory& parent,
                                    const Directory& child) {
