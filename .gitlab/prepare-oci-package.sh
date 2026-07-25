@@ -15,10 +15,13 @@ if [ -z "${ARCH:-}" ]; then
 fi
 
 # package-oci is a linux/windows x amd64/arm64 matrix. There is no Windows
-# build of mod_datadog, so leave sources/ untouched: package-oci skips package
-# creation when sources/ is empty.
+# build of mod_datadog, so clear sources/ and bail: package-oci skips package
+# creation when sources/ is absent or empty. The rm matters -- sources/ is
+# checked in (it holds requirements.json), so without it package-oci would see a
+# non-empty sources/ and then die on the missing sources/version.
 if [ "${OS:-}" = "windows" ]; then
   echo "httpd-datadog does not support Windows. Skipping."
+  rm -rf sources
   exit 0
 fi
 
