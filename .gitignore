@@ -32,6 +32,9 @@ httpd/
 /logs/
 venv/
 
+packaging/*.tar
+packaging/sources/version
+
 test/integration-test/.coverage
 test/integration-test/.pytest_cache/
 test/integration-test/.venv/

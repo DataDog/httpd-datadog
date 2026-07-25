@@ -21,3 +21,18 @@ The following table outlines the compatibility between module versions and HTTPD
 ## Artifacts
 Release artifact are generated through a Continuous Integration pipeline. Our CI infrastructure ensures cross-platform compatibility by compiling shared libraries for both Linux `x86_64` and `arm64` architectures. 
 It generates shared libaries for each HTTPD version supported.
+
+### OCI package
+
+The same modules are also published as an OCI package named
+`datadog-apm-library-httpd`, through the shared *one-pipeline* GitLab template
+(`.gitlab/one-pipeline.locked.yml`). This is the artifact the fleet installer
+delivers to `/opt/datadog-packages/datadog-apm-library-httpd/`.
+
+Its version comes from the **git tag** (`$CI_COMMIT_TAG` with a leading `v`
+stripped), not from `project(... VERSION)` in `CMakeLists.txt`. Untagged
+pipelines publish as `0.0.1-<short-sha>`.
+
+Pushing a tag that matches `^v?[0-9]+\.[0-9]+\.[0-9]+$` makes
+`promote-oci-to-prod` fire automatically. Use a suffixed tag (for example
+`v1.1.0-rc1`) or a plain branch pipeline for pre-releases.
