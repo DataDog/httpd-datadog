@@ -96,14 +96,25 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
   auto* dir_conf = static_cast<Directory*>(
       ap_get_module_config(r->per_dir_config, &datadog_module));
 
-  // Only inject if explicitly enabled
-  if (dir_conf->rum.enabled != true || dir_conf->rum.snippet == nullptr) {
+  // A DatadogRum directive in scope decides; otherwise fall back to the
+  // process-wide default, which stable configuration can turn on.
+  const bool enabled =
+      dir_conf->rum.enabled.value_or(datadog::rum::conf::enabled_by_default());
+
+  // Likewise for the snippet: a <DatadogRumSettings> block in scope (or
+  // inherited from a parent) wins, else use the one built from stable
+  // configuration alone.
+  Snippet* snippet = dir_conf->rum.snippet != nullptr
+                         ? dir_conf->rum.snippet
+                         : datadog::rum::conf::stable_config_snippet();
+
+  if (!enabled || snippet == nullptr) {
     return ap_pass_brigade(f->next, bb);
   }
 
   // First time the filter is being called -> Init the context
   if (f->ctx == nullptr) {
-    init_rum_context(f, dir_conf->rum.snippet);
+    init_rum_context(f, snippet);
     const char* const csp_header =
         apr_table_get(r->headers_out, "Content-Security-Policy");
     if (csp_header && !std::string_view(csp_header).empty()) {
