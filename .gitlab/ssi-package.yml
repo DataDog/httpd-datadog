@@ -18,7 +18,7 @@
 
 .ssi-assemble:
   stage: assemble
-  image: $CI_DOCKER_IMAGE_BASE:$CI_IMAGE_HASH
+  image: $DEVCONTAINER_IMAGE_AMD64_CI
   # OK to run on amd64 for both arches — this job only copies files, no native
   # compilation.
   tags: ["arch:amd64"]
@@ -52,11 +52,12 @@
 ssi-build:amd64:
   extends: .ssi-assemble
   needs:
-    # build-ci-image supplies $CI_IMAGE_HASH via dotenv.
-    - build-ci-image
+    - job: devcontainer_image
+      artifacts: true
     - job: "build:amd64"
       artifacts: true
     - job: "test-rum:amd64"
+    - job: "unit-test:amd64"
   variables:
     # Pure file copy: no source build, so the deps/ submodules are dead weight.
     GIT_SUBMODULE_STRATEGY: none
@@ -65,10 +66,12 @@ ssi-build:amd64:
 ssi-build:arm64:
   extends: .ssi-assemble
   needs:
-    - build-ci-image
+    - job: devcontainer_image
+      artifacts: true
     - job: "build:arm64"
       artifacts: true
     - job: "test-rum:arm64"
+    - job: "unit-test:arm64"
   variables:
     # Pure file copy: no source build, so the deps/ submodules are dead weight.
     GIT_SUBMODULE_STRATEGY: none
