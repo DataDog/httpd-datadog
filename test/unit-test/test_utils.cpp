@@ -1,37 +1,56 @@
-// #include "utils.h"
+#include "utils.h"
+
 #include <catch2/catch.hpp>
+#include <string>
 
-std::unordered_map<std::string, std::string>
-parse_http_header_tags(std::string_view in) {
-  std::unordered_map<std::string, std::string> res;
+using namespace datadog::common::utils;
 
-  const std::size_t end = in.size();
-
-  for (std::size_t beg = 0; beg < end;) {
-    beg = in.find_first_not_of(' ', beg);
-    std::size_t comma_idx = in.find(',', beg);
-    if (comma_idx == std::string_view::npos) {
-      comma_idx = end;
-    }
-
-    auto kv = in.substr(beg, comma_idx - beg);
-    beg = comma_idx + 1;
-
-    std::size_t colon_idx = kv.find(':');
-    if (colon_idx == std::string_view::npos) {
-      continue;
-    }
-
-    auto http_header = kv.substr(0, colon_idx);
-    auto tag = kv.substr(colon_idx + 1);
-
-    res[std::string(http_header)] = tag;
+TEST_CASE("to_lower", "[utils]") {
+  SECTION("lowercases in place") {
+    std::string text = "X-Datadog-Trace-Id";
+    to_lower(text);
+    CHECK(text == "x-datadog-trace-id");
   }
 
-  return res;
+  SECTION("leaves already-lowercase text alone") {
+    std::string text = "user-agent";
+    to_lower(text);
+    CHECK(text == "user-agent");
+  }
+
+  SECTION("leaves non-alphabetic characters alone") {
+    std::string text = "A1_-.:/B";
+    to_lower(text);
+    CHECK(text == "a1_-.:/b");
+  }
+
+  SECTION("handles the empty string") {
+    std::string text;
+    to_lower(text);
+    CHECK(text.empty());
+  }
 }
 
-TEST_CASE("Parse HTTP Header Tags", "[http_header_tags]") {
-  CHECK(parse_http_header_tags(" user-agent ") ==
-        std::unordered_map<std::string, std::string>{{"user-agent", ""}});
+TEST_CASE("contains", "[utils]") {
+  CHECK(contains("text/html; charset=utf-8", "text/html"));
+  CHECK(contains("text/html", "text/html"));
+
+  SECTION("matches at either end") {
+    CHECK(contains("abcdef", "abc"));
+    CHECK(contains("abcdef", "def"));
+  }
+
+  SECTION("reports absent patterns") {
+    CHECK_FALSE(contains("application/json", "text/html"));
+    CHECK_FALSE(contains("", "text/html"));
+  }
+
+  SECTION("is case sensitive") {
+    CHECK_FALSE(contains("TEXT/HTML", "text/html"));
+  }
+
+  SECTION("every string contains the empty pattern") {
+    CHECK(contains("anything", ""));
+    CHECK(contains("", ""));
+  }
 }

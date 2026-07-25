@@ -41,12 +41,16 @@ if (UNIX)
   )
 endif (UNIX)
 
+# Must precede the add_subdirectory calls below: add_test() in a subdirectory is
+# only registered if testing is already enabled when that directory is
+# processed. test/unit-test/CMakeLists.txt registers the `unit-tests` test.
+enable_testing()
+
 add_subdirectory(deps)
 add_subdirectory(mod_datadog)
 add_subdirectory(test/unit-test)
 
 # Integration tests
-enable_testing()
 add_test(
   NAME integration-tests
   COMMAND uv run pytest

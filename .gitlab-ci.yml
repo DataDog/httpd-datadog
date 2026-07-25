@@ -56,6 +56,21 @@ stages:
       - artifacts/$ARCH/mod_datadog.so
       - artifacts/$ARCH/mod_datadog.so.debug
       - upload/mod_datadog-${ARCH}.zip
+      # Built as part of `all` already; published so unit-test:$ARCH can run it
+      # without repeating the build.
+      - build/test/unit-test/tests
+
+.unit-test-template:
+  stage: test
+  image: $CI_DOCKER_IMAGE_BASE:$CI_IMAGE_HASH
+  variables:
+    GIT_SUBMODULE_STRATEGY: none
+  script:
+    # The binary is linked against the musl sysroot in this image, so it runs
+    # here as-is. Run it directly rather than via ctest: configuring CMake again
+    # would mean rebuilding the whole dependency tree.
+    - chmod +x build/test/unit-test/tests
+    - ./build/test/unit-test/tests --success
 
 .test-rum-template:
   stage: test
@@ -163,6 +178,26 @@ build:arm64:
   variables:
     ARCH: arm64
     TOOLCHAIN_ARCH: aarch64
+  tags: ["arch:arm64"]
+
+unit-test:amd64:
+  extends: .unit-test-template
+  needs:
+    - build-ci-image
+    - job: "build:amd64"
+      artifacts: true
+  variables:
+    ARCH: amd64
+  tags: ["arch:amd64"]
+
+unit-test:arm64:
+  extends: .unit-test-template
+  needs:
+    - build-ci-image
+    - job: "build:arm64"
+      artifacts: true
+  variables:
+    ARCH: arm64
   tags: ["arch:arm64"]
 
 test-rum:amd64:
