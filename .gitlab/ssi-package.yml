@@ -58,6 +58,8 @@ ssi-build:amd64:
       artifacts: true
     - job: "test-rum:amd64"
   variables:
+    # Pure file copy: no source build, so the deps/ submodules are dead weight.
+    GIT_SUBMODULE_STRATEGY: none
     ARCH: amd64
 
 ssi-build:arm64:
@@ -68,4 +70,6 @@ ssi-build:arm64:
       artifacts: true
     - job: "test-rum:arm64"
   variables:
+    # Pure file copy: no source build, so the deps/ submodules are dead weight.
+    GIT_SUBMODULE_STRATEGY: none
     ARCH: arm64

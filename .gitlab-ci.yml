@@ -267,6 +267,14 @@ configure-branch-snapshot-expiry:
 # These re-declare only the keys we change; everything else still comes from
 # .gitlab/one-pipeline.locked.yml (do not edit that file — it is generated).
 
+# None of the one-pipeline jobs build anything from source: they operate on the
+# ssi-build artifacts plus the two scripts under .gitlab/. The repo-wide
+# GIT_SUBMODULE_STRATEGY: recursive would make each of them clone
+# deps/{dd-trace-cpp,inject-browser-sdk,nginx-datadog} for nothing. (The
+# template already does this for the jobs it declares variables on.)
+.no-submodules: &no-submodules
+  GIT_SUBMODULE_STRATEGY: none
+
 # Upstream package-oci declares no needs:, so it would be stage-gated on
 # `shared-pipeline`. Its real inputs are the ssi-build jobs, which in turn gate
 # on test-rum:$ARCH so an untested module never reaches installtesting.
@@ -276,6 +284,60 @@ package-oci:
       artifacts: true
     - job: "ssi-build:arm64"
       artifacts: true
+  variables:
+    <<: *no-submodules
+
+oci-internal-publish:
+  variables:
+    <<: *no-submodules
+
+publishing-gate:
+  variables:
+    <<: *no-submodules
+
+create-multiarch-lib-injection-image:
+  variables:
+    <<: *no-submodules
+
+publish_dora_metrics:
+  variables:
+    <<: *no-submodules
+
+generate-lib-init-pinned-tag-values:
+  variables:
+    <<: *no-submodules
+
+internal-publish-lib-init-tags:
+  variables:
+    <<: *no-submodules
+
+promote-oci-to-staging:
+  variables:
+    <<: *no-submodules
+
+promote-oci-to-prod-beta:
+  variables:
+    <<: *no-submodules
+
+promote-oci-to-prod:
+  variables:
+    <<: *no-submodules
+
+rollout-mutable-tags-staging:
+  variables:
+    <<: *no-submodules
+
+rollout-mutable-tags-prod:
+  variables:
+    <<: *no-submodules
+
+rollback-mutable-tags-staging:
+  variables:
+    <<: *no-submodules
+
+rollback-mutable-tags-prod:
+  variables:
+    <<: *no-submodules
 
 # Needs metadata/requirements-{block,allow}.json fixtures and a gitlab-config
 # allowlist entry for cloning auto_inject with CI_JOB_TOKEN. Hard-fails on unset
@@ -287,6 +349,8 @@ requirements_json_test:
   needs: []
   before_script: []
   script: ['echo "skipped: no requirements fixtures yet"']
+  variables:
+    <<: *no-submodules
 
 # system-tests has no httpd library, so there is nothing to configure or run.
 configure_system_tests:
@@ -296,6 +360,8 @@ configure_system_tests:
   needs: []
   before_script: []
   script: ['echo "skipped: system-tests has no httpd library"']
+  variables:
+    <<: *no-submodules
 
 system_tests:
   rules:
