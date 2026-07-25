@@ -188,6 +188,7 @@ class TestAgent:
             vcr_provider_map="",
             vcr_ignore_headers="",
             vcr_json_body_normalizers="",
+            vcr_body_regex_normalizers="",
             dd_site="",
             dd_api_key="",
             disable_llmobs_data_forwarding=False,
