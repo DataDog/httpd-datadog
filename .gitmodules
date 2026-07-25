@@ -7,4 +7,11 @@
 	branch = mirror-nginx-datadog
 [submodule "deps/inject-browser-sdk"]
 	path = deps/inject-browser-sdk
-	url = ../inject-browser-sdk.git
+	# Absolute, and pointing at GitLab rather than GitHub, unlike the two
+	# submodules above. inject-browser-sdk is private while this repo is public,
+	# so a relative URL resolves against whatever remote fetched the
+	# superproject -- in CI that is gitretriever, which refuses to serve a
+	# private repo to a public caller ("CI caller from public repository may not
+	# access private repositories"). Naming the instance directly lets the runner
+	# authenticate the clone with CI_JOB_TOKEN. Same URL nginx-datadog uses.
+	url = https://gitlab.ddbuild.io/DataDog/inject-browser-sdk
