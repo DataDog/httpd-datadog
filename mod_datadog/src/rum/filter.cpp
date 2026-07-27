@@ -38,7 +38,7 @@ static void init_rum_context(ap_filter_t* f, Snippet* snippet) {
 }
 
 bool should_inject(rum_filter_ctx& ctx, request_rec& r,
-                   const datadog::rum::conf::Directory& rum_conf) {
+                   const datadog::rum::conf::Resolved& rum_conf) {
   if (ctx.state != InjectionState::pending) {
     return false;
   }
@@ -96,25 +96,19 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
   auto* dir_conf = static_cast<Directory*>(
       ap_get_module_config(r->per_dir_config, &datadog_module));
 
-  // A DatadogRum directive in scope decides; otherwise fall back to the
-  // process-wide default, which stable configuration can turn on.
-  const bool enabled =
-      dir_conf->rum.enabled.value_or(datadog::rum::conf::enabled_by_default());
+  const auto rum_conf = datadog::rum::conf::resolve(dir_conf->rum);
 
-  // Likewise for the snippet: a <DatadogRumSettings> block in scope (or
-  // inherited from a parent) wins, else use the one built from stable
-  // configuration alone.
-  Snippet* snippet = dir_conf->rum.snippet != nullptr
-                         ? dir_conf->rum.snippet
-                         : datadog::rum::conf::stable_config_snippet();
-
-  if (!enabled || snippet == nullptr) {
+  if (!rum_conf.enabled || rum_conf.snippet == nullptr) {
+    // Nothing about this decision can change mid-request, and the filter is
+    // inserted unconditionally, so drop out of the chain instead of being
+    // re-entered for every brigade of a response we will never touch.
+    ap_remove_output_filter(f);
     return ap_pass_brigade(f->next, bb);
   }
 
   // First time the filter is being called -> Init the context
   if (f->ctx == nullptr) {
-    init_rum_context(f, snippet);
+    init_rum_context(f, rum_conf.snippet);
     const char* const csp_header =
         apr_table_get(r->headers_out, "Content-Security-Policy");
     if (csp_header && !std::string_view(csp_header).empty()) {
@@ -126,7 +120,7 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
 
   auto* ctx = static_cast<rum_filter_ctx*>(f->ctx);
 
-  if (!should_inject(*ctx, *r, dir_conf->rum)) {
+  if (!should_inject(*ctx, *r, rum_conf)) {
     return ap_pass_brigade(f->next, bb);
   }
 
@@ -140,8 +134,8 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
       datadog::telemetry::counter::increment(
           telemetry::injection_failed,
           telemetry::build_tags("reason:missing_header_tag",
-                                dir_conf->rum.app_id_tag,
-                                dir_conf->rum.remote_config_tag));
+                                rum_conf.app_id_tag,
+                                rum_conf.remote_config_tag));
     } else if (APR_BUCKET_IS_METADATA(b)) {
       // TODO: Handle metadata bucket like flush
     } else if (apr_bucket_read(b, &buffer, &bytes, APR_BLOCK_READ) ==
@@ -172,8 +166,8 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
                       "[RUM] successfully injected the browser SDK.");
         datadog::telemetry::counter::increment(
             telemetry::injection_succeed,
-            telemetry::build_tags(dir_conf->rum.app_id_tag,
-                                  dir_conf->rum.remote_config_tag));
+            telemetry::build_tags(rum_conf.app_id_tag,
+                                  rum_conf.remote_config_tag));
 
         return ap_pass_brigade(f->next, bb);
       }
