@@ -60,9 +60,10 @@ StableConfig* stable_config(apr_pool_t* pool) {
 }
 
 // Builds a snippet from the Agent's stable configuration. `overlay_json`, when
-// non-null, is merged on top of it and wins; null means use stable config alone.
+// non-null, is merged on top of it and wins; null means use stable config
+// alone.
 SnippetPtr make_stable_config_snippet(apr_pool_t* pool,
-                                     const char* overlay_json) {
+                                      const char* overlay_json) {
   return SnippetPtr(
       stable_config_snippet_create(stable_config(pool), overlay_json),
       snippet_cleanup);
@@ -81,8 +82,9 @@ std::string make_app_id_tag(const Snippet& snippet) {
 }
 
 std::string make_remote_config_tag(const Snippet& snippet) {
-  return snippet.remote_configuration_id != nullptr ? "remote_config_used:true"
-                                                    : "remote_config_used:false";
+  return snippet.remote_configuration_id != nullptr
+             ? "remote_config_used:true"
+             : "remote_config_used:false";
 }
 
 std::optional<bool> parse_bool(std::string_view raw) {
@@ -101,8 +103,8 @@ std::optional<bool> parse_bool(std::string_view raw) {
 // Error code the SDK returns when there was no stable configuration to build
 // from: the files were absent, or matched no rule for this process. That is the
 // ordinary case for anyone not using stable configuration, so it must not be
-// reported as a failure. A file that *was* there but could not be read or parsed
-// keeps the generic stable-config code and is reported.
+// reported as a failure. A file that *was* there but could not be read or
+// parsed keeps the generic stable-config code and is reported.
 constexpr int stable_config_absent = 10;
 
 Snippet* g_stable_config_snippet = nullptr;
@@ -270,8 +272,7 @@ const char* datadog_rum_settings_section(cmd_parms* cmd, void* cfg,
   // snippet_create_from_json call did.
   auto snippet = make_stable_config_snippet(cmd->pool, json_config.c_str());
   if (snippet->error_code != 0) {
-    return apr_psprintf(cmd->pool,
-                        "Failed to initialize RUM SDK injection: %s",
+    return apr_psprintf(cmd->pool, "Failed to initialize RUM SDK injection: %s",
                         snippet->error_message);
   }
 

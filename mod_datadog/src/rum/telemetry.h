@@ -14,7 +14,8 @@ namespace datadog::rum::telemetry {
 // longer-lived tag storage without copying twice.
 template <typename... T>
 auto build_tags(T&&... specific_tags) {
-  std::vector<std::string> tags = {std::string(std::forward<T>(specific_tags))...};
+  std::vector<std::string> tags = {
+      std::string(std::forward<T>(specific_tags))...};
   tags.emplace_back("integration_name:httpd");
   tags.emplace_back(fmt::format(
       "injector_version:{}", std::string_view{datadog_rum_injector_version}));
