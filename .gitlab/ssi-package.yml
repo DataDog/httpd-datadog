@@ -19,6 +19,9 @@
 .ssi-assemble:
   stage: assemble
   image: $CI_DOCKER_IMAGE_BASE:$CI_IMAGE_HASH
+  variables:
+    # Pure file copy: no source build, so the deps/ submodules are dead weight.
+    GIT_SUBMODULE_STRATEGY: none
   # OK to run on amd64 for both arches — this job only copies files, no native
   # compilation.
   tags: ["arch:amd64"]
@@ -42,7 +45,7 @@
       fi
     - OUTPUT="artifacts/ssi-sources/${ARCH}"
     - mkdir -p "${OUTPUT}/httpd/${SERIES}"
-    - cp "artifacts/${ARCH}/mod_datadog.so" "${OUTPUT}/httpd/${SERIES}/"
+    - cp "$so_file" "${OUTPUT}/httpd/${SERIES}/"
     - echo "${VERSION}" > "${OUTPUT}/version"
     - echo "Assembled sources:" && find "${OUTPUT}" -type f | sort
   artifacts:
@@ -59,8 +62,6 @@ ssi-build:amd64:
     - job: "test-rum:amd64"
     - job: "unit-test:amd64"
   variables:
-    # Pure file copy: no source build, so the deps/ submodules are dead weight.
-    GIT_SUBMODULE_STRATEGY: none
     ARCH: amd64
 
 ssi-build:arm64:
@@ -72,6 +73,4 @@ ssi-build:arm64:
     - job: "test-rum:arm64"
     - job: "unit-test:arm64"
   variables:
-    # Pure file copy: no source build, so the deps/ submodules are dead weight.
-    GIT_SUBMODULE_STRATEGY: none
     ARCH: arm64

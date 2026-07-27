@@ -186,8 +186,6 @@ unit-test:amd64:
     - build-ci-image
     - job: "build:amd64"
       artifacts: true
-  variables:
-    ARCH: amd64
   tags: ["arch:amd64"]
 
 unit-test:arm64:
@@ -196,8 +194,6 @@ unit-test:arm64:
     - build-ci-image
     - job: "build:arm64"
       artifacts: true
-  variables:
-    ARCH: arm64
   tags: ["arch:arm64"]
 
 test-rum:amd64:
@@ -374,29 +370,28 @@ rollback-mutable-tags-prod:
   variables:
     <<: *no-submodules
 
+# Shared shape for the one-pipeline jobs we neutralise with a no-op script
+# rather than `rules: when: never` (other template jobs need: them).
+.stubbed-shared-pipeline-job:
+  image: registry.ddbuild.io/images/mirror/alpine:3.23.0
+  tags: ["arch:amd64"]
+  stage: shared-pipeline
+  needs: []
+  before_script: []
+  variables:
+    <<: *no-submodules
+
 # Needs metadata/requirements-{block,allow}.json fixtures and a gitlab-config
 # allowlist entry for cloning auto_inject with CI_JOB_TOKEN. Hard-fails on unset
 # REQUIREMENTS_*_JSON_PATH otherwise.
 requirements_json_test:
-  image: registry.ddbuild.io/images/mirror/alpine:3.23.0
-  tags: ["arch:amd64"]
-  stage: shared-pipeline
-  needs: []
-  before_script: []
+  extends: .stubbed-shared-pipeline-job
   script: ['echo "skipped: no requirements fixtures yet"']
-  variables:
-    <<: *no-submodules
 
 # system-tests has no httpd library, so there is nothing to configure or run.
 configure_system_tests:
-  image: registry.ddbuild.io/images/mirror/alpine:3.23.0
-  tags: ["arch:amd64"]
-  stage: shared-pipeline
-  needs: []
-  before_script: []
+  extends: .stubbed-shared-pipeline-job
   script: ['echo "skipped: system-tests has no httpd library"']
-  variables:
-    <<: *no-submodules
 
 system_tests:
   rules:
