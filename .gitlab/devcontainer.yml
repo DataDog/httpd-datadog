@@ -26,9 +26,9 @@
 # DEVCONTAINER_PER_ARCH=true builds two single-arch refs ($IMAGE:amd64-$TAG
 # and $IMAGE:arm64-$TAG) instead of one multi-arch manifest. Downstream
 # jobs pulling the matching ref can then run on a native-arch runner,
-# avoiding qemu emulation at consume time. Both builds still happen
-# sequentially in this single .pre job pinned to arch:amd64 — moving the
-# build itself to a parallel:matrix on native runners is future work.
+# avoiding qemu emulation at build and consume time. The template expands
+# devcontainer_image into an amd64/arm64 matrix; downstream `needs` on the
+# base job name receives both non-overlapping dotenv reports.
 # Default off because most repos build fast enough that the single
 # multi-arch buildx run is the cheaper option.
 #
@@ -52,7 +52,16 @@ devcontainer_image:
   stage: .pre
   image: $DEVCONTAINER_BOOTSTRAP_IMAGE
   needs: []
-  tags: ["arch:amd64"]
+  parallel:
+    matrix:
+      - DEVCONTAINER_BUILD_ARCH: amd64
+        DEVCONTAINER_TOOLCHAIN_ARCH: x86_64
+      - DEVCONTAINER_BUILD_ARCH: arm64
+        DEVCONTAINER_TOOLCHAIN_ARCH: aarch64
+  rules:
+    - if: '$DEVCONTAINER_PER_ARCH == "true"'
+    - if: '$DEVCONTAINER_BUILD_ARCH == "amd64"'
+  tags: ["arch:$DEVCONTAINER_BUILD_ARCH"]
   id_tokens:
     DDSIGN_ID_TOKEN:
       aud: image-integrity
@@ -94,16 +103,22 @@ devcontainer_image:
       # shellcheck disable=SC2086
       TAG=$(make $MK -s .devcontainer-image-hash)
       echo "Devcontainer tag: $TAG"
+      echo "Builder architecture: $(uname -m)"
 
       # ---- build-or-skip per arch ----
       build_and_nydusify() {
         local ref=$1 platform=$2 arch_arg=$3
+        local cache_suffix cache_ref
+        cache_suffix=$(printf '%s' "$platform" | tr '/,' '--')
+        cache_ref="${DEVCONTAINER_IMAGE_NAME}:buildcache-${cache_suffix}"
         echo "Building $ref ..."
         # shellcheck disable=SC2086
         docker buildx build \
           --platform "$platform" \
           --file "$ctx/.devcontainer/Dockerfile" \
           --build-context "repo=$ctx" \
+          --cache-from "type=registry,ref=$cache_ref" \
+          --cache-to "type=registry,ref=$cache_ref,mode=max" \
           $arch_arg \
           --push -t "$ref" \
           "$ctx"
@@ -116,17 +131,22 @@ devcontainer_image:
       both_cached() { crane manifest "$1" >/dev/null 2>&1 && crane manifest "$1-ci" >/dev/null 2>&1; }
 
       if [ "$DEVCONTAINER_PER_ARCH" = "true" ]; then
-        AMD_REF="${DEVCONTAINER_IMAGE_NAME}:amd64-${TAG}"
-        ARM_REF="${DEVCONTAINER_IMAGE_NAME}:arm64-${TAG}"
-        both_cached "$AMD_REF" || build_and_nydusify "$AMD_REF" linux/amd64 "--build-arg ARCH=x86_64"
-        both_cached "$ARM_REF" || build_and_nydusify "$ARM_REF" linux/arm64 "--build-arg ARCH=aarch64"
-        {
-          echo "DEVCONTAINER_IMAGE_AMD64=$AMD_REF"
-          echo "DEVCONTAINER_IMAGE_ARM64=$ARM_REF"
-          echo "DEVCONTAINER_IMAGE_AMD64_CI=$AMD_REF-ci"
-          echo "DEVCONTAINER_IMAGE_ARM64_CI=$ARM_REF-ci"
-          echo "CI_IMAGE_HASH=$TAG"
-        } > ci-image.env
+        REF="${DEVCONTAINER_IMAGE_NAME}:${DEVCONTAINER_BUILD_ARCH}-${TAG}"
+        build_arg="--build-arg ARCH=${DEVCONTAINER_TOOLCHAIN_ARCH}"
+        both_cached "$REF" || build_and_nydusify "$REF" "linux/${DEVCONTAINER_BUILD_ARCH}" "$build_arg"
+        if [ "$DEVCONTAINER_BUILD_ARCH" = amd64 ]; then
+          {
+            echo "DEVCONTAINER_IMAGE_AMD64=$REF"
+            echo "DEVCONTAINER_IMAGE_AMD64_CI=$REF-ci"
+            echo "CI_IMAGE_HASH=$TAG"
+          } > ci-image.env
+        else
+          {
+            echo "DEVCONTAINER_IMAGE_ARM64=$REF"
+            echo "DEVCONTAINER_IMAGE_ARM64_CI=$REF-ci"
+            echo "CI_IMAGE_HASH=$TAG"
+          } > ci-image.env
+        fi
       else
         REF="${DEVCONTAINER_IMAGE_NAME}:${TAG}"
         both_cached "$REF" || build_and_nydusify "$REF" linux/amd64,linux/arm64 ""
