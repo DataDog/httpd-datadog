@@ -12,6 +12,8 @@
 #                                    recipe time as a prereq of devcontainer-
 #                                    touching targets — missing paths fail
 #                                    that invocation, not parse time.
+#   DEV_CONTAINER_PER_ARCH           Set to true when CI publishes
+#                                    amd64-<hash> / arm64-<hash> tags.
 #   DOCKER_BUILDX_FLAGS              Extra flags appended to the local build.
 #
 # This file is the single source of truth for staging + hashing. The
@@ -28,20 +30,29 @@ SHELL := bash
 DEV_CONTAINER_REPO_ROOT ?= $(CURDIR)
 _DEV_CONTAINER_REPO_NAME := $(notdir $(patsubst %/,%,$(DEV_CONTAINER_REPO_ROOT)))
 DEV_CONTAINER_IMAGE_NAME ?= registry.ddbuild.io/ci/$(_DEV_CONTAINER_REPO_NAME)/devcontainer
+DEV_CONTAINER_PER_ARCH ?=
 
 _DEV_CONTAINER_CONTEXT_FILES := $(DEV_CONTAINER_REPO_ROOT)/.devcontainer/context.files
 _DEV_CONTAINER_CONTEXT_FILTER := $(DEV_CONTAINER_REPO_ROOT)/.devcontainer/context.filter
 _DEV_CONTAINER_DOCKERFILE := $(DEV_CONTAINER_REPO_ROOT)/.devcontainer/Dockerfile
 _DEV_CONTAINER_STAGED := $(DEV_CONTAINER_REPO_ROOT)/.devcontainer/.staged
+_DEV_CONTAINER_GIT_COMMON_LINK := $(DEV_CONTAINER_REPO_ROOT)/.devcontainer/.git-common
 
 # uname -m -> docker --platform / conventional ARCH build-arg.
 _DEV_CONTAINER_UNAME_M := $(shell uname -m)
 ifneq ($(filter $(_DEV_CONTAINER_UNAME_M),arm64 aarch64),)
   _DEV_CONTAINER_PLATFORM := linux/arm64
+  _DEV_CONTAINER_DOCKER_ARCH := arm64
   _DEV_CONTAINER_ARCH := aarch64
 else
   _DEV_CONTAINER_PLATFORM := linux/amd64
+  _DEV_CONTAINER_DOCKER_ARCH := amd64
   _DEV_CONTAINER_ARCH := x86_64
+endif
+
+ifeq ($(DEV_CONTAINER_PER_ARCH),true)
+  _DEV_CONTAINER_NATIVE_TAG_PREFIX := $(_DEV_CONTAINER_DOCKER_ARCH)-
+  _DEV_CONTAINER_AMD64_TAG_PREFIX := amd64-
 endif
 
 # Pass --build-arg ARCH only if the Dockerfile actually declares it.
@@ -57,10 +68,23 @@ define _dev_container_stage_into_ctx
 if [ ! -f "$(_DEV_CONTAINER_CONTEXT_FILES)" ]; then \
   echo "ERROR: $(_DEV_CONTAINER_CONTEXT_FILES) not found" >&2; exit 1; \
 fi; \
+files="$$ctx/.devcontainer-context-files"; \
+grep -Ev '^[[:space:]]*(#|$$)' "$(_DEV_CONTAINER_CONTEXT_FILES)" > "$$files" || true; \
+missing=; \
+while IFS= read -r path; do \
+  if [ ! -e "$(DEV_CONTAINER_REPO_ROOT)/$$path" ]; then \
+    missing="$${missing}$${missing:+, }$$path"; \
+  fi; \
+done < "$$files"; \
+if [ -n "$$missing" ]; then \
+  echo "ERROR: context.files entries not found: $$missing" >&2; \
+  rm -f "$$files"; \
+  exit 1; \
+fi; \
 filter_arg=; \
 [ -f "$(_DEV_CONTAINER_CONTEXT_FILTER)" ] && filter_arg="--filter=merge $(_DEV_CONTAINER_CONTEXT_FILTER)"; \
-grep -Ev '^[[:space:]]*(#|$$)' "$(_DEV_CONTAINER_CONTEXT_FILES)" | \
-  rsync -aR --files-from=- $$filter_arg "$(DEV_CONTAINER_REPO_ROOT)/" "$$ctx/"; \
+rsync -aR --files-from="$$files" $$filter_arg "$(DEV_CONTAINER_REPO_ROOT)/" "$$ctx/"; \
+rm -f "$$files"; \
 if [ ! -f "$$ctx/.devcontainer/Dockerfile" ]; then \
   echo "ERROR: .devcontainer/Dockerfile not staged; check .devcontainer/context.files" >&2; \
   exit 1; \
@@ -107,10 +131,12 @@ _dev-container-check-required-paths:
 	fi
 
 .PHONY: dev-image dev-image-x86_64 dev-shell dev-image-tag \
+        .devcontainer-initialize .devcontainer-fix-git-worktree \
         .devcontainer-stage-context .devcontainer-image-hash
 
 dev-image dev-image-x86_64 dev-shell dev-image-tag \
-.devcontainer-stage-context .devcontainer-image-hash: _dev-container-check-required-paths
+.devcontainer-initialize .devcontainer-stage-context \
+.devcontainer-image-hash: _dev-container-check-required-paths
 
 # Stage the build context into a stable path under .devcontainer/.staged/.
 # Invoked from VS Code's initializeCommand (so build.context = `.staged`
@@ -133,12 +159,64 @@ dev-image dev-image-x86_64 dev-shell dev-image-tag \
 	$(_dev_container_compute_tag); \
 	echo "$$tag"
 
+# Host-side entrypoint for devcontainer.json. Besides staging the exact
+# content-hashed context, expose the real Git common directory through an
+# ignored symlink. The devcontainer mounts that link at /git-common; the
+# post-start target below repairs linked-worktree gitdir pointers without
+# copying metadata or exposing sibling worktrees.
+#
+# On a registry hit, replace only the staged Dockerfile with a one-line FROM
+# of the immutable OCI image. devcontainer up then starts from the exact image
+# CI built instead of recompiling the toolchain. A miss keeps the original
+# staged Dockerfile, preserving the normal local-build fallback.
+.devcontainer-initialize: .devcontainer-stage-context
+	@git_common=$$(cd "$(DEV_CONTAINER_REPO_ROOT)" && git rev-parse --path-format=absolute --git-common-dir); \
+	rm -f "$(_DEV_CONTAINER_GIT_COMMON_LINK)"; \
+	ln -s "$$git_common" "$(_DEV_CONTAINER_GIT_COMMON_LINK)"; \
+	rm -f "$(DEV_CONTAINER_REPO_ROOT)/.devcontainer/.image-ref"; \
+	ctx="$(_DEV_CONTAINER_STAGED)"; \
+	$(_dev_container_compute_tag); \
+	ref="$(DEV_CONTAINER_IMAGE_NAME):$(_DEV_CONTAINER_NATIVE_TAG_PREFIX)$$tag"; \
+	if docker pull --platform "$(_DEV_CONTAINER_PLATFORM)" "$$ref" >/dev/null 2>&1; then \
+	  printf 'FROM %s\n' "$$ref" > "$$ctx/.devcontainer/Dockerfile"; \
+	  printf '%s\n' "$$ref" > "$(DEV_CONTAINER_REPO_ROOT)/.devcontainer/.image-ref"; \
+	  echo "Devcontainer cache hit: $$ref"; \
+	else \
+	  echo "Devcontainer cache miss: $$ref; building the staged Dockerfile locally"; \
+	fi
+
+# Container-side half of linked-worktree support. A worktree's .git file and
+# submodule gitfiles point outside the relocated workspace. For every pointer
+# rooted under a worktrees/ directory, create the missing container-only
+# common-dir symlink to /git-common. Ordinary clones have a .git directory and
+# take the no-op path.
+.devcontainer-fix-git-worktree:
+	@if [ -f "$(DEV_CONTAINER_REPO_ROOT)/.git" ]; then \
+	  find "$(DEV_CONTAINER_REPO_ROOT)" -name .git -type f -print0 | \
+	  while IFS= read -r -d '' git_file; do \
+	    git_dir=$$(sed -n 's/^gitdir: //p' "$$git_file"); \
+	    [ -n "$$git_dir" ] || continue; \
+	    case "$$git_dir" in \
+	      /*) resolved="$$git_dir" ;; \
+	      *) resolved=$$(realpath -m "$$(dirname "$$git_file")/$$git_dir") ;; \
+	    esac; \
+	    case "$$resolved" in \
+	      */worktrees/*) \
+	        common_link=$${resolved%%/worktrees/*}; \
+	        if [ ! -e "$$common_link" ]; then \
+	          mkdir -p "$$(dirname "$$common_link")"; \
+	          ln -s /git-common "$$common_link"; \
+	        fi ;; \
+	    esac; \
+	  done; \
+	fi
+
 # Print the full image:tag that would be used. Useful for debugging.
 # Works inside or outside a container (no docker required).
 dev-image-tag:
 	@$(_dev_container_stage_context); \
 	$(_dev_container_compute_tag); \
-	echo "$(DEV_CONTAINER_IMAGE_NAME):$$tag"
+	echo "$(DEV_CONTAINER_IMAGE_NAME):$(_DEV_CONTAINER_NATIVE_TAG_PREFIX)$$tag"
 
 # Shared mounts for any in-container invocation: the repo root, plus the
 # git common dir when running inside a worktree (so `git` works).
@@ -187,8 +265,8 @@ else # _DEV_CONTAINER_INSIDE
 dev-image:
 	@$(_dev_container_stage_context); \
 	$(_dev_container_compute_tag); \
-	ref="$(DEV_CONTAINER_IMAGE_NAME):$$tag"; \
-	if docker pull "$$ref" >/dev/null 2>&1; then \
+	ref="$(DEV_CONTAINER_IMAGE_NAME):$(_DEV_CONTAINER_NATIVE_TAG_PREFIX)$$tag"; \
+	if docker pull --platform "$(_DEV_CONTAINER_PLATFORM)" "$$ref" >/dev/null 2>&1; then \
 	  echo "Pulled $$ref"; \
 	else \
 	  echo "Pull miss; building $$ref locally"; \
@@ -215,14 +293,20 @@ else
 dev-image-x86_64:
 	@$(_dev_container_stage_context); \
 	$(_dev_container_compute_tag); \
-	ref="$(DEV_CONTAINER_IMAGE_NAME):$$tag-x86_64"; \
-	docker buildx build --platform=linux/amd64 \
-	  --file "$$ctx/.devcontainer/Dockerfile" \
-	  --build-context repo="$$ctx" \
-	  --build-arg ARCH=x86_64 \
-	  $(DOCKER_BUILDX_FLAGS) \
-	  --load -t "$$ref" \
-	  "$$ctx"; \
+	registry_ref="$(DEV_CONTAINER_IMAGE_NAME):$(_DEV_CONTAINER_AMD64_TAG_PREFIX)$$tag"; \
+	if docker pull --platform=linux/amd64 "$$registry_ref" >/dev/null 2>&1; then \
+	  ref="$$registry_ref"; \
+	  echo "Pulled $$ref"; \
+	else \
+	  ref="$(DEV_CONTAINER_IMAGE_NAME):$$tag-x86_64"; \
+	  docker buildx build --platform=linux/amd64 \
+	    --file "$$ctx/.devcontainer/Dockerfile" \
+	    --build-context repo="$$ctx" \
+	    --build-arg ARCH=x86_64 \
+	    $(DOCKER_BUILDX_FLAGS) \
+	    --load -t "$$ref" \
+	    "$$ctx"; \
+	fi; \
 	echo "$$ref" > $(_DEV_CONTAINER_X86_64_IMAGE_REF_FILE)
 endif
 

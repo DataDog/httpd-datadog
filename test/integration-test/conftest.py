@@ -1,26 +1,21 @@
 pytest_plugins = ["pytest_plugins.integration_helpers"]
 
-import tempfile
-import shutil
 import argparse
-import subprocess
-import sys
-import re
-import os
-import typing
-import time
-import uuid
-from ddapm_test_agent.agent import make_app
-from aiohttp import web
 import asyncio
+import os
+import shutil
+import subprocess
+import tempfile
 import threading
-
-import requests
+import time
+import typing
+import uuid
 from datetime import datetime
-import pytest
 
-from ddapm_test_agent.agent import make_app
+import pytest
+import requests
 from aiohttp import web
+from ddapm_test_agent.agent import make_app
 
 CWD = os.path.dirname(__file__)
 
@@ -71,7 +66,7 @@ class Server:
 
         result = self._proc.run(f"-f {conf_path} -t")
         if result.returncode != 0:
-            print(f"[error] Configuration check failed:")
+            print("[error] Configuration check failed:")
             print(f"[error] stdout: {result.stdout.decode('utf-8')}")
             print(f"[error] stderr: {result.stderr.decode('utf-8')}")
         return result.returncode == 0
@@ -86,6 +81,7 @@ class Server:
 
         # Give Apache time to fully stop
         import time
+
         time.sleep(0.5)
 
         # Start Apache as a daemon
@@ -93,7 +89,9 @@ class Server:
 
         # Check if the command succeeded
         if result.returncode != 0:
-            print(f"[error] Apache start command failed with exit code {result.returncode}:")
+            print(
+                f"[error] Apache start command failed with exit code {result.returncode}:"
+            )
             print(f"[error] stdout: {result.stdout.decode('utf-8')}")
             print(f"[error] stderr: {result.stderr.decode('utf-8')}")
             # Continue anyway - sometimes apachectl returns non-zero but Apache starts
@@ -105,13 +103,16 @@ class Server:
         # tests make about per-request trace counts. A raw TCP connect
         # doesn't reach any request handler, so it stays out of traces.
         import socket
+
         max_wait = 5
         start_time = time.time()
 
         while time.time() - start_time < max_wait:
             try:
                 with socket.create_connection((self.host, int(self.port)), timeout=0.5):
-                    print(f"[debug] Apache accepting connections on {self.host}:{self.port}")
+                    print(
+                        f"[debug] Apache accepting connections on {self.host}:{self.port}"
+                    )
                     return True
             except (ConnectionRefusedError, OSError):
                 time.sleep(0.1)
@@ -125,7 +126,7 @@ class Server:
                 with open(error_log, "r") as f:
                     error_content = f.read()
                     if error_content:
-                        print(f"[error] Error log content:")
+                        print("[error] Error log content:")
                         print(error_content[-1000:])  # Last 1000 chars
             except Exception as e:
                 print(f"[error] Could not read error log: {e}")
@@ -172,9 +173,13 @@ class AgentSession:
 
 class TestAgent:
     def __init__(self, host: str, port: int) -> None:
-        self._stop = asyncio.Event()
         self.host = host
         self.port = port
+        self._ready = threading.Event()
+        self._thread: typing.Optional[threading.Thread] = None
+        self._loop: typing.Optional[asyncio.AbstractEventLoop] = None
+        self._stop: typing.Optional[asyncio.Event] = None
+        self._error: typing.Optional[BaseException] = None
         self._app = make_app(
             enabled_checks="",
             log_span_fmt="[{name}]",
@@ -193,28 +198,35 @@ class TestAgent:
             vcr_provider_map="",
             vcr_ignore_headers="",
             vcr_json_body_normalizers="",
+            vcr_body_regex_normalizers="",
             dd_site="",
             dd_api_key="",
             disable_llmobs_data_forwarding=False,
         )
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.loop)
 
     def internal_run(self) -> None:
+        self._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self._loop)
+        self._stop = asyncio.Event()
         runner = web.AppRunner(self._app)
-        self.loop.run_until_complete(runner.setup())
-        # shutdown_timeout bounds how long aiohttp will wait for active
-        # keep-alive connections to close on teardown. The default is 60s;
-        # Apache workers that got SIGKILL leave sockets lingering and make
-        # that timeout show up as a 60s hang at end-of-session.
-        site = web.TCPSite(runner, self.host, self.port, shutdown_timeout=1.0)
-        self.loop.run_until_complete(site.start())
-        self.loop.run_until_complete(self._stop.wait())
-        # runner.cleanup() stops sites, closes the TCP listener, and runs the
-        # app's cleanup handlers. Calling only app.cleanup() leaves the
-        # listener open and the event loop blocks forever on exit.
-        self.loop.run_until_complete(runner.cleanup())
-        self.loop.close()
+        try:
+            self._loop.run_until_complete(runner.setup())
+            # shutdown_timeout bounds how long aiohttp will wait for active
+            # keep-alive connections to close on teardown. The default is 60s.
+            site = web.TCPSite(runner, self.host, self.port, shutdown_timeout=1.0)
+            self._loop.run_until_complete(site.start())
+            self._ready.set()
+            self._loop.run_until_complete(self._stop.wait())
+        except Exception as error:
+            self._error = error
+        finally:
+            self._ready.set()
+            try:
+                self._loop.run_until_complete(runner.cleanup())
+            except Exception as error:
+                if self._error is None:
+                    self._error = error
+            self._loop.close()
 
     def run(self) -> None:
         # daemon=True so a stuck event loop (e.g. aiohttp refusing to close)
@@ -222,10 +234,20 @@ class TestAgent:
         # explicit stop() path below is still the intended cleanup.
         self._thread = threading.Thread(target=self.internal_run, daemon=True)
         self._thread.start()
+        if not self._ready.wait(timeout=5.0):
+            raise RuntimeError("test agent did not become ready within 5 seconds")
+        if self._error is not None:
+            raise RuntimeError("test agent failed to start") from self._error
 
     def stop(self) -> None:
-        self.loop.call_soon_threadsafe(self._stop.set)
+        if self._thread is None or self._loop is None or self._stop is None:
+            return
+        self._loop.call_soon_threadsafe(self._stop.set)
         self._thread.join(timeout=3.0)
+        if self._thread.is_alive():
+            raise RuntimeError("test agent did not stop within 3 seconds")
+        if self._error is not None:
+            raise RuntimeError("test agent failed") from self._error
 
     def new_session(self, token=None) -> AgentSession:
         if token is None:
@@ -299,7 +321,7 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     before performing collection and entering the run test loop.
     """
     # Use module_path from plugin if auto-built, otherwise use command-line option
-    if not hasattr(session.config, 'module_path') or session.config.module_path is None:
+    if not hasattr(session.config, "module_path") or session.config.module_path is None:
         session.config.module_path = session.config.getoption("--module-path")
 
     apachectl_bin = session.config.getoption("--bin-path")

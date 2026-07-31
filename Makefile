@@ -3,6 +3,7 @@
 # canonical clone called `httpd-datadog`, wrong for any feature-branch
 # worktree). Matches DEVCONTAINER_IMAGE_NAME in .gitlab-ci.yml.
 DEV_CONTAINER_IMAGE_NAME := registry.ddbuild.io/ci/httpd-datadog/devcontainer
+DEV_CONTAINER_PER_ARCH := true
 
 # The devcontainer Dockerfile pulls toolchain files from the
 # nginx-datadog submodule's build_env/. Without this guard the staging
@@ -40,6 +41,10 @@ test-integration: dev-image
 		arch=$$(uname -m); \
 		git config --global --add safe.directory "$$PWD"; \
 		module_path="$(MODULE_PATH)"; \
+		case "$$module_path" in \
+			""|/*) ;; \
+			*) module_path="$$PWD/$$module_path" ;; \
+		esac; \
 		if [ -z "$$module_path" ]; then \
 			cmake --preset=ci-release \
 				-DHTTPD_DATADOG_ENABLE_RUM=ON \
@@ -53,7 +58,7 @@ test-integration: dev-image
 		repo_root=$$PWD; \
 		cd test/integration-test; \
 		export UV_PROJECT_ENVIRONMENT=$$HOME/.venv-httpd-datadog-tests; \
-		uv sync; \
+		uv sync --locked; \
 		uv run pytest \
 			--bin-path=/httpd/httpd-build/bin/apachectl \
 			--module-path="$$module_path" \

@@ -1,8 +1,12 @@
 {
   "name": "httpd-datadog",
-  "initializeCommand": "make -f .devcontainer/devcontainer.mk .devcontainer-stage-context",
+  "initializeCommand": "make -C ${localWorkspaceFolder} .devcontainer-initialize",
   "build": {
     "dockerfile": ".staged/.devcontainer/Dockerfile",
     "context": ".staged"
-  }
+  },
+  "mounts": [
+    "source=${localWorkspaceFolder}/.devcontainer/.git-common,target=/git-common,type=bind"
+  ],
+  "postStartCommand": "make -f .devcontainer/devcontainer.mk .devcontainer-fix-git-worktree"
 }
