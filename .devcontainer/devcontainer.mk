@@ -16,6 +16,8 @@
 #                                    amd64-<hash> / arm64-<hash> tags.
 #   DEV_CONTAINER_SHA256             Hash command. Auto-detects sha256sum or
 #                                    the macOS-compatible shasum fallback.
+#   DEV_CONTAINER_GIT_COMMON_MOUNT    Container path for the mounted common
+#                                    Git directory. Defaults to /git-common.
 #   DOCKER_BUILDX_FLAGS              Extra flags appended to the local build.
 #
 # This file is the single source of truth for staging + hashing. The
@@ -34,6 +36,7 @@ _DEV_CONTAINER_REPO_NAME := $(notdir $(patsubst %/,%,$(DEV_CONTAINER_REPO_ROOT))
 DEV_CONTAINER_IMAGE_NAME ?= registry.ddbuild.io/ci/$(_DEV_CONTAINER_REPO_NAME)/devcontainer
 DEV_CONTAINER_PER_ARCH ?=
 DEV_CONTAINER_SHA256 ?= $(shell command -v sha256sum >/dev/null 2>&1 && echo sha256sum || { command -v shasum >/dev/null 2>&1 && echo 'shasum -a 256'; })
+DEV_CONTAINER_GIT_COMMON_MOUNT ?= /git-common
 
 _DEV_CONTAINER_CONTEXT_FILES := $(DEV_CONTAINER_REPO_ROOT)/.devcontainer/context.files
 _DEV_CONTAINER_CONTEXT_FILTER := $(DEV_CONTAINER_REPO_ROOT)/.devcontainer/context.filter
@@ -196,7 +199,11 @@ dev-image dev-image-x86_64 dev-shell dev-image-tag \
 # take the no-op path.
 .devcontainer-fix-git-worktree:
 	@if [ -f "$(DEV_CONTAINER_REPO_ROOT)/.git" ]; then \
-	  find "$(DEV_CONTAINER_REPO_ROOT)" -name .git -type f -print0 | \
+	  if [ ! -d "$(DEV_CONTAINER_GIT_COMMON_MOUNT)" ]; then \
+	    echo "ERROR: $(DEV_CONTAINER_GIT_COMMON_MOUNT) is not mounted; recreate the devcontainer so updated mounts take effect" >&2; \
+	    exit 1; \
+	  fi; \
+	  find "$(DEV_CONTAINER_REPO_ROOT)" -name .git -type f -print0 | LC_ALL=C sort -z | \
 	  while IFS= read -r -d '' git_file; do \
 	    git_dir=$$(sed -n 's/^gitdir: //p' "$$git_file"); \
 	    [ -n "$$git_dir" ] || continue; \
@@ -209,7 +216,21 @@ dev-image dev-image-x86_64 dev-shell dev-image-tag \
 	        common_link=$${resolved%%/worktrees/*}; \
 	        if [ ! -e "$$common_link" ]; then \
 	          mkdir -p "$$(dirname "$$common_link")"; \
-	          ln -s /git-common "$$common_link"; \
+	          ln -s "$(DEV_CONTAINER_GIT_COMMON_MOUNT)" "$$common_link"; \
+	        fi; \
+	        relative_git_dir=$${resolved#"$$common_link"}; \
+	        mounted_git_dir="$(DEV_CONTAINER_GIT_COMMON_MOUNT)$$relative_git_dir"; \
+	        core_worktree=$$(git config --file "$$mounted_git_dir/config" --get core.worktree 2>/dev/null || true); \
+	        if [ -n "$$core_worktree" ]; then \
+	          case "$$core_worktree" in \
+	            /*) expected_worktree="$$core_worktree" ;; \
+	            *) expected_worktree=$$(realpath -m "$$mounted_git_dir/$$core_worktree") ;; \
+	          esac; \
+	          actual_worktree=$$(dirname "$$git_file"); \
+	          if [ "$$expected_worktree" != "$$actual_worktree" ] && [ ! -e "$$expected_worktree" ]; then \
+	            mkdir -p "$$(dirname "$$expected_worktree")"; \
+	            ln -s "$$actual_worktree" "$$expected_worktree"; \
+	          fi; \
 	        fi ;; \
 	    esac; \
 	  done; \

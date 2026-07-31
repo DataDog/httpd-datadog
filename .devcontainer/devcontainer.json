@@ -8,5 +8,7 @@
   "mounts": [
     "source=${localWorkspaceFolder}/.devcontainer/.git-common,target=/git-common,type=bind"
   ],
-  "postStartCommand": "make -f .devcontainer/devcontainer.mk .devcontainer-fix-git-worktree"
+  "postStartCommand": "make -f .devcontainer/devcontainer.mk .devcontainer-fix-git-worktree",
+  "workspaceFolder": "${localWorkspaceFolder}",
+  "workspaceMount": "source=${localWorkspaceFolder},target=${localWorkspaceFolder},type=bind"
 }
