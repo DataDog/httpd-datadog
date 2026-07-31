@@ -20,50 +20,13 @@ CI_IMAGE_IN_PUBLIC_REPO_FOR_GITHUB ?= datadog/docker-library:httpd-datadog-ci-$(
 
 include .devcontainer/devcontainer.mk
 
-# Build mod_datadog (with RUM, against the cross-compile sysroot) inside
-# the devcontainer and run the full pytest integration-test suite.
-# MODULE_PATH=<path> skips the cmake build and points pytest at a pre-built
-# artifact — the .gitlab-ci.yml test-integration:* jobs use this to reuse
-# the build:* artifact instead of recompiling per test job.
-#
-# Pytest options use `--flag=VALUE`: pytest's early arg parser runs before
-# conftest registers `--bin-path`/`--module-path`, so the space-separated
-# form gets read as a positional test path and silently skips conftest.
-#
-# UV_PROJECT_ENVIRONMENT points outside the bind-mounted repo so a
-# host-side `uv sync` (darwin/arm64 wheels) can't shadow the container's
-# Linux venv.
+# Build and test in the same image CI uses. MODULE_PATH lets CI reuse its
+# architecture-specific build artifact instead of recompiling here.
 MODULE_PATH ?=
 
 .PHONY: test-integration
 test-integration: dev-image
-	$(IN_DEVCONTAINER) sh -ec '\
-		arch=$$(uname -m); \
-		git config --global --add safe.directory "$$PWD"; \
-		module_path="$(MODULE_PATH)"; \
-		case "$$module_path" in \
-			""|/*) ;; \
-			*) module_path="$$PWD/$$module_path" ;; \
-		esac; \
-		if [ -z "$$module_path" ]; then \
-			cmake --preset=ci-release \
-				-DHTTPD_DATADOG_ENABLE_RUM=ON \
-				-DCMAKE_TOOLCHAIN_FILE=/sysroot/$${arch}-none-linux-musl/Toolchain.cmake \
-				-B build-container .; \
-			cmake --build build-container -j; \
-			rm -rf dist-container; \
-			cmake --install build-container --prefix dist-container; \
-			module_path="$$PWD/dist-container/lib/mod_datadog.so"; \
-		fi; \
-		repo_root=$$PWD; \
-		cd test/integration-test; \
-		export UV_PROJECT_ENVIRONMENT=$$HOME/.venv-httpd-datadog-tests; \
-		uv sync --locked; \
-		uv run pytest \
-			--bin-path=/httpd/httpd-build/bin/apachectl \
-			--module-path="$$module_path" \
-			--log-dir="$$repo_root/logs" \
-			-v'
+	$(IN_DEVCONTAINER) env MODULE_PATH="$(MODULE_PATH)" .devcontainer/run-integration-tests.sh
 
 # One-shot CI build: trust the workdir, init the submodules cmake
 # actually consumes, configure/build/install. Used by every job in

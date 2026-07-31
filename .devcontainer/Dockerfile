@@ -73,14 +73,10 @@ RUN arch=${ARCH:-$(uname -m)} && \
     ln -s /lib /sysroot/${arch}-none-linux-musl/ && \
     ln -s /usr/lib/llvm${LLVM_VERSION%%.*}/lib/clang/${LLVM_VERSION%%.*}/lib /sysroot/${arch}-none-linux-musl/usr/lib/resource_dir/lib
 
-# Both Toolchain.cmake variants are staged; the RUN below picks the one
-# matching the build platform. (COPY can't use a shell-derived path, so
-# we copy both and select at RUN-time instead.)
-COPY deps/nginx-datadog/build_env/Toolchain.cmake.x86_64 /tmp/Toolchain.cmake.x86_64
-COPY deps/nginx-datadog/build_env/Toolchain.cmake.aarch64 /tmp/Toolchain.cmake.aarch64
-RUN arch=${ARCH:-$(uname -m)} && \
-    cp /tmp/Toolchain.cmake.${arch} /sysroot/${arch}-none-linux-musl/Toolchain.cmake && \
-    rm /tmp/Toolchain.cmake.x86_64 /tmp/Toolchain.cmake.aarch64
+# Select the native toolchain without storing the unused variant in a layer.
+RUN --mount=type=bind,source=deps/nginx-datadog/build_env,target=/tmp/build_env,ro \
+    arch=${ARCH:-$(uname -m)} && \
+    cp /tmp/build_env/Toolchain.cmake.${arch} /sysroot/${arch}-none-linux-musl/Toolchain.cmake
 
 # see https://github.com/llvm/llvm-project/issues/60572
 RUN arch=${ARCH:-$(uname -m)} && \

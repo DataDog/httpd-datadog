@@ -5,6 +5,7 @@ import asyncio
 import inspect
 import os
 import shutil
+import socket
 import subprocess
 import tempfile
 import threading
@@ -72,43 +73,9 @@ class Server:
             print(f"[error] stderr: {result.stderr.decode('utf-8')}")
         return result.returncode == 0
 
-    def load_configuration(self, conf_path: str) -> bool:
-        if not os.path.exists(conf_path):
-            raise Exception(f"Configuration not found: {conf_path}")
-
-        # First, try to stop any existing Apache instance to ensure clean state
-        # This handles stale processes or PID files from previous runs
-        self._proc.run(f"-f {conf_path} -k stop")
-
-        # Give Apache time to fully stop
-        import time
-
-        time.sleep(0.5)
-
-        # Start Apache as a daemon
-        result = self._proc.run(f"-f {conf_path} -k start")
-
-        # Check if the command succeeded
-        if result.returncode != 0:
-            print(
-                f"[error] Apache start command failed with exit code {result.returncode}:"
-            )
-            print(f"[error] stdout: {result.stdout.decode('utf-8')}")
-            print(f"[error] stderr: {result.stderr.decode('utf-8')}")
-            # Continue anyway - sometimes apachectl returns non-zero but Apache starts
-            # We'll verify below with HTTP requests
-
-        # Probe readiness with a bare TCP connect rather than an HTTP GET:
-        # HTTP probes run through mod_datadog's handlers and can emit a
-        # trace into the per-test agent session, contaminating assertions
-        # tests make about per-request trace counts. A raw TCP connect
-        # doesn't reach any request handler, so it stays out of traces.
-        import socket
-
-        max_wait = 5
+    def wait_until_ready(self, conf_path: str, timeout: float = 5.0) -> bool:
         start_time = time.time()
-
-        while time.time() - start_time < max_wait:
+        while time.time() - start_time < timeout:
             try:
                 with socket.create_connection((self.host, int(self.port)), timeout=0.5):
                     print(
@@ -118,20 +85,37 @@ class Server:
             except (ConnectionRefusedError, OSError):
                 time.sleep(0.1)
 
-        # If we get here, Apache didn't start properly
-        print(f"[error] Apache failed to respond after {max_wait} seconds")
-        # Try to get error log content to understand why
+        print(f"[error] Apache failed to respond after {timeout} seconds")
         error_log = os.path.join(os.path.dirname(conf_path), "error_log")
         if os.path.exists(error_log):
             try:
-                with open(error_log, "r") as f:
-                    error_content = f.read()
-                    if error_content:
+                with open(error_log) as log:
+                    if error_content := log.read():
                         print("[error] Error log content:")
-                        print(error_content[-1000:])  # Last 1000 chars
-            except Exception as e:
-                print(f"[error] Could not read error log: {e}")
+                        print(error_content[-1000:])
+            except OSError as error:
+                print(f"[error] Could not read error log: {error}")
         return False
+
+    def load_configuration(self, conf_path: str) -> bool:
+        if not os.path.exists(conf_path):
+            raise Exception(f"Configuration not found: {conf_path}")
+
+        # Clear stale processes or PID files before starting Apache.
+        self._proc.run(f"-f {conf_path} -k stop")
+        time.sleep(0.5)
+
+        result = self._proc.run(f"-f {conf_path} -k start")
+        if result.returncode != 0:
+            print(
+                f"[error] Apache start command failed with exit code {result.returncode}:"
+            )
+            print(f"[error] stdout: {result.stdout.decode('utf-8')}")
+            print(f"[error] stderr: {result.stderr.decode('utf-8')}")
+            # apachectl can return non-zero even when Apache starts; probe below.
+
+        # A TCP probe avoids creating a traced HTTP request.
+        return self.wait_until_ready(conf_path)
 
     def stop(self, conf_path) -> None:
         rc = self._proc.run(f"-f {conf_path} -k stop").returncode

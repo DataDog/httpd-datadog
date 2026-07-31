@@ -14,13 +14,15 @@
 #                                    that invocation, not parse time.
 #   DEV_CONTAINER_PER_ARCH           Set to true when CI publishes
 #                                    amd64-<hash> / arm64-<hash> tags.
+#   DEV_CONTAINER_SHA256             Hash command. Auto-detects sha256sum or
+#                                    the macOS-compatible shasum fallback.
 #   DOCKER_BUILDX_FLAGS              Extra flags appended to the local build.
 #
 # This file is the single source of truth for staging + hashing. The
 # GitLab template (devcontainer.yml) calls into `make` so both paths
 # share the same code.
 
-# Recipes need bash + pipefail: the hash pipeline (find | sort | sha256sum |
+# Recipes need bash + pipefail: the hash pipeline (find | sort | SHA-256 |
 # cut) silently produces an empty tag on any pipe failure under POSIX sh,
 # which downstream becomes a malformed `image:` ref. Override after the
 # include if you need a different shell for your own recipes.
@@ -31,6 +33,7 @@ DEV_CONTAINER_REPO_ROOT ?= $(CURDIR)
 _DEV_CONTAINER_REPO_NAME := $(notdir $(patsubst %/,%,$(DEV_CONTAINER_REPO_ROOT)))
 DEV_CONTAINER_IMAGE_NAME ?= registry.ddbuild.io/ci/$(_DEV_CONTAINER_REPO_NAME)/devcontainer
 DEV_CONTAINER_PER_ARCH ?=
+DEV_CONTAINER_SHA256 ?= $(shell command -v sha256sum >/dev/null 2>&1 && echo sha256sum || { command -v shasum >/dev/null 2>&1 && echo 'shasum -a 256'; })
 
 _DEV_CONTAINER_CONTEXT_FILES := $(DEV_CONTAINER_REPO_ROOT)/.devcontainer/context.files
 _DEV_CONTAINER_CONTEXT_FILTER := $(DEV_CONTAINER_REPO_ROOT)/.devcontainer/context.filter
@@ -100,9 +103,10 @@ endef
 
 # Compute the 12-char tag hash from the staged tree at $$ctx.
 define _dev_container_compute_tag
+[ -n "$(DEV_CONTAINER_SHA256)" ] || { echo "ERROR: sha256sum or shasum is required" >&2; exit 1; }; \
 tag=$$(cd "$$ctx" && find . -type f | LC_ALL=C sort | \
   while IFS= read -r f; do printf -- '--- %s ---\n' "$$f"; cat "$$f"; done | \
-  sha256sum | cut -c1-12); \
+  $(DEV_CONTAINER_SHA256) | cut -c1-12); \
 [ -n "$$tag" ] || { echo "ERROR: hash pipeline produced empty tag (empty staged context?)" >&2; exit 1; }
 endef
 
