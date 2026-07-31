@@ -76,6 +76,7 @@ devcontainer_image:
   script:
     - |
       set -euo pipefail
+      check_started=$(date +%s)
 
       # Guard against an empty path component in the resolved image
       # name — the most common cause is a consumer forgetting to set
@@ -138,10 +139,19 @@ devcontainer_image:
       # must trigger a rebuild, not get reused.
       both_cached() { crane manifest "$1" >/dev/null 2>&1 && crane manifest "$1-ci" >/dev/null 2>&1; }
 
+      ensure_cached() {
+        local ref=$1 platform=$2 arch_arg=$3
+        if both_cached "$ref"; then
+          echo "Devcontainer cache hit: $ref and $ref-ci"
+        else
+          build_and_nydusify "$ref" "$platform" "$arch_arg"
+        fi
+      }
+
       if [ "$DEVCONTAINER_PER_ARCH" = "true" ]; then
         REF="${DEVCONTAINER_IMAGE_NAME}:${DEVCONTAINER_BUILD_ARCH}-${TAG}"
         build_arg="--build-arg ARCH=${DEVCONTAINER_TOOLCHAIN_ARCH}"
-        both_cached "$REF" || build_and_nydusify "$REF" "linux/${DEVCONTAINER_BUILD_ARCH}" "$build_arg"
+        ensure_cached "$REF" "linux/${DEVCONTAINER_BUILD_ARCH}" "$build_arg"
         if [ "$DEVCONTAINER_BUILD_ARCH" = amd64 ]; then
           {
             echo "DEVCONTAINER_IMAGE_AMD64=$REF"
@@ -157,13 +167,14 @@ devcontainer_image:
         fi
       else
         REF="${DEVCONTAINER_IMAGE_NAME}:${TAG}"
-        both_cached "$REF" || build_and_nydusify "$REF" linux/amd64,linux/arm64 ""
+        ensure_cached "$REF" linux/amd64,linux/arm64 ""
         {
           echo "DEVCONTAINER_IMAGE=$REF"
           echo "DEVCONTAINER_IMAGE_CI=$REF-ci"
           echo "CI_IMAGE_HASH=$TAG"
         } > ci-image.env
       fi
+      echo "Devcontainer image check completed in $(($(date +%s) - check_started))s"
   artifacts:
     reports:
       dotenv: ci-image.env
