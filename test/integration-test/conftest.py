@@ -2,6 +2,7 @@ pytest_plugins = ["pytest_plugins.integration_helpers"]
 
 import argparse
 import asyncio
+import inspect
 import os
 import shutil
 import subprocess
@@ -180,7 +181,7 @@ class TestAgent:
         self._loop: typing.Optional[asyncio.AbstractEventLoop] = None
         self._stop: typing.Optional[asyncio.Event] = None
         self._error: typing.Optional[BaseException] = None
-        self._app = make_app(
+        make_app_kwargs = dict(
             enabled_checks="",
             log_span_fmt="[{name}]",
             snapshot_dir="snapshot",
@@ -198,11 +199,15 @@ class TestAgent:
             vcr_provider_map="",
             vcr_ignore_headers="",
             vcr_json_body_normalizers="",
-            vcr_body_regex_normalizers="",
             dd_site="",
             dd_api_key="",
             disable_llmobs_data_forwarding=False,
         )
+        # Added in ddapm-test-agent 1.64.1. GitHub's smoke-test image can carry
+        # an older compatible agent, so only pass it when that API supports it.
+        if "vcr_body_regex_normalizers" in inspect.signature(make_app).parameters:
+            make_app_kwargs["vcr_body_regex_normalizers"] = ""
+        self._app = make_app(**make_app_kwargs)
 
     def internal_run(self) -> None:
         self._loop = asyncio.new_event_loop()

@@ -10,6 +10,10 @@ variables:
   # is too slow under qemu to run any other way.
   DEVCONTAINER_REPO_NAME: httpd-datadog
   DEVCONTAINER_PER_ARCH: "true"
+  # Only build_env is hashed into the image context; nested dependencies are
+  # runtime/build-job inputs and do not belong in the image-builder checkout.
+  DEVCONTAINER_GIT_SUBMODULE_STRATEGY: normal
+  DEVCONTAINER_GIT_SUBMODULE_PATHS: deps/nginx-datadog
   GIT_SUBMODULE_STRATEGY: recursive
   GIT_SUBMODULE_DEPTH: 1
   GIT_CONFIG_COUNT: 1

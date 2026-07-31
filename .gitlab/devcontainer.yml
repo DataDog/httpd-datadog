@@ -42,6 +42,8 @@
 variables:
   DEVCONTAINER_IMAGE_NAME: registry.ddbuild.io/ci/${DEVCONTAINER_REPO_NAME}/devcontainer
   DEVCONTAINER_PER_ARCH: ""
+  DEVCONTAINER_GIT_SUBMODULE_STRATEGY: none
+  DEVCONTAINER_GIT_SUBMODULE_PATHS: ""
   # Bootstrap image used by the devcontainer_image job. Self-published —
   # this is dd-repo-tools' own devcontainer image (re-exports nydus +
   # adds make + rsync), pinned by content hash so the bootstrap never
@@ -51,6 +53,12 @@ variables:
 devcontainer_image:
   stage: .pre
   image: $DEVCONTAINER_BOOTSTRAP_IMAGE
+  variables:
+    # Image contexts rarely need every recursive submodule. Consumers that
+    # need one can opt into `normal` plus an explicit path allowlist without
+    # slowing every downstream job's independent checkout policy.
+    GIT_SUBMODULE_STRATEGY: $DEVCONTAINER_GIT_SUBMODULE_STRATEGY
+    GIT_SUBMODULE_PATHS: $DEVCONTAINER_GIT_SUBMODULE_PATHS
   needs: []
   parallel:
     matrix:
