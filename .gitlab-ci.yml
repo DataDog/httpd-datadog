@@ -42,14 +42,18 @@ stages:
     GIT_SUBMODULE_STRATEGY: normal
     GIT_SUBMODULE_PATHS: "deps/dd-trace-cpp deps/inject-browser-sdk"
     GIT_SUBMODULE_UPDATE_FLAGS: "--jobs 2"
-    # Reuse compiled C, C++, and Rust objects directly from the project's
-    # existing S3-backed GitLab cache namespace. sccache includes the compiler,
-    # target, and command line in its keys, so both architectures can share it.
-    SCCACHE_BUCKET: dd-gitlab-runner-cache-build-stable
-    SCCACHE_S3_KEY_PREFIX: project/${CI_PROJECT_ID}/sccache-v1
-    SCCACHE_REGION: us-east-1
-    SCCACHE_S3_USE_SSL: "true"
+    SCCACHE_DIR: $CI_PROJECT_DIR/.cache/sccache
+    SCCACHE_CACHE_SIZE: 1G
+    CACHE_COMPRESSION_LEVEL: fastest
     RUSTC_WRAPPER: /usr/bin/sccache
+  # The runner moves sccache's already-compressed local objects through its
+  # shared S3 backend using pre-signed URLs, so ephemeral pods need no direct
+  # bucket permissions. Separate writers avoid cross-architecture races.
+  cache:
+    key: "sccache-v1-${ARCH}"
+    paths:
+      - .cache/sccache/
+    policy: pull-push
   needs:
     - job: devcontainer_image
       artifacts: true
