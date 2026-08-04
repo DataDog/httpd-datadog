@@ -15,7 +15,9 @@ variables:
   # runtime/build-job inputs and do not belong in the image-builder checkout.
   DEVCONTAINER_GIT_SUBMODULE_STRATEGY: normal
   DEVCONTAINER_GIT_SUBMODULE_PATHS: deps/nginx-datadog
-  GIT_SUBMODULE_STRATEGY: recursive
+  # Most jobs consume build artifacts and do not need any submodules. Build
+  # jobs override this with the two top-level dependencies they compile.
+  GIT_SUBMODULE_STRATEGY: none
   GIT_SUBMODULE_DEPTH: 1
   GIT_CONFIG_COUNT: 1
   GIT_CONFIG_KEY_0: url.https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.ddbuild.io/DataDog/.insteadOf
@@ -34,6 +36,12 @@ stages:
 # Template jobs (hidden, reusable)
 .build-template:
   stage: build
+  variables:
+    # Avoid recursively cloning benchmark-only and unrelated nested modules.
+    # These are the only top-level submodules used by the RUM-enabled build.
+    GIT_SUBMODULE_STRATEGY: normal
+    GIT_SUBMODULE_PATHS: "deps/dd-trace-cpp deps/inject-browser-sdk"
+    GIT_SUBMODULE_UPDATE_FLAGS: "--jobs 2"
   needs:
     - job: devcontainer_image
       artifacts: true
