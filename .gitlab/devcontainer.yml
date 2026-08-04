@@ -115,6 +115,13 @@ devcontainer_image:
       echo "Devcontainer tag: $TAG"
       echo "Builder architecture: $(uname -m)"
 
+      # ddsign uses gRPC to reach the internal signer. Sending that connection
+      # through Fabric's HTTP proxy replaces the TLS chain and makes signing
+      # fail with x509: certificate signed by unknown authority.
+      signer_host=image-integrity-signer.us1.ddbuild.io
+      export NO_PROXY="${NO_PROXY:+$NO_PROXY,}$signer_host"
+      export no_proxy="${no_proxy:+$no_proxy,}$signer_host"
+
       # ---- build-or-skip per arch ----
       # The slim bootstrap keeps heavyweight Vault credentials archived so
       # anonymous cache probes stay fast. Older bootstrap images already have
@@ -147,7 +154,29 @@ devcontainer_image:
           $arch_arg \
           --push -t "$ref" \
           "$ctx"
-        PLATFORMS="$platform" nydus-convert "$ref" "$ref-ci"
+        convert_and_sign "$ref" "$ref-ci" "$platform"
+      }
+
+      sign_image() {
+        local ref=$1 digest attempt
+        digest=$(crane digest "$ref")
+        for attempt in 1 2 3; do
+          if ddsign sign "$ref@$digest"; then
+            return
+          fi
+          if ((attempt < 3)); then
+            echo "Image signing failed (attempt $attempt/3); retrying..." >&2
+            sleep $((attempt * 2))
+          fi
+        done
+        return 1
+      }
+
+      convert_and_sign() {
+        local source_ref=$1 target_ref=$2 platform=$3
+        SKIP_SIGN=true PLATFORMS="$platform" \
+          nydus-convert "$source_ref" "$target_ref"
+        sign_image "$target_ref"
       }
 
       # A valid CI manifest must contain Nydus v6 layers. For an index, inspect
@@ -185,12 +214,23 @@ devcontainer_image:
         return "$status"
       }
 
+      signature_cached() {
+        local ref=$1 digest signature_ref
+        digest=$(crane digest "$ref" 2>/dev/null) || return
+        signature_ref=$(ddsign resolve "$ref@$digest" 2>/dev/null) || return
+        crane digest "$signature_ref" >/dev/null 2>&1
+      }
+
+      nydus_ready() {
+        nydus_cached "$1" && signature_cached "$1"
+      }
+
       # Probe the OCI and Nydus refs concurrently. Registry latency, rather
       # than local staging/hashing, dominates the warm path.
       both_cached() {
         local source_pid ci_pid source_status=0 ci_status=0
         crane digest "$1" >/dev/null 2>&1 & source_pid=$!
-        nydus_cached "$1-ci" & ci_pid=$!
+        nydus_ready "$1-ci" & ci_pid=$!
         wait "$source_pid" || source_status=$?
         wait "$ci_pid" || ci_status=$?
         ((source_status == 0 && ci_status == 0))
@@ -201,9 +241,14 @@ devcontainer_image:
         if both_cached "$ref"; then
           echo "Devcontainer cache hit: $ref and $ref-ci"
         elif crane digest "$ref" >/dev/null 2>&1; then
-          echo "OCI cache hit but Nydus cache miss: regenerating $ref-ci"
           enable_registry_writes
-          PLATFORMS="$platform" nydus-convert "$ref" "$ref-ci"
+          if nydus_cached "$ref-ci"; then
+            echo "OCI/Nydus cache hit but signature missing: signing $ref-ci"
+            sign_image "$ref-ci"
+          else
+            echo "OCI cache hit but Nydus cache miss: regenerating $ref-ci"
+            convert_and_sign "$ref" "$ref-ci" "$platform"
+          fi
         else
           build_and_nydusify "$ref" "$platform" "$arch_arg"
         fi
