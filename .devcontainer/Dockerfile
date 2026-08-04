@@ -107,4 +107,7 @@ RUN python3 ./setup-httpd.py -o httpd 2.4.58 \
  && make -j \
  && make -j install
 
+# Share C, C++, and Rust compilation results between ephemeral CI runners.
+RUN apk add --no-cache sccache
+
 LABEL org.opencontainers.image.source="https://github.com/DataDog/httpd-datadog"

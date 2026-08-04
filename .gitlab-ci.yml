@@ -42,6 +42,14 @@ stages:
     GIT_SUBMODULE_STRATEGY: normal
     GIT_SUBMODULE_PATHS: "deps/dd-trace-cpp deps/inject-browser-sdk"
     GIT_SUBMODULE_UPDATE_FLAGS: "--jobs 2"
+    # Reuse compiled C, C++, and Rust objects directly from the project's
+    # existing S3-backed GitLab cache namespace. sccache includes the compiler,
+    # target, and command line in its keys, so both architectures can share it.
+    SCCACHE_BUCKET: dd-gitlab-runner-cache-build-stable
+    SCCACHE_S3_KEY_PREFIX: project/${CI_PROJECT_ID}/sccache-v1
+    SCCACHE_REGION: us-east-1
+    SCCACHE_S3_USE_SSL: "true"
+    RUSTC_WRAPPER: /usr/bin/sccache
   needs:
     - job: devcontainer_image
       artifacts: true
@@ -51,8 +59,11 @@ stages:
       cmake --preset=ci-release
       -DHTTPD_DATADOG_ENABLE_RUM=ON
       -DCMAKE_TOOLCHAIN_FILE=/sysroot/${TOOLCHAIN_ARCH}-none-linux-musl/Toolchain.cmake
+      -DCMAKE_C_COMPILER_LAUNCHER=sccache
+      -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
       -B build .
     - cmake --build build -j --verbose
+    - sccache --show-stats
     - cmake --install build --prefix dist
     - mkdir -p artifacts/$ARCH upload
     - cp dist/lib/mod_datadog.so artifacts/$ARCH/
