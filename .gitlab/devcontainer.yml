@@ -60,6 +60,9 @@ devcontainer_image:
     # slowing every downstream job's independent checkout policy.
     GIT_SUBMODULE_STRATEGY: $DEVCONTAINER_GIT_SUBMODULE_STRATEGY
     GIT_SUBMODULE_PATHS: $DEVCONTAINER_GIT_SUBMODULE_PATHS
+    # ddsign's gRPC connection must bypass Fabric's TLS-intercepting proxy.
+    # This annotation is consumed before the runner injects proxy variables.
+    KUBERNETES_POD_ANNOTATIONS_DDSIGN_NO_PROXY: "beta.fabric.datadoghq.com/no-proxy-additions=image-integrity-signer.us1.ddbuild.io"
   needs: []
   parallel:
     matrix:
@@ -114,13 +117,6 @@ devcontainer_image:
       TAG=$(make $MK -s .devcontainer-image-hash)
       echo "Devcontainer tag: $TAG"
       echo "Builder architecture: $(uname -m)"
-
-      # ddsign uses gRPC to reach the internal signer. Sending that connection
-      # through Fabric's HTTP proxy replaces the TLS chain and makes signing
-      # fail with x509: certificate signed by unknown authority.
-      signer_host=image-integrity-signer.us1.ddbuild.io
-      export NO_PROXY="${NO_PROXY:+$NO_PROXY,}$signer_host"
-      export no_proxy="${no_proxy:+$no_proxy,}$signer_host"
 
       # ---- build-or-skip per arch ----
       # The slim bootstrap keeps heavyweight Vault credentials archived so
