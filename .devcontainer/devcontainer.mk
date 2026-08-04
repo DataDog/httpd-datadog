@@ -111,15 +111,13 @@ tag=$$(cd "$$ctx" && find . -mindepth 1 -print | LC_ALL=C sort | \
   while IFS= read -r f; do \
     if [ -L "$$f" ]; then \
       printf 'type:symlink\npath:%s\ntarget:%s\n' "$$f" "$$(readlink "$$f")"; \
+    elif [ -d "$$f" ]; then \
+      printf 'type:directory\npath:%s\n' "$$f"; \
+    elif [ -f "$$f" ]; then \
+      executable=false; [ -x "$$f" ] && executable=true; \
+      printf 'type:file\npath:%s\nexecutable:%s\n' "$$f" "$$executable"; cat "$$f"; \
     else \
-      mode=$$(stat -c '%a' "$$f" 2>/dev/null || stat -f '%Lp' "$$f"); \
-      if [ -d "$$f" ]; then \
-        printf 'type:directory\npath:%s\nmode:%s\n' "$$f" "$$mode"; \
-      elif [ -f "$$f" ]; then \
-        printf 'type:file\npath:%s\nmode:%s\n' "$$f" "$$mode"; cat "$$f"; \
-      else \
-        echo "ERROR: unsupported context entry: $$f" >&2; exit 1; \
-      fi; \
+      echo "ERROR: unsupported context entry: $$f" >&2; exit 1; \
     fi; \
   done | \
   $(DEV_CONTAINER_SHA256) | cut -c1-12); \
@@ -243,7 +241,7 @@ dev-image dev-image-x86_64 dev-shell dev-image-tag \
 	        fi; \
 	        relative_git_dir=$${resolved#"$$common_link"}; \
 	        mounted_git_dir="$(DEV_CONTAINER_GIT_COMMON_MOUNT)$$relative_git_dir"; \
-	        core_worktree=$$(git config --file "$$mounted_git_dir/config" --get core.worktree 2>/dev/null || true); \
+	        core_worktree=$$(git -C / config --file "$$mounted_git_dir/config" --get core.worktree 2>/dev/null || true); \
 	        if [ -n "$$core_worktree" ]; then \
 	          case "$$core_worktree" in \
 	            /*) expected_worktree="$$core_worktree" ;; \

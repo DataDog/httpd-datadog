@@ -49,7 +49,7 @@ variables:
   # required static Nydus/registry tools onto Alpine), pinned by content
   # hash so the bootstrap never silently shifts. Bump after its Dockerfile
   # change has published the new hash.
-  DEVCONTAINER_BOOTSTRAP_IMAGE: registry.ddbuild.io/ci/dd-repo-tools/devcontainer:9b125b79b489-ci
+  DEVCONTAINER_BOOTSTRAP_IMAGE: registry.ddbuild.io/ci/dd-repo-tools/devcontainer:40ad683b4475-ci
 
 devcontainer_image:
   stage: .pre
