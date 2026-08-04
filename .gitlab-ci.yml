@@ -80,6 +80,10 @@ stages:
 .test-integration-template:
   stage: test
   variables:
+    # The shared make entrypoint validates its devcontainer context inputs,
+    # including the nginx build_env files, before running pytest.
+    GIT_SUBMODULE_STRATEGY: normal
+    GIT_SUBMODULE_PATHS: deps/nginx-datadog
     MODULE_PATH: $CI_PROJECT_DIR/artifacts/$ARCH/mod_datadog.so
   script:
     - make test-integration
