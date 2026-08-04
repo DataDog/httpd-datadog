@@ -1,12 +1,19 @@
 name: Release
 on: [workflow_dispatch]
 
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   build:
     runs-on: ubuntu-22.04
     container:
-      # See .github/workflows/CI_IMAGE.md — bump via `make mirror-public-image`.
-      image: datadog/docker-library:httpd-datadog-ci-bf4e353dec1442b7864fddc3c2618b8541eed4c04fe2ab88f2a4c2ebea61df91
+      # Advanced by .gitlab/devcontainer-to-ghcr.yml after main builds.
+      image: ghcr.io/datadog/httpd-datadog/devcontainer:main
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Build

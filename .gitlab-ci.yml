@@ -1,5 +1,6 @@
 include:
   - local: .gitlab/devcontainer.yml
+  - local: .gitlab/devcontainer-to-ghcr.yml
 
 variables:
   # Inputs to .gitlab/devcontainer.yml (the dd-repo-tools shared

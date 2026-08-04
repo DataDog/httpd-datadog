@@ -72,7 +72,8 @@ RUN --mount=type=bind,source=deps/nginx-datadog/build_env,target=/tmp/build_env,
     cp /tmp/build_env/Toolchain.cmake.${ARCH} ${SYSROOT}/Toolchain.cmake
 
 # see https://github.com/llvm/llvm-project/issues/60572
-RUN gcc_include=/usr/lib/gcc/*-alpine-linux-musl/13.2.1/include && \
+RUN set -- /usr/lib/gcc/*-alpine-linux-musl/13.2.1/include && \
+    gcc_include=$1 && \
     mv ${gcc_include}/stdatomic.h ${gcc_include}/stdatomic.h_ && \
     cp /usr/lib/llvm${LLVM_VERSION%%.*}/lib/clang/${LLVM_VERSION%%.*}/include/stdatomic.h ${gcc_include}/stdatomic.h
 
@@ -105,3 +106,5 @@ RUN python3 ./setup-httpd.py -o httpd 2.4.58 \
  && ./configure --with-included-apr --prefix=$(pwd)/httpd-build --enable-mpms-shared="all" \
  && make -j \
  && make -j install
+
+LABEL org.opencontainers.image.source="https://github.com/DataDog/httpd-datadog"
