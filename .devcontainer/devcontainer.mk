@@ -12,8 +12,11 @@
 #                                    recipe time as a prereq of devcontainer-
 #                                    touching targets — missing paths fail
 #                                    that invocation, not parse time.
-#   DEV_CONTAINER_PER_ARCH           Set to true when CI publishes
-#                                    amd64-<hash> / arm64-<hash> tags.
+#   DEV_CONTAINER_PER_ARCH           Set to true only for callers that need
+#                                    an explicit native amd64-<hash> or
+#                                    arm64-<hash> tag. The combined tag is
+#                                    published for both architectures and is
+#                                    the preferred default.
 #   DEV_CONTAINER_SHA256             Hash command. Auto-detects sha256sum or
 #                                    the macOS-compatible shasum fallback.
 #   DEV_CONTAINER_GIT_COMMON_MOUNT    Container path for the mounted common
@@ -74,23 +77,35 @@ define _dev_container_stage_into_ctx
 if [ ! -f "$(_DEV_CONTAINER_CONTEXT_FILES)" ]; then \
   echo "ERROR: $(_DEV_CONTAINER_CONTEXT_FILES) not found" >&2; exit 1; \
 fi; \
+entries="$$ctx/.devcontainer-context-entries"; \
 files="$$ctx/.devcontainer-context-files"; \
-grep -Ev '^[[:space:]]*(#|$$)' "$(_DEV_CONTAINER_CONTEXT_FILES)" > "$$files" || true; \
+dangling="$$ctx/.devcontainer-context-dangling"; \
+grep -Ev '^[[:space:]]*(#|$$)' "$(_DEV_CONTAINER_CONTEXT_FILES)" > "$$entries" || true; \
+: > "$$files"; \
+: > "$$dangling"; \
 missing=; \
 while IFS= read -r path; do \
-  if [ ! -e "$(DEV_CONTAINER_REPO_ROOT)/$$path" ]; then \
+  if [ -L "$(DEV_CONTAINER_REPO_ROOT)/$$path" ] && [ ! -e "$(DEV_CONTAINER_REPO_ROOT)/$$path" ]; then \
+    printf '%s\n' "$$path" >> "$$dangling"; \
+  elif [ -e "$(DEV_CONTAINER_REPO_ROOT)/$$path" ]; then \
+    printf '%s\n' "$$path" >> "$$files"; \
+  else \
     missing="$${missing}$${missing:+, }$$path"; \
   fi; \
-done < "$$files"; \
+done < "$$entries"; \
+rm -f "$$entries"; \
 if [ -n "$$missing" ]; then \
   echo "ERROR: context.files entries not found: $$missing" >&2; \
-  rm -f "$$files"; \
+  rm -f "$$files" "$$dangling"; \
   exit 1; \
 fi; \
 filter_arg=; \
 [ -f "$(_DEV_CONTAINER_CONTEXT_FILTER)" ] && filter_arg="--filter=merge $(_DEV_CONTAINER_CONTEXT_FILTER)"; \
 rsync -aR --files-from="$$files" $$filter_arg "$(DEV_CONTAINER_REPO_ROOT)/" "$$ctx/"; \
-rm -f "$$files"; \
+while IFS= read -r path; do \
+  (cd "$(DEV_CONTAINER_REPO_ROOT)" && rsync -aR $$filter_arg -- "$$path" "$$ctx/") || exit 1; \
+done < "$$dangling"; \
+rm -f "$$files" "$$dangling"; \
 if [ ! -f "$$ctx/.devcontainer/Dockerfile" ]; then \
   echo "ERROR: .devcontainer/Dockerfile not staged; check .devcontainer/context.files" >&2; \
   exit 1; \
@@ -204,7 +219,7 @@ dev-image dev-image-x86_64 dev-shell dev-image-tag \
 	  mv "$$ctx/.devcontainer/Dockerfile.native" "$$ctx/.devcontainer/Dockerfile"; \
 	fi; \
 	ref="$(DEV_CONTAINER_IMAGE_NAME):$(_DEV_CONTAINER_NATIVE_TAG_PREFIX)$$tag"; \
-	if docker image inspect "$$ref" >/dev/null 2>&1 || \
+	if docker image inspect --format '{{.Architecture}}' "$$ref" 2>/dev/null | grep -qx "$(_DEV_CONTAINER_DOCKER_ARCH)" || \
 	   docker pull --platform "$(_DEV_CONTAINER_PLATFORM)" "$$ref" >/dev/null 2>&1; then \
 	  printf 'FROM %s\n' "$$ref" > "$$ctx/.devcontainer/Dockerfile"; \
 	  printf '%s\n' "$$ref" > "$(DEV_CONTAINER_REPO_ROOT)/.devcontainer/.image-ref"; \
@@ -312,7 +327,7 @@ dev-image:
 	@$(_dev_container_stage_context); \
 	$(_dev_container_compute_tag); \
 	ref="$(DEV_CONTAINER_IMAGE_NAME):$(_DEV_CONTAINER_NATIVE_TAG_PREFIX)$$tag"; \
-	if docker image inspect "$$ref" >/dev/null 2>&1 || \
+	if docker image inspect --format '{{.Architecture}}' "$$ref" 2>/dev/null | grep -qx "$(_DEV_CONTAINER_DOCKER_ARCH)" || \
 	   docker pull --platform "$(_DEV_CONTAINER_PLATFORM)" "$$ref" >/dev/null 2>&1; then \
 	  echo "Pulled $$ref"; \
 	else \
@@ -341,7 +356,7 @@ dev-image-x86_64:
 	@$(_dev_container_stage_context); \
 	$(_dev_container_compute_tag); \
 	registry_ref="$(DEV_CONTAINER_IMAGE_NAME):$(_DEV_CONTAINER_AMD64_TAG_PREFIX)$$tag"; \
-	if docker image inspect "$$registry_ref" >/dev/null 2>&1 || \
+	if docker image inspect --format '{{.Architecture}}' "$$registry_ref" 2>/dev/null | grep -qx amd64 || \
 	   docker pull --platform=linux/amd64 "$$registry_ref" >/dev/null 2>&1; then \
 	  ref="$$registry_ref"; \
 	  echo "Pulled $$ref"; \

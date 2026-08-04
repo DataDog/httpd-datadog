@@ -39,6 +39,7 @@ devcontainer_to_ghcr:
       tar -xzf "$crane_archive" -C /usr/local/bin crane
       crane version
     - |
+      umask 077
       if [ -n "${GHCR_TOKEN:-}" ]; then
         printf '%s' "$GHCR_TOKEN" > "$DEVCONTAINER_GHCR_TOKEN_FILE"
       else
