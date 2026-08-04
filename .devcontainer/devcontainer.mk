@@ -107,8 +107,21 @@ endef
 # Compute the 12-char tag hash from the staged tree at $$ctx.
 define _dev_container_compute_tag
 [ -n "$(DEV_CONTAINER_SHA256)" ] || { echo "ERROR: sha256sum or shasum is required" >&2; exit 1; }; \
-tag=$$(cd "$$ctx" && find . -type f | LC_ALL=C sort | \
-  while IFS= read -r f; do printf -- '--- %s ---\n' "$$f"; cat "$$f"; done | \
+tag=$$(cd "$$ctx" && find . -mindepth 1 -print | LC_ALL=C sort | \
+  while IFS= read -r f; do \
+    if [ -L "$$f" ]; then \
+      printf 'type:symlink\npath:%s\ntarget:%s\n' "$$f" "$$(readlink "$$f")"; \
+    else \
+      mode=$$(stat -c '%a' "$$f" 2>/dev/null || stat -f '%Lp' "$$f"); \
+      if [ -d "$$f" ]; then \
+        printf 'type:directory\npath:%s\nmode:%s\n' "$$f" "$$mode"; \
+      elif [ -f "$$f" ]; then \
+        printf 'type:file\npath:%s\nmode:%s\n' "$$f" "$$mode"; cat "$$f"; \
+      else \
+        echo "ERROR: unsupported context entry: $$f" >&2; exit 1; \
+      fi; \
+    fi; \
+  done | \
   $(DEV_CONTAINER_SHA256) | cut -c1-12); \
 [ -n "$$tag" ] || { echo "ERROR: hash pipeline produced empty tag (empty staged context?)" >&2; exit 1; }
 endef
@@ -152,9 +165,12 @@ dev-image dev-image-x86_64 dev-shell dev-image-tag \
 # mktemp dir for parallel safety; this one writes to a stable path
 # because VS Code (and CI's downstream buildx step) need one.
 .devcontainer-stage-context:
-	@rm -rf "$(_DEV_CONTAINER_STAGED)"
-	@mkdir -p "$(_DEV_CONTAINER_STAGED)"
-	@ctx="$(_DEV_CONTAINER_STAGED)"; $(_dev_container_stage_into_ctx)
+	@ctx=$$(mktemp -d "$(_DEV_CONTAINER_STAGED).XXXXXX"); \
+	trap 'rm -rf "$$ctx"' EXIT; \
+	$(_dev_container_stage_into_ctx); \
+	rm -rf "$(_DEV_CONTAINER_STAGED)"; \
+	mv "$$ctx" "$(_DEV_CONTAINER_STAGED)"; \
+	trap - EXIT
 
 # Print the 12-char hash of the already-staged .devcontainer/.staged/ tree.
 # Caller must have run `make .devcontainer-stage-context` first. Used by
@@ -172,10 +188,10 @@ dev-image dev-image-x86_64 dev-shell dev-image-tag \
 # post-start target below repairs linked-worktree gitdir pointers without
 # copying metadata or exposing sibling worktrees.
 #
-# On a registry hit, replace only the staged Dockerfile with a one-line FROM
-# of the immutable OCI image. devcontainer up then starts from the exact image
-# CI built instead of recompiling the toolchain. A miss keeps the original
-# staged Dockerfile, preserving the normal local-build fallback.
+# A bare `ARG ARCH` gets a native x86_64/aarch64 default in the staged copy so
+# IDE fallback builds need no consumer-specific host detection. On a registry
+# hit, replace the staged Dockerfile with a one-line FROM of the immutable OCI
+# image. A miss keeps the native-ready Dockerfile for a normal local build.
 .devcontainer-initialize: .devcontainer-stage-context
 	@git_common=$$(cd "$(DEV_CONTAINER_REPO_ROOT)" && git rev-parse --path-format=absolute --git-common-dir); \
 	rm -f "$(_DEV_CONTAINER_GIT_COMMON_LINK)"; \
@@ -183,8 +199,15 @@ dev-image dev-image-x86_64 dev-shell dev-image-tag \
 	rm -f "$(DEV_CONTAINER_REPO_ROOT)/.devcontainer/.image-ref"; \
 	ctx="$(_DEV_CONTAINER_STAGED)"; \
 	$(_dev_container_compute_tag); \
+	if grep -q '^ARG ARCH[[:space:]]*$$' "$$ctx/.devcontainer/Dockerfile"; then \
+	  awk -v arch="$(_DEV_CONTAINER_ARCH)" \
+	    '$$0 ~ /^ARG ARCH[[:space:]]*$$/ { print "ARG ARCH=" arch; next } { print }' \
+	    "$$ctx/.devcontainer/Dockerfile" > "$$ctx/.devcontainer/Dockerfile.native"; \
+	  mv "$$ctx/.devcontainer/Dockerfile.native" "$$ctx/.devcontainer/Dockerfile"; \
+	fi; \
 	ref="$(DEV_CONTAINER_IMAGE_NAME):$(_DEV_CONTAINER_NATIVE_TAG_PREFIX)$$tag"; \
-	if docker pull --platform "$(_DEV_CONTAINER_PLATFORM)" "$$ref" >/dev/null 2>&1; then \
+	if docker image inspect "$$ref" >/dev/null 2>&1 || \
+	   docker pull --platform "$(_DEV_CONTAINER_PLATFORM)" "$$ref" >/dev/null 2>&1; then \
 	  printf 'FROM %s\n' "$$ref" > "$$ctx/.devcontainer/Dockerfile"; \
 	  printf '%s\n' "$$ref" > "$(DEV_CONTAINER_REPO_ROOT)/.devcontainer/.image-ref"; \
 	  echo "Devcontainer cache hit: $$ref"; \
@@ -291,7 +314,8 @@ dev-image:
 	@$(_dev_container_stage_context); \
 	$(_dev_container_compute_tag); \
 	ref="$(DEV_CONTAINER_IMAGE_NAME):$(_DEV_CONTAINER_NATIVE_TAG_PREFIX)$$tag"; \
-	if docker pull --platform "$(_DEV_CONTAINER_PLATFORM)" "$$ref" >/dev/null 2>&1; then \
+	if docker image inspect "$$ref" >/dev/null 2>&1 || \
+	   docker pull --platform "$(_DEV_CONTAINER_PLATFORM)" "$$ref" >/dev/null 2>&1; then \
 	  echo "Pulled $$ref"; \
 	else \
 	  echo "Pull miss; building $$ref locally"; \
@@ -319,7 +343,8 @@ dev-image-x86_64:
 	@$(_dev_container_stage_context); \
 	$(_dev_container_compute_tag); \
 	registry_ref="$(DEV_CONTAINER_IMAGE_NAME):$(_DEV_CONTAINER_AMD64_TAG_PREFIX)$$tag"; \
-	if docker pull --platform=linux/amd64 "$$registry_ref" >/dev/null 2>&1; then \
+	if docker image inspect "$$registry_ref" >/dev/null 2>&1 || \
+	   docker pull --platform=linux/amd64 "$$registry_ref" >/dev/null 2>&1; then \
 	  ref="$$registry_ref"; \
 	  echo "Pulled $$ref"; \
 	else \

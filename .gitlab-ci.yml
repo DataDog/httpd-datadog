@@ -75,69 +75,65 @@ stages:
   script:
     - make test-integration
 
-build:amd64:
-  extends: .build-template
+.amd64:
   image: $DEVCONTAINER_IMAGE_AMD64_CI
   variables:
     ARCH: amd64
     TOOLCHAIN_ARCH: x86_64
   tags: ["arch:amd64"]
 
-build:arm64:
-  extends: .build-template
+.arm64:
   image: $DEVCONTAINER_IMAGE_ARM64_CI
   variables:
     ARCH: arm64
     TOOLCHAIN_ARCH: aarch64
   tags: ["arch:arm64"]
 
-test-rum:amd64:
-  extends: .test-rum-template
-  image: $DEVCONTAINER_IMAGE_AMD64_CI
+.test-amd64:
+  extends: .amd64
   needs:
     - job: devcontainer_image
       artifacts: true
     - job: "build:amd64"
       artifacts: true
-  variables:
-    ARCH: amd64
-  tags: ["arch:amd64"]
+
+.test-arm64:
+  extends: .arm64
+  needs:
+    - job: devcontainer_image
+      artifacts: true
+    - job: "build:arm64"
+      artifacts: true
+
+build:amd64:
+  extends:
+    - .build-template
+    - .amd64
+
+build:arm64:
+  extends:
+    - .build-template
+    - .arm64
+
+test-rum:amd64:
+  extends:
+    - .test-rum-template
+    - .test-amd64
 
 test-rum:arm64:
-  extends: .test-rum-template
-  image: $DEVCONTAINER_IMAGE_ARM64_CI
-  needs:
-    - job: devcontainer_image
-      artifacts: true
-    - job: "build:arm64"
-      artifacts: true
-  variables:
-    ARCH: arm64
-  tags: ["arch:arm64"]
+  extends:
+    - .test-rum-template
+    - .test-arm64
 
 test-integration:amd64:
-  extends: .test-integration-template
-  image: $DEVCONTAINER_IMAGE_AMD64_CI
-  needs:
-    - job: devcontainer_image
-      artifacts: true
-    - job: "build:amd64"
-      artifacts: true
-  variables:
-    ARCH: amd64
-  tags: ["arch:amd64"]
+  extends:
+    - .test-integration-template
+    - .test-amd64
 
 test-integration:arm64:
-  extends: .test-integration-template
-  image: $DEVCONTAINER_IMAGE_ARM64_CI
-  needs:
-    - job: devcontainer_image
-      artifacts: true
-    - job: "build:arm64"
-      artifacts: true
-  variables:
-    ARCH: arm64
-  tags: ["arch:arm64"]
+  extends:
+    - .test-integration-template
+    - .test-arm64
 
 .upload-template:
   stage: aws

@@ -45,10 +45,11 @@ variables:
   DEVCONTAINER_GIT_SUBMODULE_STRATEGY: none
   DEVCONTAINER_GIT_SUBMODULE_PATHS: ""
   # Bootstrap image used by the devcontainer_image job. Self-published —
-  # this is dd-repo-tools' own devcontainer image (re-exports nydus +
-  # adds make + rsync), pinned by content hash so the bootstrap never
-  # silently shifts. Bump after a Dockerfile change rotates the hash.
-  DEVCONTAINER_BOOTSTRAP_IMAGE: registry.ddbuild.io/ci/dd-repo-tools/devcontainer:ff81062ee360-ci
+  # this is dd-repo-tools' own slim devcontainer image (copies only the
+  # required static Nydus/registry tools onto Alpine), pinned by content
+  # hash so the bootstrap never silently shifts. Bump after its Dockerfile
+  # change has published the new hash.
+  DEVCONTAINER_BOOTSTRAP_IMAGE: registry.ddbuild.io/ci/dd-repo-tools/devcontainer:9b125b79b489-ci
 
 devcontainer_image:
   stage: .pre
@@ -115,9 +116,24 @@ devcontainer_image:
       echo "Builder architecture: $(uname -m)"
 
       # ---- build-or-skip per arch ----
+      # The slim bootstrap keeps heavyweight Vault credentials archived so
+      # anonymous cache probes stay fast. Older bootstrap images already have
+      # the Docker credential config in place and take the no-op path.
+      enable_registry_writes() {
+        local auth_archive=/opt/devcontainer-registry-auth.tar.gz
+        [ -f /root/.docker/config.json ] && return
+        if [ ! -f "$auth_archive" ]; then
+          echo "ERROR: bootstrap image has neither registry credentials nor $auth_archive" >&2
+          return 1
+        fi
+        echo "Cache miss: enabling registry write credentials"
+        tar -xzf "$auth_archive" -C /
+      }
+
       build_and_nydusify() {
         local ref=$1 platform=$2 arch_arg=$3
         local cache_suffix cache_ref
+        enable_registry_writes
         cache_suffix=$(printf '%s' "$platform" | tr '/,' '--')
         cache_ref="${DEVCONTAINER_IMAGE_NAME}:buildcache-${cache_suffix}"
         echo "Building $ref ..."
@@ -131,18 +147,63 @@ devcontainer_image:
           $arch_arg \
           --push -t "$ref" \
           "$ctx"
-        nydus-convert "$ref" "$ref-ci"
+        PLATFORMS="$platform" nydus-convert "$ref" "$ref-ci"
       }
 
-      # Cache hit requires *both* the OCI ref and its -ci variant — a
-      # half-published state (e.g. nydus-convert failed mid-flight)
-      # must trigger a rebuild, not get reused.
-      both_cached() { crane manifest "$1" >/dev/null 2>&1 && crane manifest "$1-ci" >/dev/null 2>&1; }
+      # A valid CI manifest must contain Nydus v6 layers. For an index, inspect
+      # every platform manifest concurrently; accepting the outer tag alone
+      # could silently reuse a stale plain-OCI child.
+      nydus_v6_manifest() {
+        jq -e '
+          any(.layers[]?; .mediaType == "application/vnd.oci.image.layer.nydus.blob.v1") and
+          (.annotations["containerd.io/snapshot/nydus-fs-version"] == "6")
+        ' >/dev/null
+      }
+
+      nydus_cached() {
+        local ref=$1 manifest image_repo digest pid status=0
+        local -a digests pids=()
+        manifest=$(crane manifest "$ref" 2>/dev/null) || return
+        if jq -e '.layers != null' <<<"$manifest" >/dev/null; then
+          nydus_v6_manifest <<<"$manifest"
+          return
+        fi
+
+        mapfile -t digests < <(jq -r '.manifests[]?.digest' <<<"$manifest")
+        ((${#digests[@]} > 0)) || return 1
+        image_repo=${ref%:*}
+        for digest in "${digests[@]}"; do
+          {
+            child=$(crane manifest "$image_repo@$digest" 2>/dev/null) &&
+              nydus_v6_manifest <<<"$child"
+          } &
+          pids+=("$!")
+        done
+        for pid in "${pids[@]}"; do
+          wait "$pid" || status=1
+        done
+        return "$status"
+      }
+
+      # Probe the OCI and Nydus refs concurrently. Registry latency, rather
+      # than local staging/hashing, dominates the warm path.
+      both_cached() {
+        local source_pid ci_pid source_status=0 ci_status=0
+        crane digest "$1" >/dev/null 2>&1 & source_pid=$!
+        nydus_cached "$1-ci" & ci_pid=$!
+        wait "$source_pid" || source_status=$?
+        wait "$ci_pid" || ci_status=$?
+        ((source_status == 0 && ci_status == 0))
+      }
 
       ensure_cached() {
         local ref=$1 platform=$2 arch_arg=$3
         if both_cached "$ref"; then
           echo "Devcontainer cache hit: $ref and $ref-ci"
+        elif crane digest "$ref" >/dev/null 2>&1; then
+          echo "OCI cache hit but Nydus cache miss: regenerating $ref-ci"
+          enable_registry_writes
+          PLATFORMS="$platform" nydus-convert "$ref" "$ref-ci"
         else
           build_and_nydusify "$ref" "$platform" "$arch_arg"
         fi
@@ -150,7 +211,10 @@ devcontainer_image:
 
       if [ "$DEVCONTAINER_PER_ARCH" = "true" ]; then
         REF="${DEVCONTAINER_IMAGE_NAME}:${DEVCONTAINER_BUILD_ARCH}-${TAG}"
-        build_arg="--build-arg ARCH=${DEVCONTAINER_TOOLCHAIN_ARCH}"
+        build_arg=""
+        if grep -q '^ARG ARCH' "$ctx/.devcontainer/Dockerfile"; then
+          build_arg="--build-arg ARCH=${DEVCONTAINER_TOOLCHAIN_ARCH}"
+        fi
         ensure_cached "$REF" "linux/${DEVCONTAINER_BUILD_ARCH}" "$build_arg"
         if [ "$DEVCONTAINER_BUILD_ARCH" = amd64 ]; then
           {

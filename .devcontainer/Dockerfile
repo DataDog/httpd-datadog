@@ -9,18 +9,13 @@
 #
 # Toolchain files are sourced from deps/nginx-datadog/build_env/.
 #
-# Arch is auto-derived from `uname -m` inside each RUN (matches the
-# buildx --platform the container runs on), so callers don't have to
-# pass --build-arg ARCH=. The VSCode "Reopen in Container" flow can't
-# auto-detect host arch from devcontainer.json, so relying on uname
-# keeps it correct without env-var gymnastics. `ARG ARCH` stays declared
-# (as an override) so external callers that already pass it — e.g. the
-# dd-repo-tools template's auto-detected build-arg — don't trigger
-# "ARG not declared" warnings.
+# dd-repo-tools supplies the native toolchain architecture in every supported
+# entrypoint (GitLab, `make dev-image`, and VS Code initialization).
 FROM alpine:3.20.3 AS sysroot
 
 ARG LLVM_VERSION=17.0.6
 ARG ARCH
+ENV SYSROOT=/sysroot/${ARCH}-none-linux-musl
 
 COPY deps/nginx-datadog/build_env/CHECKSUMS /CHECKSUMS
 
@@ -66,28 +61,25 @@ RUN cd /usr/lib && ln -s clang/${LLVM_VERSION%%.*}/lib/linux/libclang_rt.builtin
 RUN rm -rf /llvm-project-${LLVM_VERSION}.src
 RUN rm -f llvm-project-${LLVM_VERSION}.src.tar.xz
 
-RUN arch=${ARCH:-$(uname -m)} && \
-    mkdir -p /sysroot/${arch}-none-linux-musl/usr && \
-    ln -s /usr/lib /sysroot/${arch}-none-linux-musl/usr/ && \
-    ln -s /usr/include /sysroot/${arch}-none-linux-musl/usr/ && \
-    ln -s /lib /sysroot/${arch}-none-linux-musl/ && \
-    ln -s /usr/lib/llvm${LLVM_VERSION%%.*}/lib/clang/${LLVM_VERSION%%.*}/lib /sysroot/${arch}-none-linux-musl/usr/lib/resource_dir/lib
+RUN mkdir -p ${SYSROOT}/usr && \
+    ln -s /usr/lib ${SYSROOT}/usr/ && \
+    ln -s /usr/include ${SYSROOT}/usr/ && \
+    ln -s /lib ${SYSROOT}/ && \
+    ln -s /usr/lib/llvm${LLVM_VERSION%%.*}/lib/clang/${LLVM_VERSION%%.*}/lib ${SYSROOT}/usr/lib/resource_dir/lib
 
 # Select the native toolchain without storing the unused variant in a layer.
 RUN --mount=type=bind,source=deps/nginx-datadog/build_env,target=/tmp/build_env,ro \
-    arch=${ARCH:-$(uname -m)} && \
-    cp /tmp/build_env/Toolchain.cmake.${arch} /sysroot/${arch}-none-linux-musl/Toolchain.cmake
+    cp /tmp/build_env/Toolchain.cmake.${ARCH} ${SYSROOT}/Toolchain.cmake
 
 # see https://github.com/llvm/llvm-project/issues/60572
-RUN arch=${ARCH:-$(uname -m)} && \
-    mv /usr/lib/gcc/${arch}-alpine-linux-musl/13.2.1/include/stdatomic.h /usr/lib/gcc/${arch}-alpine-linux-musl/13.2.1/include/stdatomic.h_ && \
-    cp /usr/lib/llvm${LLVM_VERSION%%.*}/lib/clang/${LLVM_VERSION%%.*}/include/stdatomic.h /usr/lib/gcc/${arch}-alpine-linux-musl/13.2.1/include/stdatomic.h
+RUN gcc_include=/usr/lib/gcc/*-alpine-linux-musl/13.2.1/include && \
+    mv ${gcc_include}/stdatomic.h ${gcc_include}/stdatomic.h_ && \
+    cp /usr/lib/llvm${LLVM_VERSION%%.*}/lib/clang/${LLVM_VERSION%%.*}/include/stdatomic.h ${gcc_include}/stdatomic.h
 
 COPY deps/nginx-datadog/build_env/glibc_compat.c /sysroot/
-RUN arch=${ARCH:-$(uname -m)} && \
-    clang --sysroot /sysroot/${arch}-none-linux-musl/ -fpie -O2 -fno-omit-frame-pointer \
+RUN clang --sysroot ${SYSROOT}/ -fpie -O2 -fno-omit-frame-pointer \
         -ggdb3 -c /sysroot/glibc_compat.c -o /tmp/glibc_compat.o && \
-    ar rcs /sysroot/${arch}-none-linux-musl/usr/lib/libglibc_compat.a /tmp/glibc_compat.o && \
+    ar rcs ${SYSROOT}/usr/lib/libglibc_compat.a /tmp/glibc_compat.o && \
     rm /tmp/glibc_compat.o
 
 # Install dependencies for httpd

@@ -21,8 +21,7 @@ from ddapm_test_agent.agent import make_app
 
 CWD = os.path.dirname(__file__)
 
-# CI runners pre-set DD_* on the env to tag their own traces; strip so
-# the per-test `dd.service` directive in httpd.conf wins.
+# CI runners pre-set DD_*; strip them, so per-test settings take precedence.
 for _dd_var in ("DD_SERVICE", "DD_ENV", "DD_VERSION"):
     os.environ.pop(_dd_var, None)
 
@@ -101,7 +100,7 @@ class Server:
         if not os.path.exists(conf_path):
             raise Exception(f"Configuration not found: {conf_path}")
 
-        # Clear stale processes or PID files before starting Apache.
+        # Stop leftovers before starting Apache.
         self._proc.run(f"-f {conf_path} -k stop")
         time.sleep(0.5)
 
@@ -112,7 +111,7 @@ class Server:
             )
             print(f"[error] stdout: {result.stdout.decode('utf-8')}")
             print(f"[error] stderr: {result.stderr.decode('utf-8')}")
-            # apachectl can return non-zero even when Apache starts; probe below.
+            # apachectl can fail even when Apache starts; probe below.
 
         # A TCP probe avoids creating a traced HTTP request.
         return self.wait_until_ready(conf_path)
@@ -200,8 +199,7 @@ class TestAgent:
         runner = web.AppRunner(self._app)
         try:
             self._loop.run_until_complete(runner.setup())
-            # shutdown_timeout bounds how long aiohttp will wait for active
-            # keep-alive connections to close on teardown. The default is 60s.
+            # Bound aiohttp's default 60s keep-alive shutdown.
             site = web.TCPSite(runner, self.host, self.port, shutdown_timeout=1.0)
             self._loop.run_until_complete(site.start())
             self._ready.set()
@@ -218,9 +216,7 @@ class TestAgent:
             self._loop.close()
 
     def run(self) -> None:
-        # daemon=True so a stuck event loop (e.g. aiohttp refusing to close)
-        # can't block interpreter shutdown after pytest_sessionfinish. The
-        # explicit stop() path below is still the intended cleanup.
+        # A stuck aiohttp loop must not block interpreter shutdown.
         self._thread = threading.Thread(target=self.internal_run, daemon=True)
         self._thread.start()
         if not self._ready.wait(timeout=5.0):

@@ -16,3 +16,7 @@ The target pulls the latest amd64 build, retags it under
 `datadog/docker-library:httpd-datadog-ci-<hash>`, pushes, and prints
 the exact `image:` value to paste into `dev.yml`, `release.yml`, and
 `system-tests.yml`.
+
+It deliberately mirrors the plain OCI `amd64-<hash>` tag, not the Nydus
+`amd64-<hash>-ci` tag. A standard Docker engine is sufficient; no Nydus
+snapshotter or stream processor is required.

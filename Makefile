@@ -1,17 +1,10 @@
-# Pin the image name so it doesn't drift with the worktree directory name
-# (the upstream default is derived from $(notdir $(CURDIR)) — fine for a
-# canonical clone called `httpd-datadog`, wrong for any feature-branch
-# worktree). Matches DEVCONTAINER_IMAGE_NAME in .gitlab-ci.yml.
+# Keep the image name stable across differently named worktrees.
+# This matches DEVCONTAINER_IMAGE_NAME in .gitlab-ci.yml.
 DEV_CONTAINER_IMAGE_NAME := registry.ddbuild.io/ci/httpd-datadog/devcontainer
 DEV_CONTAINER_PER_ARCH := true
 
-# The devcontainer Dockerfile pulls toolchain files from the
-# nginx-datadog submodule's build_env/. Without this guard the staging
-# step silently produces a tree missing those files and the resulting
-# tag mismatches what CI computes — fail loudly instead. Upstream gates
-# this check to devcontainer-touching targets only, so `ci-build` (which
-# inits its own submodules in the recipe) and unrelated targets aren't
-# blocked at parse time.
+# Fail devcontainer targets early when their toolchain input is absent.
+# The shared makefile applies this guard only to relevant targets.
 DEV_CONTAINER_REQUIRED_PATHS := deps/nginx-datadog/build_env/Toolchain.cmake.x86_64
 
 CI_DOCKER_IMAGE_HASH ?= bf4e353dec1442b7864fddc3c2618b8541eed4c04fe2ab88f2a4c2ebea61df91
@@ -20,19 +13,14 @@ CI_IMAGE_IN_PUBLIC_REPO_FOR_GITHUB ?= datadog/docker-library:httpd-datadog-ci-$(
 
 include .devcontainer/devcontainer.mk
 
-# Build and test in the same image CI uses. MODULE_PATH lets CI reuse its
-# architecture-specific build artifact instead of recompiling here.
+# CI supplies MODULE_PATH to reuse its architecture-specific build.
 MODULE_PATH ?=
 
 .PHONY: test-integration
 test-integration: dev-image
 	$(IN_DEVCONTAINER) env MODULE_PATH="$(MODULE_PATH)" .devcontainer/run-integration-tests.sh
 
-# One-shot CI build: trust the workdir, init the submodules cmake
-# actually consumes, configure/build/install. Used by every job in
-# .github/workflows/ that produces mod_datadog.so. Switch presets via
-# PRESET=ci-release. inject-browser-sdk is omitted from the submodule
-# list because RUM is off by default (HTTPD_DATADOG_ENABLE_RUM=OFF).
+# GitHub build entrypoint. RUM is off, so inject-browser-sdk is unnecessary.
 PRESET ?= ci-dev
 .PHONY: ci-build
 ci-build:
@@ -42,13 +30,8 @@ ci-build:
 	cmake --build build -j --verbose
 	cmake --install build --prefix dist
 
-# GitHub-hosted runners can't pull from registry.ddbuild.io; the workflows
-# in .github/workflows/ pin to a public Docker Hub mirror at
-# datadog/docker-library:httpd-datadog-ci-<hash>. After a new tag is built
-# by .gitlab/devcontainer.yml (any change to .devcontainer/context.files
-# inputs invalidates the cache), run this target to copy the amd64 variant
-# to Docker Hub and bump the workflows.
-# See .github/workflows/CI_IMAGE.md for the bump procedure.
+# Mirror the plain amd64 OCI image for GitHub-hosted runners.
+# See .github/workflows/CI_IMAGE.md for the release procedure.
 .PHONY: mirror-public-image
 mirror-public-image:
 	@$(MAKE) -s -f .devcontainer/devcontainer.mk .devcontainer-stage-context
