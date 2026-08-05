@@ -2,27 +2,25 @@
 # dd-repo-tools devcontainer-bundle campaigner into
 # `.gitlab/devcontainer.yml` — edits here will be overwritten.
 #
-# Shared devcontainer pipeline. One job does everything: stage the
-# context, compute the tag, check the cache, build + nydusify on miss,
-# emit ci-image.env for downstream jobs.
+# Shared devcontainer pipeline. Two native builders publish and repair the
+# architecture-specific OCI and Nydus refs. The public devcontainer_image job
+# combines them, verifies and signs all six refs, then emits ci-image.env for
+# downstream jobs.
+#
+# Each content hash produces three OCI tags and three equivalent Nydus tags:
+#   $TAG, amd64-$TAG, arm64-$TAG
+#   $TAG-ci, amd64-$TAG-ci, arm64-$TAG-ci
 #
 # Consumer repo wires this in via:
 #   variables:
 #     DEVCONTAINER_REPO_NAME: my-repo
 #     # optional:
-#     # DEVCONTAINER_IMAGE_NAME: registry.ddbuild.io/ci/my-repo     # flat path
-#     # DEVCONTAINER_PER_ARCH: "true"                               # arch matrix
+#     # DEVCONTAINER_IMAGE_NAME: registry.ddbuild.io/ci/my-repo
 #   include:
 #     - local: .gitlab/devcontainer.yml
 #
-# DEVCONTAINER_PER_ARCH=true builds two single-arch refs ($IMAGE:amd64-$TAG
-# and $IMAGE:arm64-$TAG) instead of one multi-arch manifest. Downstream
-# jobs pulling the matching ref can then run on a native-arch runner,
-# avoiding qemu emulation at consume time. Both builds still happen
-# sequentially in this single .pre job pinned to arch:amd64 — moving the
-# build itself to a parallel:matrix on native runners is future work.
-# Default off because most repos build fast enough that the single
-# multi-arch buildx run is the cheaper option.
+# DEVCONTAINER_PER_ARCH is retained as a deprecated no-op. Native builds and
+# combined indexes are always published; the combined refs are the defaults.
 #
 # Per-repo inputs live in:
 #   .devcontainer/Dockerfile          the dockerfile
@@ -34,34 +32,47 @@
 variables:
   DEVCONTAINER_IMAGE_NAME: registry.ddbuild.io/ci/${DEVCONTAINER_REPO_NAME}/devcontainer
   DEVCONTAINER_PER_ARCH: ""
-  # Bootstrap image used by the devcontainer_image job. Self-published —
-  # this is dd-repo-tools' own devcontainer image (re-exports nydus +
-  # adds make + rsync), pinned by content hash so the bootstrap never
+  DEVCONTAINER_GIT_SUBMODULE_STRATEGY: none
+  DEVCONTAINER_GIT_SUBMODULE_PATHS: ""
+  # Bootstrap image used by all devcontainer image jobs. Self-published —
+  # this is dd-repo-tools' own devcontainer image (re-exports nydus, crane,
+  # buildx, and ddsign; adds make + rsync), pinned by content hash so it never
   # silently shifts. Bump after a Dockerfile change rotates the hash.
-  DEVCONTAINER_BOOTSTRAP_IMAGE: registry.ddbuild.io/ci/dd-repo-tools/devcontainer:ff81062ee360
+  DEVCONTAINER_BOOTSTRAP_IMAGE: registry.ddbuild.io/ci/dd-repo-tools/devcontainer:ff81062ee360-ci
 
-devcontainer_image:
+devcontainer_native_image:
   stage: .pre
   image: $DEVCONTAINER_BOOTSTRAP_IMAGE
+  variables:
+    # Image contexts rarely need every recursive submodule. Consumers can opt
+    # into a normal checkout with an explicit path allowlist.
+    GIT_SUBMODULE_STRATEGY: $DEVCONTAINER_GIT_SUBMODULE_STRATEGY
+    GIT_SUBMODULE_PATHS: $DEVCONTAINER_GIT_SUBMODULE_PATHS
+    # ddsign's gRPC connection must bypass Fabric's TLS-intercepting proxy.
+    # This annotation is consumed before the runner injects proxy variables.
+    KUBERNETES_POD_ANNOTATIONS_DDSIGN_NO_PROXY: "beta.fabric.datadoghq.com/no-proxy-additions=image-integrity-signer.us1.ddbuild.io"
   needs: []
-  tags: ["arch:amd64"]
+  parallel:
+    matrix:
+      - DEVCONTAINER_BUILD_ARCH: amd64
+        DEVCONTAINER_TOOLCHAIN_ARCH: x86_64
+      - DEVCONTAINER_BUILD_ARCH: arm64
+        DEVCONTAINER_TOOLCHAIN_ARCH: aarch64
+  tags: ["arch:$DEVCONTAINER_BUILD_ARCH"]
   script:
     - |
       set -euo pipefail
+      check_started=$(date +%s)
 
-      # Guard against an empty path component in the resolved image
-      # name — the most common cause is a consumer forgetting to set
-      # DEVCONTAINER_REPO_NAME (default DEVCONTAINER_IMAGE_NAME embeds
-      # it). Docker would accept `…/ci//devcontainer:tag` silently and
-      # push to the wrong place.
       case "$DEVCONTAINER_IMAGE_NAME" in
         *//*) echo "ERROR: DEVCONTAINER_IMAGE_NAME has an empty path component ($DEVCONTAINER_IMAGE_NAME). Set DEVCONTAINER_REPO_NAME or override DEVCONTAINER_IMAGE_NAME." >&2; exit 1 ;;
       esac
 
-      # Some bootstrap images (upstream nydus, etc.) are minimal — guard
-      # each `command -v` so apt-get only runs when the tool's actually
-      # missing. With dd-repo-tools' self-published bootstrap (already
-      # has make + rsync baked in) this whole block is a no-op.
+      case "${DEVCONTAINER_BUILD_ARCH}:$(uname -m)" in
+        amd64:x86_64|arm64:arm64|arm64:aarch64) ;;
+        *) echo "ERROR: ${DEVCONTAINER_BUILD_ARCH} image must build on a native ${DEVCONTAINER_BUILD_ARCH} runner (got $(uname -m))" >&2; exit 1 ;;
+      esac
+
       missing=""
       command -v make  >/dev/null || missing="$missing make"
       command -v rsync >/dev/null || missing="$missing rsync"
@@ -71,55 +82,271 @@ devcontainer_image:
         apt-get install -y -qq --no-install-recommends $missing
       fi
 
-      # Stage + hash via devcontainer.mk so CI and local `make` use the
-      # same code. `-f` is explicit so we don't depend on the consumer's
-      # root Makefile including the fragment. .devcontainer-stage-context
-      # writes to .devcontainer/.staged/; .devcontainer-image-hash reads
-      # from the same path and prints the 12-char tag.
       MK="-f .devcontainer/devcontainer.mk"
       # shellcheck disable=SC2086
       make $MK .devcontainer-stage-context
       ctx=.devcontainer/.staged
       # shellcheck disable=SC2086
       TAG=$(make $MK -s .devcontainer-image-hash)
-      echo "Devcontainer tag: $TAG"
+      REF="${DEVCONTAINER_IMAGE_NAME}:${DEVCONTAINER_BUILD_ARCH}-${TAG}"
+      PLATFORM="linux/${DEVCONTAINER_BUILD_ARCH}"
+      echo "Devcontainer tag: $TAG; native builder: $(uname -m); target: $PLATFORM"
 
-      # ---- build-or-skip per arch ----
-      build_and_nydusify() {
-        local ref=$1 platform=$2 arch_arg=$3
-        echo "Building $ref ..."
-        # shellcheck disable=SC2086
-        docker buildx build \
-          --platform "$platform" \
-          --file "$ctx/.devcontainer/Dockerfile" \
-          --build-context "repo=$ctx" \
-          $arch_arg \
-          --push -t "$ref" \
-          "$ctx"
-        nydus-convert "$ref" "$ref"
+      platform_list_is() {
+        local manifest=$1 expected=$2
+        jq -e --argjson expected "$expected" '
+          [.manifests[]? | "\(.platform.os)/\(.platform.architecture)"] | sort == ($expected | sort)
+        ' <<<"$manifest" >/dev/null
       }
 
-      if [ "$DEVCONTAINER_PER_ARCH" = "true" ]; then
-        AMD_REF="${DEVCONTAINER_IMAGE_NAME}:amd64-${TAG}"
-        ARM_REF="${DEVCONTAINER_IMAGE_NAME}:arm64-${TAG}"
-        crane manifest "$AMD_REF" >/dev/null 2>&1 \
-          || build_and_nydusify "$AMD_REF" linux/amd64 "--build-arg ARCH=x86_64"
-        crane manifest "$ARM_REF" >/dev/null 2>&1 \
-          || build_and_nydusify "$ARM_REF" linux/arm64 "--build-arg ARCH=aarch64"
-        {
-          echo "DEVCONTAINER_IMAGE_AMD64=$AMD_REF"
-          echo "DEVCONTAINER_IMAGE_ARM64=$ARM_REF"
-          echo "CI_IMAGE_HASH=$TAG"
-        } > ci-image.env
+      image_is_platform() {
+        local ref=$1 expected_arch=$2 manifest config
+        manifest=$(crane manifest "$ref" 2>/dev/null) || return
+        if jq -e '.manifests != null' <<<"$manifest" >/dev/null; then
+          platform_list_is "$manifest" "[\"linux/${expected_arch}\"]"
+        else
+          config=$(crane config "$ref" 2>/dev/null) || return
+          jq -e --arg arch "$expected_arch" '.os == "linux" and .architecture == $arch' \
+            <<<"$config" >/dev/null
+        fi
+      }
+
+      nydus_v6_manifest() {
+        jq -e '
+          any(.layers[]?; .mediaType == "application/vnd.oci.image.layer.nydus.blob.v1") and
+          (.annotations["containerd.io/snapshot/nydus-fs-version"] == "6")
+        ' >/dev/null
+      }
+
+      nydus_is_platform() {
+        local ref=$1 expected_arch=$2 manifest image_repo digest child
+        local -a digests
+        manifest=$(crane manifest "$ref" 2>/dev/null) || return
+        if jq -e '.manifests == null' <<<"$manifest" >/dev/null; then
+          image_is_platform "$ref" "$expected_arch" && nydus_v6_manifest <<<"$manifest"
+          return
+        fi
+        platform_list_is "$manifest" "[\"linux/${expected_arch}\"]" || return
+        mapfile -t digests < <(jq -r '.manifests[].digest' <<<"$manifest")
+        image_repo=${ref%:*}
+        for digest in "${digests[@]}"; do
+          child=$(crane manifest "$image_repo@$digest" 2>/dev/null) || return
+          nydus_v6_manifest <<<"$child" || return
+        done
+      }
+
+      build_oci() {
+        local build_arg=""
+        if grep -q '^ARG ARCH' "$ctx/.devcontainer/Dockerfile"; then
+          build_arg="--build-arg ARCH=${DEVCONTAINER_TOOLCHAIN_ARCH}"
+        fi
+        echo "OCI cache miss or invalid platform: building $REF"
+        # shellcheck disable=SC2086
+        docker buildx build \
+          --platform "$PLATFORM" \
+          --provenance=false \
+          --file "$ctx/.devcontainer/Dockerfile" \
+          --build-context "repo=$ctx" \
+          $build_arg \
+          --push -t "$REF" \
+          "$ctx"
+      }
+
+      convert_nydus() {
+        echo "Publishing Nydus v6 ref $REF-ci"
+        # Signing is centralized in devcontainer_image after all six refs have
+        # been validated. Avoid an implicit, duplicate signing attempt here.
+        SKIP_SIGN=true PLATFORMS="$PLATFORM" nydus-convert "$REF" "$REF-ci"
+      }
+
+      if ! image_is_platform "$REF" "$DEVCONTAINER_BUILD_ARCH"; then
+        build_oci
+        convert_nydus
+      elif ! nydus_is_platform "$REF-ci" "$DEVCONTAINER_BUILD_ARCH"; then
+        echo "OCI cache hit but Nydus cache miss or invalid: regenerating only $REF-ci"
+        convert_nydus
       else
-        REF="${DEVCONTAINER_IMAGE_NAME}:${TAG}"
-        crane manifest "$REF" >/dev/null 2>&1 \
-          || build_and_nydusify "$REF" linux/amd64,linux/arm64 ""
-        {
-          echo "DEVCONTAINER_IMAGE=$REF"
-          echo "CI_IMAGE_HASH=$TAG"
-        } > ci-image.env
+        echo "Devcontainer cache hit: $REF and $REF-ci"
       fi
+
+      image_is_platform "$REF" "$DEVCONTAINER_BUILD_ARCH" || {
+        echo "ERROR: $REF is not exactly $PLATFORM" >&2
+        exit 1
+      }
+      nydus_is_platform "$REF-ci" "$DEVCONTAINER_BUILD_ARCH" || {
+        echo "ERROR: $REF-ci is not a valid $PLATFORM Nydus v6 image" >&2
+        exit 1
+      }
+
+devcontainer_image:
+  stage: .pre
+  image: $DEVCONTAINER_BOOTSTRAP_IMAGE
+  variables:
+    GIT_SUBMODULE_STRATEGY: $DEVCONTAINER_GIT_SUBMODULE_STRATEGY
+    GIT_SUBMODULE_PATHS: $DEVCONTAINER_GIT_SUBMODULE_PATHS
+    # ddsign's gRPC connection must bypass Fabric's TLS-intercepting proxy.
+    # The runner consumes this annotation before injecting proxy variables.
+    KUBERNETES_POD_ANNOTATIONS_DDSIGN_NO_PROXY: "beta.fabric.datadoghq.com/no-proxy-additions=image-integrity-signer.us1.ddbuild.io"
+  needs:
+    - job: devcontainer_native_image
+      artifacts: false
+  tags: ["arch:amd64"]
+  id_tokens:
+    DDSIGN_ID_TOKEN:
+      aud: image-integrity
+  script:
+    - |
+      set -euo pipefail
+
+      case "$DEVCONTAINER_IMAGE_NAME" in
+        *//*) echo "ERROR: DEVCONTAINER_IMAGE_NAME has an empty path component ($DEVCONTAINER_IMAGE_NAME). Set DEVCONTAINER_REPO_NAME or override DEVCONTAINER_IMAGE_NAME." >&2; exit 1 ;;
+      esac
+
+      missing=""
+      command -v make  >/dev/null || missing="$missing make"
+      command -v rsync >/dev/null || missing="$missing rsync"
+      if [ -n "$missing" ]; then
+        apt-get update -qq
+        # shellcheck disable=SC2086
+        apt-get install -y -qq --no-install-recommends $missing
+      fi
+
+      MK="-f .devcontainer/devcontainer.mk"
+      # shellcheck disable=SC2086
+      make $MK .devcontainer-stage-context
+      # shellcheck disable=SC2086
+      TAG=$(make $MK -s .devcontainer-image-hash)
+
+      REF="${DEVCONTAINER_IMAGE_NAME}:${TAG}"
+      AMD_REF="${DEVCONTAINER_IMAGE_NAME}:amd64-${TAG}"
+      ARM_REF="${DEVCONTAINER_IMAGE_NAME}:arm64-${TAG}"
+      CI_REF="$REF-ci"
+      AMD_CI_REF="$AMD_REF-ci"
+      ARM_CI_REF="$ARM_REF-ci"
+
+      platform_list_is() {
+        local manifest=$1 expected=$2
+        jq -e --argjson expected "$expected" '
+          [.manifests[]? | "\(.platform.os)/\(.platform.architecture)"] | sort == ($expected | sort)
+        ' <<<"$manifest" >/dev/null
+      }
+
+      image_is_platform() {
+        local ref=$1 expected_arch=$2 manifest config
+        manifest=$(crane manifest "$ref" 2>/dev/null) || return
+        if jq -e '.manifests != null' <<<"$manifest" >/dev/null; then
+          platform_list_is "$manifest" "[\"linux/${expected_arch}\"]"
+        else
+          config=$(crane config "$ref" 2>/dev/null) || return
+          jq -e --arg arch "$expected_arch" '.os == "linux" and .architecture == $arch' \
+            <<<"$config" >/dev/null
+        fi
+      }
+
+      nydus_v6_manifest() {
+        jq -e '
+          any(.layers[]?; .mediaType == "application/vnd.oci.image.layer.nydus.blob.v1") and
+          (.annotations["containerd.io/snapshot/nydus-fs-version"] == "6")
+        ' >/dev/null
+      }
+
+      nydus_is_platform() {
+        local ref=$1 expected_arch=$2 manifest image_repo digest child
+        local -a digests
+        manifest=$(crane manifest "$ref" 2>/dev/null) || return
+        if jq -e '.manifests == null' <<<"$manifest" >/dev/null; then
+          image_is_platform "$ref" "$expected_arch" && nydus_v6_manifest <<<"$manifest"
+          return
+        fi
+        platform_list_is "$manifest" "[\"linux/${expected_arch}\"]" || return
+        mapfile -t digests < <(jq -r '.manifests[].digest' <<<"$manifest")
+        image_repo=${ref%:*}
+        for digest in "${digests[@]}"; do
+          child=$(crane manifest "$image_repo@$digest" 2>/dev/null) || return
+          nydus_v6_manifest <<<"$child" || return
+        done
+      }
+
+      combined_platforms_are_native() {
+        local ref=$1 manifest
+        manifest=$(crane manifest "$ref" 2>/dev/null) || return
+        platform_list_is "$manifest" '["linux/amd64","linux/arm64"]'
+      }
+
+      combined_nydus_is_v6() {
+        local ref=$1 manifest image_repo digest child
+        local -a digests
+        manifest=$(crane manifest "$ref" 2>/dev/null) || return
+        platform_list_is "$manifest" '["linux/amd64","linux/arm64"]' || return
+        mapfile -t digests < <(jq -r '.manifests[].digest' <<<"$manifest")
+        image_repo=${ref%:*}
+        for digest in "${digests[@]}"; do
+          child=$(crane manifest "$image_repo@$digest" 2>/dev/null) || return
+          nydus_v6_manifest <<<"$child" || return
+        done
+      }
+
+      # Resolve every native input before creating the indexes. Digest-qualified
+      # sources make the combined manifests deterministic even if a tag moves.
+      AMD_DIGEST=$(crane digest "$AMD_REF")
+      ARM_DIGEST=$(crane digest "$ARM_REF")
+      AMD_CI_DIGEST=$(crane digest "$AMD_CI_REF")
+      ARM_CI_DIGEST=$(crane digest "$ARM_CI_REF")
+
+      image_is_platform "$AMD_REF" amd64 || { echo "ERROR: invalid $AMD_REF" >&2; exit 1; }
+      image_is_platform "$ARM_REF" arm64 || { echo "ERROR: invalid $ARM_REF" >&2; exit 1; }
+      nydus_is_platform "$AMD_CI_REF" amd64 || { echo "ERROR: invalid Nydus v6 ref $AMD_CI_REF" >&2; exit 1; }
+      nydus_is_platform "$ARM_CI_REF" arm64 || { echo "ERROR: invalid Nydus v6 ref $ARM_CI_REF" >&2; exit 1; }
+
+      # Recreate both combined indexes on every run. This is cheap registry
+      # metadata work and repairs any partially published combined state.
+      docker buildx imagetools create --tag "$REF" \
+        "$AMD_REF@$AMD_DIGEST" "$ARM_REF@$ARM_DIGEST"
+      docker buildx imagetools create --tag "$CI_REF" \
+        "$AMD_CI_REF@$AMD_CI_DIGEST" "$ARM_CI_REF@$ARM_CI_DIGEST"
+
+      combined_platforms_are_native "$REF" || {
+        echo "ERROR: $REF does not contain exactly linux/amd64 and linux/arm64" >&2
+        exit 1
+      }
+      combined_nydus_is_v6 "$CI_REF" || {
+        echo "ERROR: $CI_REF does not contain exactly linux/amd64 and linux/arm64 Nydus v6 children" >&2
+        exit 1
+      }
+
+      # Sign every published tag by immutable digest, including cache hits.
+      # ddsign is idempotent unless --force-new-signature is requested.
+      sign_ref() {
+        local ref=$1 digest attempt
+        digest=$(crane digest "$ref")
+        echo "Signing $ref@$digest"
+        for attempt in 1 2 3; do
+          if ddsign sign "$ref@$digest"; then
+            return
+          fi
+          if [ "$attempt" -lt 3 ]; then
+            echo "Image signing failed (attempt $attempt/3); retrying" >&2
+            sleep $((attempt * 2))
+          fi
+        done
+        return 1
+      }
+      sign_ref "$REF"
+      sign_ref "$AMD_REF"
+      sign_ref "$ARM_REF"
+      sign_ref "$CI_REF"
+      sign_ref "$AMD_CI_REF"
+      sign_ref "$ARM_CI_REF"
+
+      {
+        echo "DEVCONTAINER_IMAGE=$REF"
+        echo "DEVCONTAINER_IMAGE_CI=$CI_REF"
+        echo "DEVCONTAINER_IMAGE_AMD64=$AMD_REF"
+        echo "DEVCONTAINER_IMAGE_ARM64=$ARM_REF"
+        echo "DEVCONTAINER_IMAGE_AMD64_CI=$AMD_CI_REF"
+        echo "DEVCONTAINER_IMAGE_ARM64_CI=$ARM_CI_REF"
+        echo "CI_IMAGE_HASH=$TAG"
+      } > ci-image.env
   artifacts:
     reports:
       dotenv: ci-image.env

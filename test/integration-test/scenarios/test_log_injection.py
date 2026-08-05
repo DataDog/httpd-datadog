@@ -38,7 +38,7 @@ def test_log_injection(server, agent, log_dir, module_path):
 
         span_id = str(trace["span_id"])
         trace_id = "{high}{low}".format(
-            high=trace["meta"]["_dd.p.tid"], low=hex(trace["trace_id"])[2:]
+            high=trace["meta"]["_dd.p.tid"], low=f'{trace["trace_id"]:016x}'
         )
 
         with open(log.name, "r") as f:

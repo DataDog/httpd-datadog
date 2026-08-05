@@ -1,28 +1,29 @@
 pytest_plugins = ["pytest_plugins.integration_helpers"]
 
-import tempfile
-import shutil
 import argparse
-import subprocess
-import sys
-import re
-import os
-import typing
-import time
-import uuid
-from ddapm_test_agent.agent import make_app
-from aiohttp import web
 import asyncio
+import inspect
+import os
+import shutil
+import socket
+import subprocess
+import tempfile
 import threading
-
-import requests
+import time
+import typing
+import uuid
 from datetime import datetime
-import pytest
 
-from ddapm_test_agent.agent import make_app
+import pytest
+import requests
 from aiohttp import web
+from ddapm_test_agent.agent import make_app
 
 CWD = os.path.dirname(__file__)
+
+# CI runners pre-set DD_*; strip them, so per-test settings take precedence.
+for _dd_var in ("DD_SERVICE", "DD_ENV", "DD_VERSION"):
+    os.environ.pop(_dd_var, None)
 
 
 class DockerProc:
@@ -66,65 +67,54 @@ class Server:
 
         result = self._proc.run(f"-f {conf_path} -t")
         if result.returncode != 0:
-            print(f"[error] Configuration check failed:")
+            print("[error] Configuration check failed:")
             print(f"[error] stdout: {result.stdout.decode('utf-8')}")
             print(f"[error] stderr: {result.stderr.decode('utf-8')}")
         return result.returncode == 0
+
+    def wait_until_ready(self, conf_path: str, timeout: float = 5.0) -> bool:
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            try:
+                with socket.create_connection((self.host, int(self.port)), timeout=0.5):
+                    print(
+                        f"[debug] Apache accepting connections on {self.host}:{self.port}"
+                    )
+                    return True
+            except (ConnectionRefusedError, OSError):
+                time.sleep(0.1)
+
+        print(f"[error] Apache failed to respond after {timeout} seconds")
+        error_log = os.path.join(os.path.dirname(conf_path), "error_log")
+        if os.path.exists(error_log):
+            try:
+                with open(error_log) as log:
+                    if error_content := log.read():
+                        print("[error] Error log content:")
+                        print(error_content[-1000:])
+            except OSError as error:
+                print(f"[error] Could not read error log: {error}")
+        return False
 
     def load_configuration(self, conf_path: str) -> bool:
         if not os.path.exists(conf_path):
             raise Exception(f"Configuration not found: {conf_path}")
 
-        # First, try to stop any existing Apache instance to ensure clean state
-        # This handles stale processes or PID files from previous runs
+        # Stop leftovers before starting Apache.
         self._proc.run(f"-f {conf_path} -k stop")
-
-        # Give Apache time to fully stop
-        import time
         time.sleep(0.5)
 
-        # Start Apache as a daemon
         result = self._proc.run(f"-f {conf_path} -k start")
-
-        # Check if the command succeeded
         if result.returncode != 0:
-            print(f"[error] Apache start command failed with exit code {result.returncode}:")
+            print(
+                f"[error] Apache start command failed with exit code {result.returncode}:"
+            )
             print(f"[error] stdout: {result.stdout.decode('utf-8')}")
             print(f"[error] stderr: {result.stderr.decode('utf-8')}")
-            # Continue anyway - sometimes apachectl returns non-zero but Apache starts
-            # We'll verify below with HTTP requests
+            # apachectl can fail even when Apache starts; probe below.
 
-        # Wait for Apache to fully start and verify it's running
-        # Give Apache up to 5 seconds to start
-        max_wait = 5
-        start_time = time.time()
-
-        while time.time() - start_time < max_wait:
-            # Check if Apache is responding by making a simple HTTP request
-            try:
-                import requests
-                response = requests.get(self.make_url("/"), timeout=1)
-                # If we get any response, Apache is running
-                print(f"[debug] Apache started successfully, responding with status {response.status_code}")
-                return True
-            except requests.exceptions.RequestException:
-                # Apache not ready yet, wait a bit
-                time.sleep(0.2)
-
-        # If we get here, Apache didn't start properly
-        print(f"[error] Apache failed to respond after {max_wait} seconds")
-        # Try to get error log content to understand why
-        error_log = os.path.join(os.path.dirname(conf_path), "error_log")
-        if os.path.exists(error_log):
-            try:
-                with open(error_log, "r") as f:
-                    error_content = f.read()
-                    if error_content:
-                        print(f"[error] Error log content:")
-                        print(error_content[-1000:])  # Last 1000 chars
-            except Exception as e:
-                print(f"[error] Could not read error log: {e}")
-        return False
+        # A TCP probe avoids creating a traced HTTP request.
+        return self.wait_until_ready(conf_path)
 
     def stop(self, conf_path) -> None:
         rc = self._proc.run(f"-f {conf_path} -k stop").returncode
@@ -167,10 +157,14 @@ class AgentSession:
 
 class TestAgent:
     def __init__(self, host: str, port: int) -> None:
-        self._stop = asyncio.Event()
         self.host = host
         self.port = port
-        self._app = make_app(
+        self._ready = threading.Event()
+        self._thread: typing.Optional[threading.Thread] = None
+        self._loop: typing.Optional[asyncio.AbstractEventLoop] = None
+        self._stop: typing.Optional[asyncio.Event] = None
+        self._error: typing.Optional[BaseException] = None
+        make_app_kwargs = dict(
             enabled_checks="",
             log_span_fmt="[{name}]",
             snapshot_dir="snapshot",
@@ -192,25 +186,53 @@ class TestAgent:
             dd_api_key="",
             disable_llmobs_data_forwarding=False,
         )
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.loop)
+        # Added in ddapm-test-agent 1.64.1. GitHub's smoke-test image can carry
+        # an older compatible agent, so only pass it when that API supports it.
+        if "vcr_body_regex_normalizers" in inspect.signature(make_app).parameters:
+            make_app_kwargs["vcr_body_regex_normalizers"] = ""
+        self._app = make_app(**make_app_kwargs)
 
     def internal_run(self) -> None:
+        self._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self._loop)
+        self._stop = asyncio.Event()
         runner = web.AppRunner(self._app)
-        self.loop.run_until_complete(runner.setup())
-        site = web.TCPSite(runner, self.host, self.port)
-        self.loop.run_until_complete(site.start())
-        self.loop.run_until_complete(self._stop.wait())
-        self.loop.run_until_complete(self._app.cleanup())
-        self.loop.close()
+        try:
+            self._loop.run_until_complete(runner.setup())
+            # Bound aiohttp's default 60s keep-alive shutdown.
+            site = web.TCPSite(runner, self.host, self.port, shutdown_timeout=1.0)
+            self._loop.run_until_complete(site.start())
+            self._ready.set()
+            self._loop.run_until_complete(self._stop.wait())
+        except Exception as error:
+            self._error = error
+        finally:
+            self._ready.set()
+            try:
+                self._loop.run_until_complete(runner.cleanup())
+            except Exception as error:
+                if self._error is None:
+                    self._error = error
+            self._loop.close()
 
     def run(self) -> None:
-        self._thread = threading.Thread(target=self.internal_run)
+        # A stuck aiohttp loop must not block interpreter shutdown.
+        self._thread = threading.Thread(target=self.internal_run, daemon=True)
         self._thread.start()
+        if not self._ready.wait(timeout=5.0):
+            raise RuntimeError("test agent did not become ready within 5 seconds")
+        if self._error is not None:
+            raise RuntimeError("test agent failed to start") from self._error
 
     def stop(self) -> None:
-        self.loop.call_soon_threadsafe(self._stop.set)
-        self._thread.join()
+        if self._thread is None or self._loop is None or self._stop is None:
+            return
+        self._loop.call_soon_threadsafe(self._stop.set)
+        self._thread.join(timeout=3.0)
+        if self._thread.is_alive():
+            raise RuntimeError("test agent did not stop within 3 seconds")
+        if self._error is not None:
+            raise RuntimeError("test agent failed") from self._error
 
     def new_session(self, token=None) -> AgentSession:
         if token is None:
@@ -284,7 +306,7 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     before performing collection and entering the run test loop.
     """
     # Use module_path from plugin if auto-built, otherwise use command-line option
-    if not hasattr(session.config, 'module_path') or session.config.module_path is None:
+    if not hasattr(session.config, "module_path") or session.config.module_path is None:
         session.config.module_path = session.config.getoption("--module-path")
 
     apachectl_bin = session.config.getoption("--bin-path")
