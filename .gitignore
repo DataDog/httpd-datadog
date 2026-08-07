@@ -30,6 +30,7 @@ dist-container/
 httpd-*/
 httpd/
 /logs/
+.deps/
 venv/
 
 test/integration-test/.coverage
