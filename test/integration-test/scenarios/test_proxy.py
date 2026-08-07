@@ -23,7 +23,6 @@ def test_http_proxy(server, agent, log_dir, module_path):
 
     app = web.Application()
     app.add_routes([web.get("/", index)])
-    http_server = AioHTTPServer(app, host, port)
 
     config = {
         "path": relpath("conf/proxy.conf"),
@@ -33,7 +32,7 @@ def test_http_proxy(server, agent, log_dir, module_path):
     conf_path = os.path.join(log_dir, "httpd.conf")
     save_configuration(make_configuration(config, log_dir, module_path), conf_path)
 
-    with http_server:
+    with AioHTTPServer(app, host, port):
         assert server.check_configuration(conf_path)
         assert server.load_configuration(conf_path)
 
@@ -42,12 +41,9 @@ def test_http_proxy(server, agent, log_dir, module_path):
 
         assert server.stop(conf_path)
 
-        assert not q.empty()
-
-        upstream_headers = q.get()
+        upstream_headers = q.get(timeout=2)
         assert "x-datadog-trace-id" in upstream_headers
         assert "x-datadog-parent-id" in upstream_headers
-        # Non-RUM build should not leak injection-pending header
         assert "x-datadog-rum-injection-pending" not in upstream_headers
 
     traces = agent.get_traces(timeout=5)

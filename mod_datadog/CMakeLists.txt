@@ -139,4 +139,3 @@ install(
 if(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
   split_debug_info(mod_datadog)
 endif()
-
