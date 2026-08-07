@@ -2,10 +2,13 @@
 
 ## Fork, Clone, Branch and Create your PR
 
-When cloning the repo, you have to initialize the submodules:
+When cloning the repo, initialize the submodules you need. For a standard build:
+
 ```sh
-git submodule update --init --recursive
+git submodule update --init deps/dd-trace-cpp deps/nginx-datadog
 ```
+
+The `deps/inject-browser-sdk` submodule is a private repo and is only required when building with `-DHTTPD_DATADOG_ENABLE_RUM=ON`. If you have access, use `--recursive` instead to pull it as well.
 
 ### Rules
 - Follow the pattern of what you already see in the code.
@@ -21,23 +24,34 @@ git submodule update --init --recursive
 | `python` | 3.0+ | |
 | `cmake` | 3.12+ | |
 
-Once you got a valid `python` installation, install all the dependencies with
+Once you got a valid Python installation, install all the dependencies with:
 
-````shell
+```sh
 pip install -r requirements.txt
-````
+```
 
 ## Compiling
 
 ### Setup `httpd`
 
-In order to build the module you have to configure `httpd` with the [scripts/setup-httpd.py](./scripts/setup-httpd.py) script:
+In order to build the module you have to configure `httpd` with the [scripts/setup-httpd.py](./scripts/setup-httpd.py) script. Check what is the latest available version on [Apache website](https://httpd.apache.org), then:
 
 ```sh
-python scripts/setup-httpd.py -o httpd $HTTPD_VERSION
+export HTTPD_VERSION=2.4.66
+python scripts/setup-httpd.py $HTTPD_VERSION
 cd httpd
 ./configure --with-included-apr --prefix=$(pwd)/httpd-build --enable-mpms-shared="all"
 ```
+
+### Install Rust
+
+The RUM variant requires Rust to build:
+
+```sh
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+Relaunch your terminal (or do `source ~/.cargo/env`).
 
 ### Build the Module
 

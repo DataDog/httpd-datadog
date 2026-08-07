@@ -1,0 +1,89 @@
+# DO NOT EDIT. Synced from DataDog/dd-repo-tools by the
+# dd-repo-tools repository-tools campaigner.
+# Source of truth: https://github.com/DataDog/dd-repo-tools/blob/main/shared/devcontainer/devcontainer-to-ghcr.yml
+
+variables:
+  # The content hash remains available for reproducibility; the stable tag lets
+  # GitHub workflows consume new devcontainer builds without editing YAML.
+  DEVCONTAINER_GHCR_IMAGE: ghcr.io/datadog/${CI_PROJECT_NAME}/devcontainer
+  DEVCONTAINER_GHCR_STABLE_TAG: main
+  DEVCONTAINER_GHCR_SCOPE: DataDog/${CI_PROJECT_NAME}
+  DEVCONTAINER_GHCR_POLICY: self.gitlab.github-release
+
+devcontainer_to_ghcr:
+  stage: .pre
+  image: registry.ddbuild.io/images/dd-octo-sts-ci-base:2025.07-1
+  tags: ["arch:amd64"]
+  interruptible: false
+  resource_group: devcontainer-ghcr
+  needs:
+    - job: devcontainer_image
+      artifacts: true
+  id_tokens:
+    DDOCTOSTS_ID_TOKEN:
+      aud: dd-octo-sts
+  variables:
+    DEVCONTAINER_GHCR_TOKEN_FILE: /tmp/devcontainer-ghcr-token
+    CRANE_VERSION: v0.20.3
+    CRANE_LINUX_X86_64_SHA256: 36c67a932f489b3f2724b64af90b599a8ef2aa7b004872597373c0ad694dc059
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"'
+    - when: never
+  before_script:
+    - |
+      crane_archive=/tmp/go-containerregistry_Linux_x86_64.tar.gz
+      curl -fsSL \
+        "https://github.com/google/go-containerregistry/releases/download/${CRANE_VERSION}/go-containerregistry_Linux_x86_64.tar.gz" \
+        -o "$crane_archive"
+      printf '%s  %s\n' "$CRANE_LINUX_X86_64_SHA256" "$crane_archive" | sha256sum -c -
+      tar -xzf "$crane_archive" -C /usr/local/bin crane
+      crane version
+    - |
+      umask 077
+      if [ -n "${GHCR_TOKEN:-}" ]; then
+        printf '%s' "$GHCR_TOKEN" > "$DEVCONTAINER_GHCR_TOKEN_FILE"
+      else
+        dd-octo-sts token \
+          --scope "$DEVCONTAINER_GHCR_SCOPE" \
+          --policy "$DEVCONTAINER_GHCR_POLICY" \
+          > "$DEVCONTAINER_GHCR_TOKEN_FILE"
+      fi
+      test -s "$DEVCONTAINER_GHCR_TOKEN_FILE"
+      crane auth login ghcr.io \
+        --username "${GHCR_USERNAME:-DataDog}" \
+        --password-stdin < "$DEVCONTAINER_GHCR_TOKEN_FILE"
+  script:
+    - |
+      source_ref=${DEVCONTAINER_IMAGE_AMD64:-${DEVCONTAINER_IMAGE:-}}
+      if [ -z "$source_ref" ] || [ -z "${CI_IMAGE_HASH:-}" ]; then
+        echo "ERROR: devcontainer_image did not publish an amd64 OCI reference" >&2
+        exit 1
+      fi
+
+      immutable_ref="${DEVCONTAINER_GHCR_IMAGE}:${CI_IMAGE_HASH}"
+      if crane digest "$immutable_ref" >/dev/null 2>&1; then
+        echo "GHCR cache hit: $immutable_ref"
+      else
+        echo "Publishing $source_ref -> $immutable_ref"
+        crane copy "$source_ref" "$immutable_ref"
+      fi
+
+      source_digest=$(crane digest "$source_ref")
+      published_digest=$(crane digest "$immutable_ref")
+      if [ "$source_digest" != "$published_digest" ]; then
+        echo "ERROR: GHCR digest mismatch: $published_digest != $source_digest" >&2
+        exit 1
+      fi
+
+      crane tag "$immutable_ref" "$DEVCONTAINER_GHCR_STABLE_TAG"
+      stable_ref="${DEVCONTAINER_GHCR_IMAGE}:${DEVCONTAINER_GHCR_STABLE_TAG}"
+      test "$(crane digest "$stable_ref")" = "$published_digest"
+      echo "Published $stable_ref@$published_digest"
+  after_script:
+    - crane auth logout ghcr.io || true
+    - |
+      if [ -z "${GHCR_TOKEN:-}" ] && [ -s "$DEVCONTAINER_GHCR_TOKEN_FILE" ]; then
+        dd-octo-sts revoke --token "$(cat "$DEVCONTAINER_GHCR_TOKEN_FILE")" \
+          || echo "Warning: token revocation failed"
+      fi
+      rm -f "$DEVCONTAINER_GHCR_TOKEN_FILE"

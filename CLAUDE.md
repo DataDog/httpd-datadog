@@ -2,40 +2,31 @@
 
 ## Building and Testing
 
-Building requires the CI Docker image (Alpine with LLVM toolchain, httpd source, Rust, uv).
-The image is auto-detected for the host architecture (arm64/amd64).
+Initialize the project submodules before building. The private
+`inject-browser-sdk` submodule is required for RUM builds.
 
 ```bash
-make vendor                # Pre-fetch RUM deps (corrosion, inject-browser-sdk) to vendor/
-make docker-build          # Build mod_datadog.so (no RUM)
-make docker-build-rum      # Build mod_datadog.so with RUM (runs vendor automatically)
-make docker-test           # Build + run all integration tests (non-RUM)
-make docker-test-rum       # Build + run RUM integration tests
-make docker-shell          # Interactive shell in the CI image
+git submodule update --init --recursive
+make ci-build              # Non-RUM CI build
+make test-integration      # RUM-enabled build and integration tests
+make dev-shell             # Interactive devcontainer shell
 ```
 
-RUM builds use vendored dependencies (`.deps/` directory) so Docker doesn't need
-network access to private repos. `make docker-build-rum` runs `make vendor` automatically.
-To refresh vendored deps: `rm -rf .deps && make vendor`.
+The devcontainer image is selected for the host architecture and includes the
+LLVM toolchain, httpd source, Rust, and uv.
 
 ### Running specific tests inside Docker
 
 ```bash
-make docker-shell
+make dev-shell
 # Inside container:
-cmake -B build-rum -DCMAKE_TOOLCHAIN_FILE=/sysroot/aarch64-none-linux-musl/Toolchain.cmake \
-  -DHTTPD_SRC_DIR=/httpd -DHTTPD_DATADOG_PATCH_AWAY_LIBC=1 -DHTTPD_DATADOG_ENABLE_RUM=ON -G Ninja .
-cmake --build build-rum -j
-cd test/integration-test && uv sync
-uv run pytest scenarios/test_rum.py::test_rum_selective_disabling \
-  --module-path /src/build-rum/mod_datadog/mod_datadog.so \
-  --bin-path /httpd/httpd-build/bin/apachectl \
-  --log-dir /src/logs -m requires_rum -v
+.devcontainer/run-integration-tests.sh \
+  scenarios/test_rum.py::test_rum_selective_disabling -m requires_rum
 ```
 
 ### Key paths inside the CI image
 
-- `/httpd` — httpd source (used by `-DHTTPD_SRC_DIR`)
+- `/httpd` — httpd source
 - `/httpd/httpd-build/bin/apachectl` — pre-built apachectl binary
 - `/sysroot/{arch}-none-linux-musl/Toolchain.cmake` — cross-compilation toolchain
 

@@ -1,0 +1,5 @@
+# rsync --files-from allowlist (anything COPY'd by the Dockerfile).
+# Runtime-only files (bind-mounted at `docker run`) stay out of the hash.
+.devcontainer/Dockerfile
+deps/nginx-datadog/build_env/
+scripts/setup-httpd.py

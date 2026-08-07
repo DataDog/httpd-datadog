@@ -104,16 +104,24 @@ class AioHTTPServer:
     def internal_run(self) -> None:
         runner = web.AppRunner(self._app)
         self.loop.run_until_complete(runner.setup())
-        site = web.TCPSite(runner, self._host, self._port)
+        site = web.TCPSite(runner, self._host, self._port, shutdown_timeout=1.0)
         self.loop.run_until_complete(site.start())
         self.loop.run_until_complete(self._stop.wait())
-        self.loop.run_until_complete(self._app.cleanup())
+        self.loop.run_until_complete(runner.cleanup())
         self.loop.close()
 
     def run(self) -> None:
-        self._thread = threading.Thread(target=self.internal_run)
+        self._thread = threading.Thread(target=self.internal_run, daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
         self.loop.call_soon_threadsafe(self._stop.set)
-        self._thread.join()
+        if self._thread is not None:
+            self._thread.join(timeout=3.0)
+
+    def __enter__(self) -> "AioHTTPServer":
+        self.run()
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.stop()

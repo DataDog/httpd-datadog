@@ -5,8 +5,8 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-  # schedule:
-  #   - cron: 0 4 * * *
+  schedule:
+    - cron: 0 4 * * *
 
 concurrency:
   # this ensures that only one workflow runs at a time for a given branch on pull requests
@@ -15,24 +15,23 @@ concurrency:
   group: ${{ (github.event_name == 'pull_request' && format('{0}-{1}', github.workflow, github.ref)) || format('{0}-{1}', github.workflow, github.run_id) }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   build-artifacts:
     runs-on: ubuntu-22.04
     container:
-      # See in Makefile where this image comes from.
-      image: datadog/docker-library:httpd-datadog-ci-28219c0ef3e00f1e3d5afcab61a73a5e9bd2a9b957d7545556711cce2a6262cd
+      # Advanced by .gitlab/devcontainer-to-ghcr.yml after main builds.
+      image: ghcr.io/datadog/httpd-datadog/devcontainer:main
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          submodules: true
-      - name: Add cloned repo as safe
-        run: sh -c "git config --global --add safe.directory $PWD"
-      - name: Configure
-        run: cmake --preset=ci-dev -B build .
       - name: Build
-        run: |
-          cmake --build build -j --verbose
-          cmake --install build --prefix dist
+        run: make ci-build PRESET=ci-dev
       - name: Export library
         uses:  actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -44,13 +43,9 @@ jobs:
     needs:
       - build-artifacts
     uses: DataDog/system-tests/.github/workflows/system-tests.yml@main
-    secrets:
-      TEST_OPTIMIZATION_API_KEY: ${{ secrets.DD_API_KEY_CI_APP }}
-      DD_API_KEY: ${{ secrets.DD_API_KEY_CI_APP }}
     permissions:
       contents: read
       id-token: write
-      packages: write
     with:
       library: cpp_httpd
       binaries_artifact: system_tests_binaries
@@ -58,5 +53,5 @@ jobs:
       scenarios_groups: tracer-release
       excluded_scenarios: APM_TRACING_E2E_OTEL,APM_TRACING_E2E_SINGLE_SPAN  # require AWS and datadog credentials
       parametric_job_count: 8
-      skip_empty_scenarios: true
+      skip_empty_scenarios: false
       push_to_test_optimization: ${{ github.actor != 'dependabot[bot]' }}

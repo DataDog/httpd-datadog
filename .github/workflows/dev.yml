@@ -6,6 +6,10 @@ on:
     # Run every other month to avoid 90-day GitHub artifact expiration
     - cron: '0 0 1 */2 *'
 
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   format:
     runs-on: ubuntu-22.04
@@ -19,20 +23,15 @@ jobs:
     needs: format
     runs-on: ubuntu-22.04
     container:
-      # See in Makefile where this image comes from.
-      image: datadog/docker-library:httpd-datadog-ci-28219c0ef3e00f1e3d5afcab61a73a5e9bd2a9b957d7545556711cce2a6262cd
+      # Advanced by .gitlab/devcontainer-to-ghcr.yml after main builds.
+      image: ghcr.io/datadog/httpd-datadog/devcontainer:main
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-        with:
-          submodules: true
-      - name: Add cloned repo as safe
-        run: sh -c "git config --global --add safe.directory $PWD"
-      - name: Configure
-        run: cmake --preset=ci-dev -B build .
       - name: Build
-        run: |
-          cmake --build build -j --verbose
-          cmake --install build --prefix dist
+        run: make ci-build PRESET=ci-dev
       - name: Export library
         uses:  actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -44,8 +43,10 @@ jobs:
     needs: build
     runs-on: ubuntu-22.04
     container:
-      # See in Makefile where this image comes from.
-      image: datadog/docker-library:httpd-datadog-ci-28219c0ef3e00f1e3d5afcab61a73a5e9bd2a9b957d7545556711cce2a6262cd
+      image: ghcr.io/datadog/httpd-datadog/devcontainer:main
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     env:
       DD_ENV: ci
       DD_API_KEY: ${{ secrets.DD_API_KEY_CI_APP }}
@@ -71,6 +72,9 @@ jobs:
           llvm-profdata merge -sparse /tmp/*.profraw -o /tmp/default.profdata
           llvm-cov export dist/lib/mod_datadog.so -format=lcov -instr-profile=/tmp/default.profdata -ignore-filename-regex=/httpd/ > coverage.lcov
       - name: Upload code coverage report to Datadog
-        run: npx @datadog/datadog-ci@latest coverage upload --format=lcov coverage.lcov
-        env:
-          DD_API_KEY: ${{ secrets.DD_API_KEY_CI_APP }}
+        # See https://github.com/DataDog/coverage-upload-github-action/releases
+        uses: DataDog/coverage-upload-github-action@2ba057033351887422f8eb0203d1990c3acbc8c5 # v1.0.4
+        with:
+          api_key: ${{ secrets.DD_API_KEY_CI_APP }}
+          files: coverage.lcov
+          format: lcov

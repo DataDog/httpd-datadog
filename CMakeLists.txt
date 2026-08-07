@@ -3,7 +3,7 @@
 # - toolchain (msvc, llvm, gcc)
 cmake_minimum_required(VERSION 3.12)
 
-project(httpd-datadog VERSION 1.0.4)
+project(httpd-datadog VERSION 1.0.5)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -23,23 +23,6 @@ if (NOT HTTPD_SRC_DIR)
 endif ()
 
 include(cmake/utils.cmake)
-include(cmake/deps/fmt.cmake)
-
-if (HTTPD_DATADOG_ENABLE_RUM)
-  include(FetchContent)
-
-  set(INJECT_BROWSER_SDK_GIT_REF "758c1aba91950461f6a617c626930a7ba8da3014" CACHE STRING
-      "Git ref for inject-browser-sdk")
-
-  FetchContent_Declare(
-    InjectBrowserSDK
-    GIT_REPOSITORY https://github.com/DataDog/inject-browser-sdk.git
-    GIT_TAG        ${INJECT_BROWSER_SDK_GIT_REF}
-  )
-  FetchContent_MakeAvailable(InjectBrowserSDK)
-
-  include(cmake/deps/rapidjson.cmake)
-endif ()
 
 add_library(httpd INTERFACE)
 target_include_directories(

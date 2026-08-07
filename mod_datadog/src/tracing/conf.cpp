@@ -13,6 +13,7 @@ void init(TracerConfig& conf, RuntimeID& runtime_id, server_rec* s,
   conf.service_type = "server";
   conf.logger = std::make_shared<HttpdLogger>(s, datadog_module->module_index);
   conf.runtime_id = runtime_id;
+  conf.root_session_id = runtime_id.string();
   conf.integration_name = "httpd";
   conf.integration_version = common::utils::make_httpd_version();
 }
