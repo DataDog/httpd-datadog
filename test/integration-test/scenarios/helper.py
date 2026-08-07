@@ -7,6 +7,7 @@ from string import Template
 from pathlib import Path
 import tempfile
 from contextlib import contextmanager
+from typing import Self
 
 from aiohttp import web
 
@@ -85,15 +86,22 @@ def make_temporary_configuration(config, module_path):
 
 def free_port() -> int:
     """Return an available TCP port on localhost."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
 
 
 class AioHTTPServer:
     """Lightweight aiohttp server that runs in a background thread."""
 
-    def __init__(self, app, host, port) -> None:
+    _thread: threading.Thread | None
+    _stop: asyncio.Event
+    _host: str
+    _port: int
+    _app: web.Application
+    loop: asyncio.AbstractEventLoop
+
+    def __init__(self, app: web.Application, host: str, port: int) -> None:
         self._thread = None
         self._stop = asyncio.Event()
         self._host = host
@@ -119,7 +127,7 @@ class AioHTTPServer:
         if self._thread is not None:
             self._thread.join(timeout=3.0)
 
-    def __enter__(self) -> "AioHTTPServer":
+    def __enter__(self) -> Self:
         self.run()
         return self
 
