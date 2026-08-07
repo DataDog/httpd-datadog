@@ -45,7 +45,6 @@ stages:
     SCCACHE_BUCKET: dd-sccache-storage-us1-ddbuild-io
     SCCACHE_REGION: us-east-1
     SCCACHE_S3_KEY_PREFIX: httpd-datadog
-    SCCACHE_S3_USE_SSL: "true"
     RUSTC_WRAPPER: /usr/bin/sccache
   # The GitLab repository identity has read/write access only to this
   # repository's prefix in the shared sccache bucket.
