@@ -11,14 +11,14 @@
 # $SERIES is the httpd minor series ("2.4"), not the full patch version: one
 # module per architecture serves all of 2.4.x because Apache's module magic
 # number is stable within a minor series. It is derived from the httpd built
-# into the CI image so it cannot drift from .gitlab/Dockerfile.
+# into the devcontainer so it cannot drift from .devcontainer/Dockerfile.
 #
 # mod_datadog.so.debug is deliberately left out — it stays on the S3 lane and
 # would otherwise dominate the package size.
 
 .ssi-assemble:
   stage: assemble
-  image: $CI_DOCKER_IMAGE_BASE:$CI_IMAGE_HASH
+  image: $DEVCONTAINER_IMAGE_AMD64_CI
   variables:
     # Pure file copy: no source build, so the deps/ submodules are dead weight.
     GIT_SUBMODULE_STRATEGY: none
@@ -55,11 +55,12 @@
 ssi-build:amd64:
   extends: .ssi-assemble
   needs:
-    # build-ci-image supplies $CI_IMAGE_HASH via dotenv.
-    - build-ci-image
+    - job: devcontainer_image
+      artifacts: true
     - job: "build:amd64"
       artifacts: true
     - job: "test-rum:amd64"
+    - job: "test-integration:amd64"
     - job: "unit-test:amd64"
   variables:
     ARCH: amd64
@@ -67,10 +68,12 @@ ssi-build:amd64:
 ssi-build:arm64:
   extends: .ssi-assemble
   needs:
-    - build-ci-image
+    - job: devcontainer_image
+      artifacts: true
     - job: "build:arm64"
       artifacts: true
     - job: "test-rum:arm64"
+    - job: "test-integration:arm64"
     - job: "unit-test:arm64"
   variables:
     ARCH: arm64

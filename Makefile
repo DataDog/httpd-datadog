@@ -1,17 +1,27 @@
-# The CI image used for some GitHub jobs is built by the GitLab build-ci-image job.
-# The hash is computed by this GitLab job from the files used to build the image.
-#
-# Whenever this image needs to be updated, one should:
-#   - Get the hash from a run of the GitLab build-ci-image job.
-#   - Copy this hash here, and in the GitHub workflow files.
-#   - Run: make replicate-ci-image-for-github.
+# Keep the image name stable across differently named worktrees.
+# This matches DEVCONTAINER_IMAGE_NAME in .gitlab-ci.yml.
+DEV_CONTAINER_IMAGE_NAME := registry.ddbuild.io/ci/httpd-datadog/devcontainer
+DEV_CONTAINER_PER_ARCH := true
 
-CI_DOCKER_IMAGE_HASH ?= bf4e353dec1442b7864fddc3c2618b8541eed4c04fe2ab88f2a4c2ebea61df91
-CI_IMAGE_FROM_GITLAB ?= registry.ddbuild.io/ci/httpd-datadog/amd64:$(CI_DOCKER_IMAGE_HASH)
-CI_IMAGE_IN_PUBLIC_REPO_FOR_GITHUB ?= datadog/docker-library:httpd-datadog-ci-$(CI_DOCKER_IMAGE_HASH)
+# Fail devcontainer targets early when their toolchain input is absent.
+# The shared makefile applies this guard only to relevant targets.
+DEV_CONTAINER_REQUIRED_PATHS := deps/nginx-datadog/build_env/Toolchain.cmake.x86_64
 
-.PHONY: replicate-ci-image-for-github
-replicate-ci-image-for-github:
-	docker pull $(CI_IMAGE_FROM_GITLAB)
-	docker tag $(CI_IMAGE_FROM_GITLAB) $(CI_IMAGE_IN_PUBLIC_REPO_FOR_GITHUB)
-	docker push $(CI_IMAGE_IN_PUBLIC_REPO_FOR_GITHUB)
+include .devcontainer/devcontainer.mk
+
+# CI supplies MODULE_PATH to reuse its architecture-specific build.
+MODULE_PATH ?=
+
+.PHONY: test-integration
+test-integration: dev-image
+	$(IN_DEVCONTAINER) env MODULE_PATH="$(MODULE_PATH)" .devcontainer/run-integration-tests.sh
+
+# GitHub build entrypoint. RUM is off, so inject-browser-sdk is unnecessary.
+PRESET ?= ci-dev
+.PHONY: ci-build
+ci-build:
+	git config --global --add safe.directory "$(CURDIR)"
+	git submodule update --init --depth=1 deps/dd-trace-cpp deps/nginx-datadog
+	cmake --preset=$(PRESET) -B build .
+	cmake --build build -j --verbose
+	cmake --install build --prefix dist

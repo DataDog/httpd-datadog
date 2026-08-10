@@ -15,24 +15,23 @@ concurrency:
   group: ${{ (github.event_name == 'pull_request' && format('{0}-{1}', github.workflow, github.ref)) || format('{0}-{1}', github.workflow, github.run_id) }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   build-artifacts:
     runs-on: ubuntu-22.04
     container:
-      # See in Makefile where this image comes from.
-      image: datadog/docker-library:httpd-datadog-ci-bf4e353dec1442b7864fddc3c2618b8541eed4c04fe2ab88f2a4c2ebea61df91
+      # Advanced by .gitlab/devcontainer-to-ghcr.yml after main builds.
+      image: ghcr.io/datadog/httpd-datadog/devcontainer:main
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      - name: Add cloned repo as safe
-        run: sh -c "git config --global --add safe.directory $PWD"
-      - name: Init required submodules
-        run: git submodule update --init --depth=1 deps/dd-trace-cpp deps/nginx-datadog
-      - name: Configure
-        run: cmake --preset=ci-dev -B build .
       - name: Build
-        run: |
-          cmake --build build -j --verbose
-          cmake --install build --prefix dist
+        run: make ci-build PRESET=ci-dev
       - name: Export library
         uses:  actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

@@ -2,29 +2,19 @@
 name = "httpd-datadog-integration-tests"
 version = "0.1.0"
 description = "Integration tests for Apache httpd Datadog module"
-requires-python = ">=3.10"
-# Every dependency carries an upper bound: uv.lock is not committed, so an
-# unbounded ">=" resolves against whatever is newest at CI time and the suite
-# can break with no change to this repo. That is exactly how the aiohttp and
-# ddapm-test-agent breakages below got in.
+requires-python = ">=3.11"
 dependencies = [
-    "pytest>=9.0.3,<10",
-    "requests>=2.33.1,<3",
-    # Capped at the minor, not the major: make_app() is not a stable API and
-    # gains required arguments in minor releases. conftest.py passes
-    # vcr_body_regex_normalizers, added in 1.63.0, so <1.63 is also broken --
-    # this floor is load-bearing, not just hygiene. Raising the ceiling means
-    # re-checking the make_app() call in conftest.py first.
-    "ddapm-test-agent>=1.63.0,<1.65",
-    # 3.14.1 is the vuln floor (5bd76eb1); it also requires Python >=3.10.
-    "aiohttp>=3.14.1,<4",
-    "msgpack>=1.2.1,<2",
+    "pytest>=9.0.3",
+    "requests>=2.33.1",
+    "ddapm-test-agent>=1.50.0",
+    "aiohttp>=3.14.1",
+    "msgpack>=1.2.1",
 ]
 
 [dependency-groups]
 dev = [
-    "pytest-xdist>=3.5.0,<4",  # Parallel test execution
-    "pytest-timeout>=2.2.0,<3",  # Test timeouts
+    "pytest-xdist>=3.5.0",  # Parallel test execution
+    "pytest-timeout>=2.2.0",  # Test timeouts
 ]
 
 [tool.pytest.ini_options]
@@ -44,4 +34,3 @@ markers = [
     "smoke: marks tests as smoke tests",
     "ci: marks tests suitable for CI environment",
 ]
-

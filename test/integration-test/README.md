@@ -112,7 +112,7 @@ docker run --rm -v "$PWD:/workspace" -w /workspace \
 
 ### Troubleshooting
 
-**RUM build fails:** Check CMake output for missing dependencies (inject-browser-sdk is fetched automatically via CMake FetchContent)
+**RUM build fails:** Ensure the private `deps/inject-browser-sdk` submodule is initialized (`git submodule update --init --recursive`).
 
 **Tests hang:** Port 8136 in use
 

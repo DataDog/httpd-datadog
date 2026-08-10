@@ -7,16 +7,17 @@
 #   - Rust toolchain for RUM (inject-browser-sdk requires Rust 1.91+)
 #   - uv (fast Python package manager for tests)
 #
-# Toolchain files are sourced from deps/nginx-datadog/build_env/
+# Toolchain files are sourced from deps/nginx-datadog/build_env/.
 #
+# dd-repo-tools supplies the native toolchain architecture in every supported
+# entrypoint (GitLab, `make dev-image`, and VS Code initialization).
 FROM alpine:3.20.3 AS sysroot
 
 ARG LLVM_VERSION=17.0.6
 ARG ARCH
+ENV SYSROOT=/sysroot/${ARCH}-none-linux-musl
 
 COPY deps/nginx-datadog/build_env/CHECKSUMS /CHECKSUMS
-
-RUN echo "Building LLVM ${LLVM_VERSION} on ${ARCH}"
 
 RUN apk --no-cache add alpine-sdk coreutils sudo bash samurai python3 linux-headers \
 	compiler-rt clang llvm lld wget cmake make binutils musl-dev git patchelf xz lit
@@ -60,22 +61,26 @@ RUN cd /usr/lib && ln -s clang/${LLVM_VERSION%%.*}/lib/linux/libclang_rt.builtin
 RUN rm -rf /llvm-project-${LLVM_VERSION}.src
 RUN rm -f llvm-project-${LLVM_VERSION}.src.tar.xz
 
-RUN mkdir -p /sysroot/${ARCH}-none-linux-musl/usr
-RUN ln -s /usr/lib /sysroot/${ARCH}-none-linux-musl/usr/
-RUN ln -s /usr/include /sysroot/${ARCH}-none-linux-musl/usr/
-RUN ln -s /lib /sysroot/${ARCH}-none-linux-musl/
-RUN ln -s /usr/lib/llvm${LLVM_VERSION%%.*}/lib/clang/${LLVM_VERSION%%.*}/lib /sysroot/${ARCH}-none-linux-musl/usr/lib/resource_dir/lib
+RUN mkdir -p ${SYSROOT}/usr && \
+    ln -s /usr/lib ${SYSROOT}/usr/ && \
+    ln -s /usr/include ${SYSROOT}/usr/ && \
+    ln -s /lib ${SYSROOT}/ && \
+    ln -s /usr/lib/llvm${LLVM_VERSION%%.*}/lib/clang/${LLVM_VERSION%%.*}/lib ${SYSROOT}/usr/lib/resource_dir/lib
 
-COPY deps/nginx-datadog/build_env/Toolchain.cmake.${ARCH} /sysroot/${ARCH}-none-linux-musl/Toolchain.cmake
+# Select the native toolchain without storing the unused variant in a layer.
+RUN --mount=type=bind,source=deps/nginx-datadog/build_env,target=/tmp/build_env,ro \
+    cp /tmp/build_env/Toolchain.cmake.${ARCH} ${SYSROOT}/Toolchain.cmake
 
 # see https://github.com/llvm/llvm-project/issues/60572
-RUN mv /usr/lib/gcc/${ARCH}-alpine-linux-musl/13.2.1/include/stdatomic.h /usr/lib/gcc/${ARCH}-alpine-linux-musl/13.2.1/include/stdatomic.h_
-RUN cp /usr/lib/llvm${LLVM_VERSION%%.*}/lib/clang/${LLVM_VERSION%%.*}/include/stdatomic.h /usr/lib/gcc/${ARCH}-alpine-linux-musl/13.2.1/include/stdatomic.h
+RUN set -- /usr/lib/gcc/*-alpine-linux-musl/13.2.1/include && \
+    gcc_include=$1 && \
+    mv ${gcc_include}/stdatomic.h ${gcc_include}/stdatomic.h_ && \
+    cp /usr/lib/llvm${LLVM_VERSION%%.*}/lib/clang/${LLVM_VERSION%%.*}/include/stdatomic.h ${gcc_include}/stdatomic.h
 
 COPY deps/nginx-datadog/build_env/glibc_compat.c /sysroot/
-RUN clang --sysroot /sysroot/${ARCH}-none-linux-musl/ -fpie -O2 -fno-omit-frame-pointer \
-    -ggdb3 -c /sysroot/glibc_compat.c -o /tmp/glibc_compat.o && \
-    ar rcs /sysroot/${ARCH}-none-linux-musl/usr/lib/libglibc_compat.a /tmp/glibc_compat.o && \
+RUN clang --sysroot ${SYSROOT}/ -fpie -O2 -fno-omit-frame-pointer \
+        -ggdb3 -c /sysroot/glibc_compat.c -o /tmp/glibc_compat.o && \
+    ar rcs ${SYSROOT}/usr/lib/libglibc_compat.a /tmp/glibc_compat.o && \
     rm /tmp/glibc_compat.o
 
 # Install dependencies for httpd
@@ -103,3 +108,8 @@ RUN python3 ./setup-httpd.py -o httpd 2.4.58 \
  && ./configure --with-included-apr --prefix=$(pwd)/httpd-build --enable-mpms-shared="all" \
  && make -j \
  && make -j install
+
+# Share C, C++, and Rust compilation results between ephemeral CI runners.
+RUN apk add --no-cache sccache
+
+LABEL org.opencontainers.image.source="https://github.com/DataDog/httpd-datadog"
