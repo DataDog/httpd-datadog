@@ -1,4 +1,6 @@
 include:
+  - local: ".gitlab/ssi-package.yml"
+  - local: ".gitlab/one-pipeline.locked.yml"
   - local: .gitlab/devcontainer.yml
   - local: .gitlab/devcontainer-to-ghcr.yml
 
@@ -22,6 +24,17 @@ variables:
   GIT_CONFIG_COUNT: 1
   GIT_CONFIG_KEY_0: url.https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.ddbuild.io/DataDog/.insteadOf
   GIT_CONFIG_VALUE_0: https://github.com/DataDog/
+  # one-pipeline OCI publishing. All four must be set explicitly: the template
+  # otherwise derives them from REPO_LANG, which defaults to
+  # ${CI_PROJECT_NAME##*-} == "datadog" here, yielding
+  # datadog-apm-library-datadog. OCI_AGENT_REGISTRY_PACKAGE_NAME must equal
+  # OCI_PACKAGE_NAME minus the "datadog-" prefix plus "-package"
+  # (.verify-oci-variables enforces this).
+  OCI_PACKAGE_NAME: datadog-apm-library-httpd
+  OCI_AGENT_REGISTRY_PACKAGE_NAME: apm-library-httpd-package
+  AGENT_REPO_PRODUCT_NAME: auto_inject-httpd
+  LIB_INJECTION_NAME: dd-lib-httpd-init
+  REPO_NOTIFICATION_CHANNEL: "#apm-proxy"
 
 default:
   id_tokens:
@@ -31,6 +44,8 @@ default:
 stages:
   - build
   - test
+  - assemble
+  - shared-pipeline
   - aws
 
 # Template jobs (hidden, reusable)
@@ -72,6 +87,20 @@ stages:
       - artifacts/$ARCH/mod_datadog.so
       - artifacts/$ARCH/mod_datadog.so.debug
       - upload/mod_datadog-${ARCH}.zip
+      # Built as part of `all` already; published so unit-test:$ARCH can run it
+      # without repeating the build.
+      - build/test/unit-test/tests
+
+.unit-test-template:
+  stage: test
+  variables:
+    GIT_SUBMODULE_STRATEGY: none
+  script:
+    # The binary is linked against the musl sysroot in this image, so it runs
+    # here as-is. Run it directly rather than via ctest: configuring CMake again
+    # would mean rebuilding the whole dependency tree.
+    - chmod +x build/test/unit-test/tests
+    - ./build/test/unit-test/tests --success
 
 .test-rum-template:
   stage: test
@@ -136,6 +165,16 @@ build:arm64:
   extends:
     - .build-template
     - .arm64
+
+unit-test:amd64:
+  extends:
+    - .unit-test-template
+    - .test-amd64
+
+unit-test:arm64:
+  extends:
+    - .unit-test-template
+    - .test-arm64
 
 test-rum:amd64:
   extends:
@@ -237,3 +276,113 @@ configure-branch-snapshot-expiry:
       echo "Lifecycle rule '$RULE_ID' configured: expire httpd/branch-snapshots/ after 30 days"
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# ── One-pipeline overrides ────────────────────────────────────────────
+#
+# These re-declare only the keys we change; everything else still comes from
+# .gitlab/one-pipeline.locked.yml (do not edit that file — it is generated).
+
+# None of the one-pipeline jobs build anything from source: they operate on the
+# ssi-build artifacts plus the two scripts under .gitlab/. The repo-wide
+# GIT_SUBMODULE_STRATEGY: recursive would make each of them clone
+# deps/{dd-trace-cpp,inject-browser-sdk,nginx-datadog} for nothing. (The
+# template already does this for the jobs it declares variables on.)
+.no-submodules: &no-submodules
+  GIT_SUBMODULE_STRATEGY: none
+
+# Upstream package-oci declares no needs:, so it would be stage-gated on
+# `shared-pipeline`. Its real inputs are the ssi-build jobs, which in turn gate
+# on test-rum:$ARCH so an untested module never reaches installtesting.
+package-oci:
+  needs:
+    - job: "ssi-build:amd64"
+      artifacts: true
+    - job: "ssi-build:arm64"
+      artifacts: true
+  variables:
+    <<: *no-submodules
+
+oci-internal-publish:
+  variables:
+    <<: *no-submodules
+
+publishing-gate:
+  variables:
+    <<: *no-submodules
+
+create-multiarch-lib-injection-image:
+  variables:
+    <<: *no-submodules
+
+publish_dora_metrics:
+  variables:
+    <<: *no-submodules
+
+generate-lib-init-pinned-tag-values:
+  variables:
+    <<: *no-submodules
+
+internal-publish-lib-init-tags:
+  variables:
+    <<: *no-submodules
+
+promote-oci-to-staging:
+  variables:
+    <<: *no-submodules
+
+promote-oci-to-prod-beta:
+  variables:
+    <<: *no-submodules
+
+promote-oci-to-prod:
+  variables:
+    <<: *no-submodules
+
+rollout-mutable-tags-staging:
+  variables:
+    <<: *no-submodules
+
+rollout-mutable-tags-prod:
+  variables:
+    <<: *no-submodules
+
+rollback-mutable-tags-staging:
+  variables:
+    <<: *no-submodules
+
+rollback-mutable-tags-prod:
+  variables:
+    <<: *no-submodules
+
+# Shared shape for the one-pipeline jobs we neutralise with a no-op script
+# rather than `rules: when: never` (other template jobs need: them).
+.stubbed-shared-pipeline-job:
+  image: registry.ddbuild.io/images/mirror/alpine:3.23.0
+  tags: ["arch:amd64"]
+  stage: shared-pipeline
+  needs: []
+  before_script: []
+  variables:
+    <<: *no-submodules
+
+# Needs metadata/requirements-{block,allow}.json fixtures and a gitlab-config
+# allowlist entry for cloning auto_inject with CI_JOB_TOKEN. Hard-fails on unset
+# REQUIREMENTS_*_JSON_PATH otherwise.
+requirements_json_test:
+  extends: .stubbed-shared-pipeline-job
+  script: ['echo "skipped: no requirements fixtures yet"']
+
+# system-tests has no httpd library, so there is nothing to configure or run.
+configure_system_tests:
+  extends: .stubbed-shared-pipeline-job
+  script: ['echo "skipped: system-tests has no httpd library"']
+
+system_tests:
+  rules:
+    - when: never
+
+# Needs an ECR repository plus the
+# ci.httpd-datadog.apm-ecosystems-reliability-profile SSM parameter, neither of
+# which exists yet. Does not gate the OCI publish.
+kubernetes-injection-test-ecr-publish:
+  allow_failure: true

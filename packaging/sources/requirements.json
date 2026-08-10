@@ -1,0 +1,31 @@
+{
+  "$schema": "https://raw.githubusercontent.com/DataDog/auto_inject/refs/heads/main/preload_go/cmd/library_requirements_tester/testdata/requirements_schema.json",
+  "version": 1,
+  "native_deps": {
+    "glibc": [
+      {
+        "arch": "x64",
+        "supported": true,
+        "description": "mod_datadog is built against musl, loaded into stock httpd on glibc systems"
+      },
+      {
+        "arch": "arm64",
+        "supported": true,
+        "description": "mod_datadog is built against musl, loaded into stock httpd on glibc systems"
+      }
+    ],
+    "musl": [
+      {
+        "arch": "x64",
+        "supported": true,
+        "description": "mod_datadog is built against musl for alpine-based httpd"
+      },
+      {
+        "arch": "arm64",
+        "supported": true,
+        "description": "mod_datadog is built against musl for alpine-based httpd"
+      }
+    ]
+  },
+  "deny": []
+}

@@ -108,7 +108,18 @@ void register_hooks(apr_pool_t*) {
 #endif
 }
 
-int on_post_config(apr_pool_t*, apr_pool_t*, apr_pool_t*, server_rec* s) {
+int on_post_config(apr_pool_t* pconf, apr_pool_t*, apr_pool_t*, server_rec* s) {
+#if defined(HTTPD_DD_RUM)
+  // Above the g_log_module_status guard on purpose: that guard makes everything
+  // below it run only once, but stable configuration must be re-read on every
+  // configuration load, including graceful restarts. `pconf` scopes the cached
+  // snippet to this load, so it is released when httpd discards the
+  // configuration rather than leaking one snippet per restart.
+  datadog::rum::conf::init_stable_config(s, pconf);
+#else
+  (void)pconf;
+#endif
+
   if (!g_log_module_status) {
     return OK;
   }

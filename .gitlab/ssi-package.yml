@@ -1,0 +1,79 @@
+# Assembles the built mod_datadog.so into the directory layout that
+# .gitlab/prepare-oci-package.sh / one-pipeline's package-oci expect.
+#
+# Input (from build:$ARCH artifacts):
+#   artifacts/$ARCH/mod_datadog.so
+#
+# Output (consumed by prepare-oci-package.sh):
+#   artifacts/ssi-sources/$ARCH/httpd/$SERIES/mod_datadog.so
+#   artifacts/ssi-sources/$ARCH/version
+#
+# $SERIES is the httpd minor series ("2.4"), not the full patch version: one
+# module per architecture serves all of 2.4.x because Apache's module magic
+# number is stable within a minor series. It is derived from the httpd built
+# into the devcontainer so it cannot drift from .devcontainer/Dockerfile.
+#
+# mod_datadog.so.debug is deliberately left out — it stays on the S3 lane and
+# would otherwise dominate the package size.
+
+.ssi-assemble:
+  stage: assemble
+  image: $DEVCONTAINER_IMAGE_AMD64_CI
+  variables:
+    # Pure file copy: no source build, so the deps/ submodules are dead weight.
+    GIT_SUBMODULE_STRATEGY: none
+  # OK to run on amd64 for both arches — this job only copies files, no native
+  # compilation.
+  tags: ["arch:amd64"]
+  script:
+    - set -euo pipefail
+    - VERSION="${CI_COMMIT_TAG:-0.0.1-${CI_COMMIT_SHORT_SHA}}"
+    - VERSION="${VERSION#v}"
+    - |
+      SERIES="$(/httpd/httpd-build/bin/httpd -v | sed -n 's#^Server version: Apache/\([0-9]*\.[0-9]*\).*#\1#p')"
+      if [ -z "$SERIES" ]; then
+        echo "ERROR: could not determine the httpd minor series from /httpd/httpd-build/bin/httpd -v"
+        /httpd/httpd-build/bin/httpd -v || true
+        exit 1
+      fi
+    - echo "version=${VERSION} httpd series=${SERIES} arch=${ARCH}"
+    - |
+      so_file="artifacts/${ARCH}/mod_datadog.so"
+      if [ ! -f "$so_file" ]; then
+        echo "ERROR: module not found: $so_file (build:${ARCH} must complete first)"
+        exit 1
+      fi
+    - OUTPUT="artifacts/ssi-sources/${ARCH}"
+    - mkdir -p "${OUTPUT}/httpd/${SERIES}"
+    - cp "$so_file" "${OUTPUT}/httpd/${SERIES}/"
+    - echo "${VERSION}" > "${OUTPUT}/version"
+    - echo "Assembled sources:" && find "${OUTPUT}" -type f | sort
+  artifacts:
+    paths:
+      - artifacts/ssi-sources/
+
+ssi-build:amd64:
+  extends: .ssi-assemble
+  needs:
+    - job: devcontainer_image
+      artifacts: true
+    - job: "build:amd64"
+      artifacts: true
+    - job: "test-rum:amd64"
+    - job: "test-integration:amd64"
+    - job: "unit-test:amd64"
+  variables:
+    ARCH: amd64
+
+ssi-build:arm64:
+  extends: .ssi-assemble
+  needs:
+    - job: devcontainer_image
+      artifacts: true
+    - job: "build:arm64"
+      artifacts: true
+    - job: "test-rum:arm64"
+    - job: "test-integration:arm64"
+    - job: "unit-test:arm64"
+  variables:
+    ARCH: arm64

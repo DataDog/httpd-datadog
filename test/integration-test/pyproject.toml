@@ -3,18 +3,22 @@ name = "httpd-datadog-integration-tests"
 version = "0.1.0"
 description = "Integration tests for Apache httpd Datadog module"
 requires-python = ">=3.11"
+# Upper bounds document the tested compatibility range and constrain lockfile
+# refreshes to versions whose APIs the integration harness supports.
 dependencies = [
-    "pytest>=9.0.3",
-    "requests>=2.33.1",
-    "ddapm-test-agent>=1.50.0",
-    "aiohttp>=3.14.1",
-    "msgpack>=1.2.1",
+    "pytest>=9.0.3,<10",
+    "requests>=2.33.1,<3",
+    # Capped at the minor because make_app() is not a stable API. Raising the
+    # ceiling means re-checking its keyword arguments in conftest.py first.
+    "ddapm-test-agent>=1.63.0,<1.65",
+    "aiohttp>=3.14.1,<4",
+    "msgpack>=1.2.1,<2",
 ]
 
 [dependency-groups]
 dev = [
-    "pytest-xdist>=3.5.0",  # Parallel test execution
-    "pytest-timeout>=2.2.0",  # Test timeouts
+    "pytest-xdist>=3.5.0,<4",  # Parallel test execution
+    "pytest-timeout>=2.2.0,<3",  # Test timeouts
 ]
 
 [tool.pytest.ini_options]
