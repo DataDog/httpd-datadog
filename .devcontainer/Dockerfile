@@ -4,7 +4,7 @@
 #   - LLVM 17 toolchain with musl sysroot for cross-compilation
 #   - httpd 2.4 source code
 #   - Tools necessary to build httpd and mod_datadog
-#   - Rust toolchain for RUM (inject-browser-sdk requires Rust 1.91+)
+#   - Rust toolchain for RUM
 #   - uv (fast Python package manager for tests)
 #
 # Toolchain files are sourced from deps/nginx-datadog/build_env/.
@@ -90,8 +90,7 @@ RUN apk add --no-cache autoconf expat expat-dev gpg gpg-agent libtool pcre-dev p
 RUN apk add --no-cache curl jq
 
 # Install Rust toolchain
-# 1.94.0 to clear inject-browser-sdk's rust-version = 1.91.0, and to match the
-# toolchain nginx-datadog builds the same SDK with (build_env/Dockerfile).
+# Match nginx-datadog's toolchain; inject-browser-sdk requires Rust 1.91+.
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -yq --default-toolchain 1.94.0 \
   && ln -s ~/.cargo/bin/cargo /usr/bin/cargo
 

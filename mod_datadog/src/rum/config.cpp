@@ -23,9 +23,7 @@ using namespace datadog::conf;
 
 namespace {
 
-// Identifies this integration to the stable-config reader, which uses it for
-// rule-based process matching in application_monitoring.yaml. Free-form, not
-// validated against a fixed set; nginx-datadog passes "nginx" here.
+// Stable-config process identifier used for rule matching.
 constexpr const char* rum_language = "httpd";
 
 using SnippetPtr = std::unique_ptr<Snippet, decltype(&snippet_cleanup)>;

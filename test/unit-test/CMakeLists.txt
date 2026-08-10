@@ -12,10 +12,7 @@ add_executable(tests main.cpp test_utils.cpp)
 
 target_include_directories(tests PRIVATE ${CMAKE_SOURCE_DIR}/mod_datadog/src)
 
-# httpd and fmt are header-only here: utils.h includes <httpd.h> and
-# <fmt/core.h>, and the one function needing httpd symbols
-# (make_httpd_version -> ap_get_server_revision) is inline and untested, so
-# nothing from httpd actually has to link.
+# utils.h uses headers supplied by the httpd and fmt targets.
 target_link_libraries(tests PRIVATE Catch2::Catch2 httpd fmt)
 
 add_test(NAME unit-tests COMMAND tests)
