@@ -1,6 +1,6 @@
 # Contributing to the Datadog Apache Httpd Module
 
-## Fork, Clone, Branch and Create your PR
+## Clone
 
 When cloning the repo, initialize the submodules you need. For a standard build:
 
@@ -8,27 +8,38 @@ When cloning the repo, initialize the submodules you need. For a standard build:
 git submodule update --init deps/dd-trace-cpp deps/nginx-datadog
 ```
 
-The `deps/inject-browser-sdk` submodule is a private repo and is only required when building with
-`-DHTTPD_DATADOG_ENABLE_RUM=ON`. If you have access, use `--recursive` instead to pull it as well.
+The `deps/inject-browser-sdk` submodule is a private repository and is only required for RUM builds
+(with `-DHTTPD_DATADOG_ENABLE_RUM=ON`). If you have access, use `--recursive` instead to pull it as
+well:
 
-## Rules
-
-- Follow the pattern of what you already see in the code.
-- Follow the coding style.
+```sh
+git submodule update --init --recursive
+```
 
 ## Prerequisites
 
-| Tool | Version | Notes |
-| ---- | ------- | ----- |
-| `clang` or `gcc` | 14+ or 11.4+ | |
-| `python` | 3.0+ | |
-| `cmake` | 3.12+ | |
+| Tool | Version |
+| ---- | ------- |
+| `clang` | 17+ |
+| `cmake` | 3.12+ |
+| `gcc` | 13.2+ |
+| `python` | 3.11+ |
 
 Once you got a valid Python installation, install all the dependencies with:
 
 ```sh
 pip install -r requirements.txt
 ```
+
+## Install Rust
+
+The RUM variant requires Rust to build:
+
+```sh
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+Relaunch your terminal (or do `source ~/.cargo/env`).
 
 ## Compiling
 
@@ -45,20 +56,9 @@ cd httpd
 ./configure --with-included-apr --prefix=$(pwd)/httpd-build --enable-mpms-shared="all"
 ```
 
-### Install Rust
-
-The RUM variant requires Rust to build:
-
-```sh
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
-
-Relaunch your terminal (or do `source ~/.cargo/env`).
-
 ### Build the Module
 
-CMake is our build system. If you are not familiar with CMake, read [the
-tutorial.](https://cmake.org/cmake/help/latest/guide/tutorial/index.html)
+CMake is our build system.
 
 Configure and compile all targets in release:
 
@@ -71,6 +71,38 @@ cmake --build build -j
 
 For now there are only [integration tests](./test/integration-test/).
 
-## How to Debug
+### Build Devcontainer Image
 
-Run with `-X`.
+```bash
+make ci-build          # Non-RUM CI build
+make test-integration  # RUM-enabled build and integration tests
+make dev-shell         # Interactive devcontainer shell
+```
+
+The devcontainer image is selected for the host architecture and includes the
+LLVM toolchain, httpd source, Rust, and uv.
+
+### Running Specific Tests Inside Docker
+
+```bash
+make dev-shell
+# Inside container:
+.devcontainer/run-integration-tests.sh \
+  scenarios/test_rum.py::test_rum_selective_disabling -m requires_rum
+```
+
+### Key Paths Inside the CI Image
+
+- `/httpd` — httpd source
+- `/httpd/httpd-build/bin/apachectl` — pre-built apachectl binary
+- `/sysroot/{arch}-none-linux-musl/Toolchain.cmake` — cross-compilation toolchain
+
+### Test Markers
+
+- `requires_rum` — tests needing RUM-enabled build (`-DHTTPD_DATADOG_ENABLE_RUM=ON`)
+- Tests without markers run against the standard build
+
+## CI
+
+GitLab CI status can be checked via `glab ci` on the [automated
+mirror](https://gitlab.ddbuild.io/DataDog/httpd-datadog).
