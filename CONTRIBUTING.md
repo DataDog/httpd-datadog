@@ -1,4 +1,4 @@
-# Contributing
+# Contributing to the Datadog Apache Httpd Module
 
 ## Fork, Clone, Branch and Create your PR
 
@@ -8,13 +8,13 @@ When cloning the repo, initialize the submodules you need. For a standard build:
 git submodule update --init deps/dd-trace-cpp deps/nginx-datadog
 ```
 
-The `deps/inject-browser-sdk` submodule is a private repo and is only required when building with `-DHTTPD_DATADOG_ENABLE_RUM=ON`. If you have access, use `--recursive` instead to pull it as well.
+The `deps/inject-browser-sdk` submodule is a private repo and is only required when building with
+`-DHTTPD_DATADOG_ENABLE_RUM=ON`. If you have access, use `--recursive` instead to pull it as well.
 
-### Rules
+## Rules
+
 - Follow the pattern of what you already see in the code.
 - Follow the coding style.
-
-# Development
 
 ## Prerequisites
 
@@ -34,7 +34,9 @@ pip install -r requirements.txt
 
 ### Setup `httpd`
 
-In order to build the module you have to configure `httpd` with the [scripts/setup-httpd.py](./scripts/setup-httpd.py) script. Check what is the latest available version on [Apache website](https://httpd.apache.org), then:
+In order to build the module you have to configure `httpd` with the
+[scripts/setup-httpd.py](./scripts/setup-httpd.py) script. Check what is the latest available
+version on [Apache website](https://httpd.apache.org), then:
 
 ```sh
 export HTTPD_VERSION=2.4.66
@@ -55,7 +57,8 @@ Relaunch your terminal (or do `source ~/.cargo/env`).
 
 ### Build the Module
 
-CMake is our build system. If you are not familiar with CMake, read [the tutorial.](https://cmake.org/cmake/help/latest/guide/tutorial/index.html)
+CMake is our build system. If you are not familiar with CMake, read [the
+tutorial.](https://cmake.org/cmake/help/latest/guide/tutorial/index.html)
 
 Configure and compile all targets in release:
 
