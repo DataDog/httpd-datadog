@@ -6,8 +6,7 @@ Datadog-specific functionality.
 
 ## Getting Started
 
-> [!IMPORTANT]
-> Only Apache HTTP Server 2.4.x is supported.
+> [!IMPORTANT] Only Apache HTTP Server 2.4.x is supported.
 >
 > For a detail understanding of our release cycle and Apache HTTPD support, read our [Release
 > documentation](./doc/release.md).
