@@ -1,5 +1,9 @@
 # Contributing to the Datadog Apache Httpd Module
 
+## Conventions
+
+Follow [docs/conventions.md](doc/conventions.md).
+
 ## Clone
 
 When cloning the repo, initialize the submodules you need. For a standard build:
