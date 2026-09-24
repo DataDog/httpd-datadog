@@ -4,6 +4,37 @@
 
 Follow [docs/conventions.md](doc/conventions.md).
 
+## Format
+
+C++ is formatted with `clang-format-14` and `.clang-format`.
+
+```sh
+./scripts/codestyle.sh lint     # check; fails on drift
+./scripts/codestyle.sh format   # rewrite files
+```
+
+## Static Analysis
+
+C++ is analyzed with clang-tidy using the shared `.clang-tidy` baseline (kept in
+sync with `dd-trace-cpp` and `nginx-datadog`). Warnings are errors.
+
+Configure CMake so a compilation database exists, then run tidy:
+
+```sh
+cmake --preset=ci-dev -B build .   # in the devcontainer
+./scripts/clang-tidy.sh
+```
+
+Locally, after `scripts/setup-httpd.py` and a normal configure:
+
+```sh
+cmake -B build -DHTTPD_SRC_DIR=httpd .
+./scripts/clang-tidy.sh
+```
+
+`BUILD_DIR` defaults to `build`. CI runs `clang-tidy` as a Development workflow
+job on pull requests; a finding fails the job.
+
 ## Clone
 
 When cloning the repo, initialize the submodules you need. For a standard build:
