@@ -16,14 +16,18 @@ build_dir=${BUILD_DIR:-build}
 compile_commands="$build_dir/compile_commands.json"
 
 find_tidy() {
-    if command -v clang-tidy-14 >/dev/null 2>&1; then
-        echo clang-tidy-14
-        return
-    fi
     if command -v clang-tidy >/dev/null 2>&1; then
         echo clang-tidy
         return
     fi
+    local candidate
+    for candidate in clang-tidy-21 clang-tidy-20 clang-tidy-19 clang-tidy-18 \
+                     clang-tidy-17 clang-tidy-16 clang-tidy-15 clang-tidy-14; do
+        if command -v "$candidate" >/dev/null 2>&1; then
+            echo "$candidate"
+            return
+        fi
+    done
     return 1
 }
 
@@ -36,7 +40,7 @@ if ! [[ -f "$compile_commands" ]]; then
 fi
 
 if ! tidy=$(find_tidy); then
-    >&2 echo "clang-tidy-14 (or clang-tidy) is not installed."
+    >&2 echo "clang-tidy is not installed. On Alpine: apk add clang-extra-tools"
     exit 1
 fi
 
