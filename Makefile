@@ -18,6 +18,11 @@ test-integration: dev-image
 
 # GitHub build entrypoint. RUM is off, so inject-browser-sdk is unnecessary.
 PRESET ?= ci-dev
+
+.PHONY: lint-tidy
+lint-tidy: dev-image
+	$(IN_DEVCONTAINER) env HTTPD_DATADOG_TIDY_IN_CONTAINER=1 ./scripts/clang-tidy.sh
+
 .PHONY: ci-build
 ci-build:
 	git config --global --add safe.directory "$(CURDIR)"
