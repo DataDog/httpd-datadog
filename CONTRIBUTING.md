@@ -25,9 +25,11 @@ the same container that runs tidy (musl sysroot and `/httpd`). Locally:
 make lint-tidy
 ```
 
-That builds/pulls the devcontainer, configures CMake inside it, and runs
-clang-tidy-17. `./scripts/clang-tidy.sh` re-execs through `make lint-tidy` when
-run on the host. CI runs the same script in `ghcr.io/datadog/httpd-datadog/devcontainer:main`.
+That builds/pulls the devcontainer, configures CMake inside it (`ci-dev`, RUM
+off), and runs clang-tidy-17 on configured `mod_datadog/src` only — not `rum/`,
+`deps/`, or tests. `./scripts/clang-tidy.sh` re-execs through `make lint-tidy`
+when run on the host. CI runs the same script in
+`ghcr.io/datadog/httpd-datadog/devcontainer:main`.
 
 ## Clone
 

@@ -68,11 +68,38 @@ if [[ ! -f "$build_dir/compile_commands.json" ]]; then
     cmake --preset=ci-dev -B "$build_dir" .
 fi
 
-mapfile -t files < <(find mod_datadog/ test/unit-test/ \
-    -type f \( -name '*.cpp' -o -name '*.c' \))
+# Only first-party module sources that this CMake configure actually built.
+# ci-dev leaves RUM off, so rum/ has no compile-command entries — do not pass
+# those files (clang-tidy would skip them and still exit 0).
+mapfile -t files < <(python3 - "$build_dir/compile_commands.json" "$REPO_ROOT" <<'PY'
+import json, os, sys
+db_path, root = sys.argv[1], sys.argv[2]
+includes = ("mod_datadog/src/",)
+excludes = ("mod_datadog/src/rum/",)
+seen = []
+for ent in json.load(open(db_path)):
+    path = ent.get("file") or ""
+    if not os.path.isabs(path):
+        path = os.path.normpath(os.path.join(ent.get("directory", root), path))
+    try:
+        rel = os.path.relpath(path, root)
+    except ValueError:
+        continue
+    if rel.startswith("..") or not rel.endswith((".c", ".cc", ".cpp", ".cxx")):
+        continue
+    if any(rel == e.rstrip("/") or rel.startswith(e) for e in excludes):
+        continue
+    if not any(rel.startswith(i) for i in includes):
+        continue
+    if path not in seen:
+        seen.append(path)
+for path in seen:
+    print(path)
+PY
+)
 
 if [[ ${#files[@]} -eq 0 ]]; then
-    >&2 echo "No C/C++ sources found to analyze."
+    >&2 echo "No configured first-party sources (mod_datadog/src, excluding rum/) in $build_dir/compile_commands.json."
     exit 1
 fi
 

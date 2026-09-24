@@ -31,5 +31,5 @@ Checks: >
   readability-redundant-string-cstr,
   readability-simplify-boolean-expr
 WarningsAsErrors: '*'
-HeaderFilterRegex: '(mod_datadog|test/unit-test)/'
+HeaderFilterRegex: 'mod_datadog/src/'
 FormatStyle: file
