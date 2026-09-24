@@ -15,25 +15,19 @@ C++ is formatted with `clang-format-14` and `.clang-format`.
 
 ## Static Analysis
 
-C++ is analyzed with clang-tidy using the shared `.clang-tidy` baseline (kept in
-sync with `dd-trace-cpp` and `nginx-datadog`). Warnings are errors.
+C++ is analyzed with **clang-tidy-17** (pinned to the LLVM 17 toolchain in the
+devcontainer) using the shared `.clang-tidy` baseline. Warnings are errors.
 
-Configure CMake so a compilation database exists, then run tidy:
-
-```sh
-cmake --preset=ci-dev -B build .   # in the devcontainer
-./scripts/clang-tidy.sh
-```
-
-Locally, after `scripts/setup-httpd.py` and a normal configure:
+Do not run clang-tidy on the host. `compile_commands.json` must be produced by
+the same container that runs tidy (musl sysroot and `/httpd`). Locally:
 
 ```sh
-cmake -B build -DHTTPD_SRC_DIR=httpd .
-./scripts/clang-tidy.sh
+make lint-tidy
 ```
 
-`BUILD_DIR` defaults to `build`. CI runs `clang-tidy` as a Development workflow
-job on pull requests; a finding fails the job.
+That builds/pulls the devcontainer, configures CMake inside it, and runs
+clang-tidy-17. `./scripts/clang-tidy.sh` re-execs through `make lint-tidy` when
+run on the host. CI runs the same script in `ghcr.io/datadog/httpd-datadog/devcontainer:main`.
 
 ## Clone
 

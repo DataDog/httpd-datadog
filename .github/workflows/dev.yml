@@ -29,13 +29,6 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-      - name: Configure
-        run: |
-          git config --global --add safe.directory "$(pwd)"
-          git submodule update --init --depth=1 deps/dd-trace-cpp deps/nginx-datadog
-          cmake --preset=ci-dev -B build .
-      - name: Install clang-tidy
-        run: apk add --no-cache clang-extra-tools
       - name: clang-tidy
         run: ./scripts/clang-tidy.sh
 
