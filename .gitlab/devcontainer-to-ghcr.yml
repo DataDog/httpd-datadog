@@ -27,7 +27,6 @@ devcontainer_to_ghcr:
     CRANE_VERSION: v0.20.3
     CRANE_LINUX_X86_64_SHA256: 36c67a932f489b3f2724b64af90b599a8ef2aa7b004872597373c0ad694dc059
   rules:
-    - if: '$CI_COMMIT_BRANCH == "dd/fix/devcontainer-ghcr-crane-permissions"'
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"'
     - when: never
   before_script:
@@ -42,10 +41,6 @@ devcontainer_to_ghcr:
       tar -xzf "$crane_archive" -C "$crane_bin_dir" crane
       export PATH="$crane_bin_dir:$PATH"
       crane version
-      if [ "$CI_COMMIT_BRANCH" = "dd/fix/devcontainer-ghcr-crane-permissions" ]; then
-        echo "Crane install verified on PR branch"
-        exit 0
-      fi
     - |
       umask 077
       if [ -n "${GHCR_TOKEN:-}" ]; then
