@@ -27,6 +27,10 @@ add_library(
 )
 
 set_property(TARGET mod_datadog PROPERTY POSITION_INDEPENDENT_CODE ON)
+if(HTTPD_DATADOG_ENABLE_CLANG_TIDY)
+  set_property(TARGET mod_datadog PROPERTY CXX_CLANG_TIDY
+    "${HTTPD_DATADOG_CLANG_TIDY};--quiet;--use-color")
+endif()
 
 if (HTTPD_DATADOG_ENABLE_RUM)
   target_compile_definitions(

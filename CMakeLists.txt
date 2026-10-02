@@ -13,6 +13,9 @@ set(ZLIB_USE_STATIC_LIBS ON)
 option(HTTPD_DATADOG_ENABLE_RUM "Enable RUM product" OFF)
 option(HTTPD_DATADOG_ENABLE_COVERAGE "Enable code coverage instrumentation" OFF)
 option(HTTPD_DATADOG_PATCH_AWAY_LIBC "Patch away libc dependency" OFF)
+option(HTTPD_DATADOG_ENABLE_CLANG_TIDY "Run clang-tidy on first-party sources during build" OFF)
+set(HTTPD_DATADOG_CLANG_TIDY "clang-tidy-17" CACHE STRING
+    "clang-tidy executable when HTTPD_DATADOG_ENABLE_CLANG_TIDY is ON")
 
 if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE ReleaseWithDeb)

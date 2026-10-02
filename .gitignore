@@ -25,6 +25,7 @@ compile_commands.json
 __pycache__/
 build-container/
 build-rum/
+.clang-tidy-build/
 build/
 dist-container/
 httpd-*/
