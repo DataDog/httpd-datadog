@@ -83,9 +83,8 @@ if verified_source_count == 0:
     sys.exit(1)
 PY
 
-compiler=$(sed -n 's/^CMAKE_CXX_COMPILER:FILEPATH=//p' "$build_dir/CMakeCache.txt" | head -n 1)
-if ! echo '#include <string>' | "$compiler" -x c++ - -fsyntax-only; then
-    >&2 echo "C++ headers are not usable with $compiler; refusing to run tidy."
+if ! echo '#include <string>' | "$llvm_bin/clang++" -stdlib=libc++ -x c++ - -fsyntax-only; then
+    >&2 echo "C++ headers are not usable with $llvm_bin/clang++; refusing to run tidy."
     exit 1
 fi
 
