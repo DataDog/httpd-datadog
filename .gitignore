@@ -16,7 +16,9 @@
 *.so
 
 .cache/
-.claude/
+.claude/*
+!.claude/skills/
+!.claude/skills/**/
 .vscode/
 
 .DS_Store

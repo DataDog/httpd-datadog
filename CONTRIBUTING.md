@@ -15,22 +15,11 @@ C++ is formatted with `clang-format-14` and `.clang-format`.
 
 ## Static Analysis
 
-C++ is analyzed with **clang-tidy-17** (pinned to the LLVM 17 toolchain in the
-devcontainer) using the shared `.clang-tidy` baseline. Warnings are errors.
-
-Do not run clang-tidy on the host. Tidy must use the same compiler, flags, and
-sysroot as the real build (`ci-dev`). Locally:
+C++ code is analyzed with Clang Tidy. Run it with the following command:
 
 ```sh
 make lint-tidy
 ```
-
-That builds/pulls the devcontainer, configures CMake inside it (`ci-dev`, RUM
-off, `HTTPD_DATADOG_ENABLE_CLANG_TIDY`), and builds `mod_datadog` so CMake
-invokes clang-tidy-17 with the exact compile line. `rum/`, `deps/`, and tests
-are not on that target. `./scripts/clang-tidy.sh` re-execs through
-`make lint-tidy` when run on the host. CI runs the same script in
-`ghcr.io/datadog/httpd-datadog/devcontainer:main`.
 
 ## Clone
 

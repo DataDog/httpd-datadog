@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-# Run the pinned clang-tidy through CMake in the httpd-datadog devcontainer.
+# Run clang-tidy in the CI container.
 #
-# clang-tidy must use the same compiler, flags, and sysroot as the real
-# build (ci-dev). CMake's CXX_CLANG_TIDY on mod_datadog does that: it
-# invokes tidy with the exact compile line after `--`. Do not run tidy
-# against a host compilation database.
+# Configures CMake with preset ci-dev, then run-clang-tidy -p on
+# mod_datadog/src/ so tidy uses that compile_commands.json.
 #
 # Usage:
 #   make lint-tidy
@@ -16,7 +14,6 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 cd "$REPO_ROOT"
 
-# Must match LLVM_VERSION in .devcontainer/Dockerfile (major).
 CLANG_TIDY_VERSION=17
 
 in_container() {
@@ -25,52 +22,31 @@ in_container() {
 }
 
 if ! in_container; then
-    if ! command -v docker >/dev/null 2>&1; then
-        >&2 echo "docker is required to run clang-tidy-${CLANG_TIDY_VERSION}."
-        exit 1
-    fi
     exec make -C "$REPO_ROOT" lint-tidy
 fi
 
 build_dir=${BUILD_DIR:-.clang-tidy-build}
-tidy="clang-tidy-${CLANG_TIDY_VERSION}"
+# Alpine LLVM layout (no hyphen), same major as the image toolchain.
+llvm_bin=/usr/lib/llvm${CLANG_TIDY_VERSION}/bin
+clang_tidy=$llvm_bin/clang-tidy
+run_clang_tidy=$llvm_bin/run-clang-tidy
 
-if ! command -v "$tidy" >/dev/null 2>&1 && command -v clang-tidy >/dev/null 2>&1; then
-    found_major=$(clang-tidy --version | sed -n 's/.*version \([0-9][0-9]*\).*/\1/p' | head -n 1)
-    if [[ "$found_major" == "$CLANG_TIDY_VERSION" ]]; then
-        tidy=clang-tidy
-    fi
-fi
-
-if ! command -v "$tidy" >/dev/null 2>&1; then
+if [[ ! -x "$clang_tidy" ]]; then
     apk add --no-cache clang-extra-tools
-    if command -v clang-tidy >/dev/null 2>&1; then
-        found_major=$(clang-tidy --version | sed -n 's/.*version \([0-9][0-9]*\).*/\1/p' | head -n 1)
-        if [[ "$found_major" != "$CLANG_TIDY_VERSION" ]]; then
-            >&2 echo "clang-tidy ${found_major} is installed, but ${CLANG_TIDY_VERSION} is pinned."
-            exit 1
-        fi
-        tidy=clang-tidy
-    fi
 fi
 
-if ! command -v "$tidy" >/dev/null 2>&1; then
-    >&2 echo "clang-tidy-${CLANG_TIDY_VERSION} is required (pinned)."
+if [[ ! -x "$clang_tidy" ]]; then
+    >&2 echo "$clang_tidy is required (pinned)."
     exit 1
 fi
 
-compiler=${CXX:-clang++}
-if ! command -v "$compiler" >/dev/null 2>&1; then
-    >&2 echo "$compiler is required (same toolchain as CMake)."
-    exit 1
+if [[ ! -x "$run_clang_tidy" && -x /usr/bin/run-clang-tidy ]]; then
+    # Alpine ships the runner unversioned; -clang-tidy-binary stays pinned.
+    run_clang_tidy=/usr/bin/run-clang-tidy
 fi
 
-compiler_major=$("$compiler" -dumpversion | cut -d. -f1)
-tidy_major=$("$tidy" --version | sed -n 's/.*version \([0-9][0-9]*\).*/\1/p' | head -n 1)
-if [[ "$compiler_major" != "$CLANG_TIDY_VERSION" || "$tidy_major" != "$CLANG_TIDY_VERSION" ]]; then
-    >&2 echo "clang-tidy and the CMake compiler must both be LLVM ${CLANG_TIDY_VERSION}."
-    >&2 echo "  ${compiler}: ${compiler_major}"
-    >&2 echo "  ${tidy}: ${tidy_major}"
+if [[ ! -x "$run_clang_tidy" ]]; then
+    >&2 echo "$llvm_bin/run-clang-tidy is required (pinned)."
     exit 1
 fi
 
@@ -79,11 +55,40 @@ if [[ ! -f deps/dd-trace-cpp/CMakeLists.txt ]] || [[ ! -f deps/nginx-datadog/CMa
     git submodule update --init --depth=1 deps/dd-trace-cpp deps/nginx-datadog
 fi
 
-# Reconfigure so CXX_CLANG_TIDY is attached to mod_datadog, then compile
-# that target. CMake passes the exact ci-dev compile line to tidy.
-# RUM is off in ci-dev, so rum/ is not a source of mod_datadog.
-cmake --preset=ci-dev -B "$build_dir" . \
-    -DHTTPD_DATADOG_ENABLE_CLANG_TIDY=ON \
-    -DHTTPD_DATADOG_CLANG_TIDY="$tidy"
+cmake --fresh --preset=ci-dev -B "$build_dir" .
 
-cmake --build "$build_dir" --target mod_datadog
+python3 - "$build_dir/compile_commands.json" "$REPO_ROOT" <<'PY'
+import json, os, sys
+db_path, root = sys.argv[1], sys.argv[2]
+verified_source_count = 0
+for entry in json.load(open(db_path)):
+    path = entry.get("file") or ""
+    if not os.path.isabs(path):
+        path = os.path.normpath(os.path.join(entry.get("directory", root), path))
+    relative_path = os.path.relpath(path, root)
+    if not relative_path.startswith("mod_datadog/src/") or relative_path.startswith("mod_datadog/src/rum/"):
+        continue
+    if not relative_path.endswith((".c", ".cc", ".cpp", ".cxx")):
+        continue
+    command = entry.get("command") or ""
+    if "/sysroot" not in command:
+        sys.stderr.write(
+            "BUILD_DIR was not configured with preset ci-dev; refusing to run tidy.\n"
+            "  missing /sysroot in " + relative_path + "\n"
+        )
+        sys.exit(1)
+    verified_source_count += 1
+if verified_source_count == 0:
+    sys.stderr.write("No mod_datadog/src/ entries in " + db_path + ".\n")
+    sys.exit(1)
+PY
+
+compiler=$(sed -n 's/^CMAKE_CXX_COMPILER:FILEPATH=//p' "$build_dir/CMakeCache.txt" | head -n 1)
+if ! echo '#include <string>' | "$compiler" -x c++ - -fsyntax-only; then
+    >&2 echo "C++ headers are not usable with $compiler; refusing to run tidy."
+    exit 1
+fi
+
+"$run_clang_tidy" -p "$build_dir" -clang-tidy-binary "$clang_tidy" \
+    -header-filter "^$REPO_ROOT/mod_datadog/src/" -quiet \
+    "^$REPO_ROOT/mod_datadog/src/"
