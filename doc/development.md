@@ -46,7 +46,7 @@ Relaunch your terminal (or do `source ~/.cargo/env`).
 ### Setup `httpd`
 
 In order to build the module you have to configure `httpd` with the
-[scripts/setup-httpd.py](./scripts/setup-httpd.py) script. Check what is the latest available
+[scripts/setup-httpd.py](../scripts/setup-httpd.py) script. Check what is the latest available
 version on [Apache website](https://httpd.apache.org), then:
 
 ```shell
@@ -69,7 +69,7 @@ cmake --build build -j
 
 ### Testing
 
-For now there are only [integration tests](./test/integration-test/).
+For now there are only [integration tests](../test/integration-test/).
 
 ### Build Devcontainer Image
 
