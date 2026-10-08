@@ -1,5 +1,6 @@
 name: Development
 on:
+  pull_request:
   push:
   workflow_dispatch:
   schedule:
@@ -18,6 +19,18 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - run: ./scripts/codestyle.sh lint
+
+  clang-tidy:
+    runs-on: ubuntu-22.04
+    container:
+      image: ghcr.io/datadog/httpd-datadog/devcontainer:main
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: clang-tidy
+        run: ./scripts/clang-tidy.sh
 
   build:
     needs: format

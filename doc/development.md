@@ -67,6 +67,23 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release -DHTTPD_SRC_DIR=httpd .
 cmake --build build -j
 ```
 
+## Format
+
+C++ code is formatted with Clang Format:
+
+```shell
+./scripts/codestyle.sh lint     # check; fails on drift
+./scripts/codestyle.sh format   # rewrite files
+```
+
+## Static Analysis
+
+C++ code is analyzed with Clang Tidy. Run it with:
+
+```shell
+make lint-tidy
+```
+
 ### Testing
 
 For now there are only [integration tests](../test/integration-test/).
@@ -91,18 +108,18 @@ make dev-shell
   scenarios/test_rum.py::test_rum_selective_disabling -m requires_rum
 ```
 
-### Key Paths Inside the CI Image
-
-- `/httpd` — httpd source
-- `/httpd/httpd-build/bin/apachectl` — pre-built apachectl binary
-- `/sysroot/{arch}-none-linux-musl/Toolchain.cmake` — cross-compilation toolchain
-
 ### Test Markers
 
-- `requires_rum` — tests needing RUM-enabled build (`-DHTTPD_DATADOG_ENABLE_RUM=ON`)
-- Tests without markers run against the standard build
+- `requires_rum` — tests needing RUM-enabled build (`-DHTTPD_DATADOG_ENABLE_RUM=ON`).
+- Tests without markers run against the standard build.
 
 ## CI
 
 GitLab CI status can be checked via `glab ci` on the [automated
 mirror](https://gitlab.ddbuild.io/DataDog/httpd-datadog).
+
+### Key Paths Inside the CI Image
+
+- `/httpd` — httpd source
+- `/httpd/httpd-build/bin/apachectl` — pre-built apachectl binary
+- `/sysroot/{arch}-none-linux-musl/Toolchain.cmake` — cross-compilation toolchain
