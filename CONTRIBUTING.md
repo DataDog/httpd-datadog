@@ -1,112 +1,47 @@
 # Contributing to the Datadog Apache Httpd Module
 
-## Conventions
+## Documentation
 
-Follow [docs/conventions.md](doc/conventions.md).
+Refer to the [documentation](doc) to learn about the development processes for the Datadog Apache
+Httpd Module. In particular, review:
 
-## Clone
+- [Conventions](doc/conventions.md)
+- [Development Processes](doc/development.md)
 
-When cloning the repo, initialize the submodules you need. For a standard build:
+## Contribution Guidelines
 
-```sh
-git submodule update --init deps/dd-trace-cpp deps/nginx-datadog
-```
+When authoring a Pull Request (PR), you must follow these rules:
 
-The `deps/inject-browser-sdk` submodule is a private repository and is only required for RUM builds
-(with `-DHTTPD_DATADOG_ENABLE_RUM=ON`). If you have access, use `--recursive` instead to pull it as
-well:
+- You are the author, regardless of the tools you use.
+  - Labels and signatures that mention tools are forbidden. Do not shift responsibility. Take
+    ownership.
+- Before submitting a PR, you must review every line in detail.
+- A PR that is not humanly reviewable will be rejected. The criteria are:
+  - The diff must be of reasonable size (usually less than 300 lines).
+  - The PR description:
+    - Must be written manually. Slightly imperfect wording is better than a long, unclear or
+      cluttered description.
+    - Must state the objective, and, unless obvious, the context and a high-level explanation.
+    - Must explain what changed and why, but without restating implementation details.
+    - Must not contain irrelevant details.
+  - No long comments (unless truly needed).
+  - No useless comments.
+- The code must be clean. Notably (in addition to the above):
+  - Short and focused functions (usually less than 20 lines, and less if possible).
+  - Meaningful and understandable names. Avoid abbreviations; favor explicit names, even if long.
+  - No code duplication.
+- The PR must address only one concern.
+- The PR must not include unrelated changes, unless truly tiny. Major cleanup, reformatting or
+  reorganization must go in dedicated PRs.
+- The PR must include tests that are easy to relate to the behavior they verify.
+- The tests must focus on important behavior, not exhaustively cover minor details unlikely to
+  break.
+- The PR must have verifiable claims (such as test results).
+- Commits must be in a logical and reviewable order.
+- Commits message must be short and straight to the point (usually less than 3 lines).
 
-```sh
-git submodule update --init --recursive
-```
+## Pull Request Hygiene
 
-## Prerequisites
-
-| Tool | Version |
-| ---- | ------- |
-| `clang` | 17+ |
-| `cmake` | 3.12+ |
-| `gcc` | 13.2+ |
-| `python` | 3.11+ |
-
-Once you got a valid Python installation, install all the dependencies with:
-
-```sh
-pip install -r requirements.txt
-```
-
-## Install Rust
-
-The RUM variant requires Rust to build:
-
-```sh
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
-
-Relaunch your terminal (or do `source ~/.cargo/env`).
-
-## Compiling
-
-### Setup `httpd`
-
-In order to build the module you have to configure `httpd` with the
-[scripts/setup-httpd.py](./scripts/setup-httpd.py) script. Check what is the latest available
-version on [Apache website](https://httpd.apache.org), then:
-
-```sh
-export HTTPD_VERSION=2.4.66
-python scripts/setup-httpd.py $HTTPD_VERSION
-cd httpd
-./configure --with-included-apr --prefix=$(pwd)/httpd-build --enable-mpms-shared="all"
-```
-
-### Build the Module
-
-CMake is our build system.
-
-Configure and compile all targets in release:
-
-```sh
-cmake -B build -DCMAKE_BUILD_TYPE=Release -DHTTPD_SRC_DIR=httpd .
-cmake --build build -j
-```
-
-### Testing
-
-For now there are only [integration tests](./test/integration-test/).
-
-### Build Devcontainer Image
-
-```bash
-make ci-build          # Non-RUM CI build
-make test-integration  # RUM-enabled build and integration tests
-make dev-shell         # Interactive devcontainer shell
-```
-
-The devcontainer image is selected for the host architecture and includes the
-LLVM toolchain, httpd source, Rust, and uv.
-
-### Running Specific Tests Inside Docker
-
-```bash
-make dev-shell
-# Inside container:
-.devcontainer/run-integration-tests.sh \
-  scenarios/test_rum.py::test_rum_selective_disabling -m requires_rum
-```
-
-### Key Paths Inside the CI Image
-
-- `/httpd` — httpd source
-- `/httpd/httpd-build/bin/apachectl` — pre-built apachectl binary
-- `/sysroot/{arch}-none-linux-musl/Toolchain.cmake` — cross-compilation toolchain
-
-### Test Markers
-
-- `requires_rum` — tests needing RUM-enabled build (`-DHTTPD_DATADOG_ENABLE_RUM=ON`)
-- Tests without markers run against the standard build
-
-## CI
-
-GitLab CI status can be checked via `glab ci` on the [automated
-mirror](https://gitlab.ddbuild.io/DataDog/httpd-datadog).
+- Draft PRs are not reviewed (unless explicitly requested).
+- PRs not updated within one month of the latest review will be converted to drafts.
+- Draft PRs not updated within three months will be closed.
