@@ -17,6 +17,7 @@ if (HTTPD_DATADOG_ENABLE_RUM)
   # FetchContent used to set; replicate it for the submodule layout.
   set(injectbrowsersdk_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/inject-browser-sdk" CACHE INTERNAL "")
   add_subdirectory(inject-browser-sdk EXCLUDE_FROM_ALL)
+  set(INJECT_BROWSER_SDK_VERSION "${INJECT_BROWSER_SDK_VERSION}" PARENT_SCOPE)
 
   include(${CMAKE_SOURCE_DIR}/cmake/deps/rapidjson.cmake)
 endif ()
