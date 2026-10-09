@@ -6,15 +6,14 @@
 
 #include "common_conf.h"
 #include "http_log.h"
+#include "rum/content_type.h"
 #include "telemetry.h"
 #include "util_filter.h"
-#include "utils.h"
 
 APLOG_USE_MODULE(datadog);
 
 using namespace datadog::conf;
 using namespace datadog::rum;
-using namespace std::literals;
 
 constexpr std::string_view k_injected_header = "x-datadog-sdk-injected";
 
@@ -55,17 +54,19 @@ bool should_inject(rum_filter_ctx& ctx, request_rec& r,
     return false;
   }
 
-  const char* const content_type = apr_table_get(r.headers_out, "Content-Type");
-  if (content_type && !datadog::common::utils::contains(
-                          std::string_view(content_type), "text/html"sv)) {
+  // Apache sets the outgoing header after resource filters. Read its media
+  // type from the request record.
+  const char* const content_type = r.content_type;
+  if (!is_html_content_type(content_type)) {
     ap_log_rerror(
         APLOG_MARK, APLOG_DEBUG, 0, &r,
         "[RUM] Skip injection: \"Content-Type: %s\" does not match text/html.",
-        content_type);
+        content_type ? content_type : "<unset>");
     datadog::telemetry::counter::increment(
         telemetry::injection_skipped,
         telemetry::build_tags("reason:content-type", rum_conf.app_id_tag,
                               rum_conf.remote_config_tag));
+    ctx.state = InjectionState::done;
     return false;
   }
 
@@ -118,6 +119,10 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
   if (!should_inject(*ctx, *r, dir_conf->rum)) {
     return ap_pass_brigade(f->next, bb);
   }
+
+  // Injection changes the body size. Clear the length before headers are sent.
+  apr_table_unset(r->headers_out, "Content-Length");
+  r->clength = -1;
 
   size_t bytes;
   const char* buffer;
