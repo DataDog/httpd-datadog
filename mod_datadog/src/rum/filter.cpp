@@ -120,6 +120,10 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
     return ap_pass_brigade(f->next, bb);
   }
 
+  // Injection changes the body size. Clear the length before headers are sent.
+  apr_table_unset(r->headers_out, "Content-Length");
+  r->clength = -1;
+
   size_t bytes;
   const char* buffer;
 

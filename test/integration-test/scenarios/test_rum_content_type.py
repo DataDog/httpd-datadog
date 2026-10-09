@@ -4,6 +4,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import tempfile
 import threading
+import time
 
 import pytest
 import requests
@@ -30,12 +31,19 @@ def test_rum_respects_response_content_type(server, log_dir, module_path, proxie
     class UpstreamHandler(BaseHTTPRequestHandler):
         def do_GET(self):
             name = self.path.split("?", 1)[0].lstrip("/")
-            content_type, body, _ = responses[name]
+            content_type, body, expect_injected = responses[name]
             self.send_response(200)
             if content_type is not None:
                 self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
+            if expect_injected:
+                # Send headers and a body prefix before the injection point.
+                split_at = body.index(b"</head>")
+                self.wfile.write(body[:split_at])
+                self.wfile.flush()
+                time.sleep(0.05)
+                body = body[split_at:]
             self.wfile.write(body)
 
         def log_message(self, format, *args):
@@ -81,6 +89,9 @@ ProxyPass /upstream/ http://127.0.0.1:{upstream.server_port}/
             for name, (content_type, body, expect_injected) in responses.items():
                 response = requests.get(server.make_url(f"{prefix}{name}?v=1"), timeout=5)
                 assert response.status_code == 200, name
+                content_length = response.headers.get("Content-Length")
+                if content_length is not None:
+                    assert int(content_length) == len(response.content), name
                 actual_type = response.headers.get("Content-Type")
                 if content_type is None:
                     assert actual_type is None, name
@@ -89,7 +100,10 @@ ProxyPass /upstream/ http://127.0.0.1:{upstream.server_port}/
                     assert actual_type.lower() == content_type.lower(), name
                 if expect_injected:
                     assert b"DD_RUM" in response.content, name
-                    assert response.headers.get("x-datadog-sdk-injected") == "1", name
+                    assert response.content.endswith(b"</body></html>"), name
+                    # Streaming proxy headers can be sent before injection.
+                    if not proxied:
+                        assert response.headers.get("x-datadog-sdk-injected") == "1", name
                 else:
                     assert response.content == body, name
                     assert response.headers.get("x-datadog-sdk-injected") != "1", name
