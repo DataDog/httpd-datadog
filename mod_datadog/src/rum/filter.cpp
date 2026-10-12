@@ -17,6 +17,9 @@ using namespace datadog::rum;
 
 constexpr std::string_view k_injected_header = "x-datadog-sdk-injected";
 
+static void count_injection(const datadog::telemetry::Counter& counter,
+                            const char* reason,
+                            const datadog::rum::conf::Directory& rum_conf);
 static void insert_injection_slices(apr_bucket* bucket,
                                     const InjectorResult& result,
                                     apr_bucket_alloc_t* allocator);
@@ -49,11 +52,8 @@ bool should_inject(rum_filter_ctx& ctx, request_rec& r,
   const char* const already_injected =
       apr_table_get(r.headers_out, k_injected_header.data());
   if (already_injected && std::string_view(already_injected) == "1") {
-    datadog::telemetry::counter::increment(
-        telemetry::injection_skipped,
-        telemetry::build_tags("reason:already_injected", rum_conf.app_id_tag,
-                              rum_conf.remote_config_tag));
-
+    count_injection(telemetry::injection_skipped, "reason:already_injected",
+                    rum_conf);
     ctx.state = InjectionState::done;
     return false;
   }
@@ -66,10 +66,8 @@ bool should_inject(rum_filter_ctx& ctx, request_rec& r,
         APLOG_MARK, APLOG_DEBUG, 0, &r,
         "[RUM] Skip injection: \"Content-Type: %s\" does not match text/html.",
         content_type ? content_type : "<unset>");
-    datadog::telemetry::counter::increment(
-        telemetry::injection_skipped,
-        telemetry::build_tags("reason:content-type", rum_conf.app_id_tag,
-                              rum_conf.remote_config_tag));
+    count_injection(telemetry::injection_skipped, "reason:content-type",
+                    rum_conf);
     ctx.state = InjectionState::done;
     return false;
   }
@@ -77,10 +75,8 @@ bool should_inject(rum_filter_ctx& ctx, request_rec& r,
   const char* const content_encoding =
       apr_table_get(r.headers_out, "Content-Encoding");
   if (content_encoding) {
-    datadog::telemetry::counter::increment(
-        telemetry::injection_skipped,
-        telemetry::build_tags("reason:compressed_html", rum_conf.app_id_tag,
-                              rum_conf.remote_config_tag));
+    count_injection(telemetry::injection_skipped, "reason:compressed_html",
+                    rum_conf);
     return false;
   }
 
@@ -135,11 +131,8 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
        b = APR_BUCKET_NEXT(b)) {
     if (APR_BUCKET_IS_EOS(b)) {
       injector_end(ctx->injector);
-      datadog::telemetry::counter::increment(
-          telemetry::injection_failed,
-          telemetry::build_tags("reason:missing_header_tag",
-                                dir_conf->rum.app_id_tag,
-                                dir_conf->rum.remote_config_tag));
+      count_injection(telemetry::injection_failed, "reason:missing_header_tag",
+                      dir_conf->rum);
     } else if (APR_BUCKET_IS_METADATA(b)) {
       // TODO: Handle metadata bucket like flush
     } else if (apr_bucket_read(b, &buffer, &bytes, APR_BLOCK_READ) ==
@@ -183,4 +176,12 @@ static void insert_injection_slices(apr_bucket* bucket,
     }
     offset += slice.length;
   }
+}
+
+static void count_injection(const datadog::telemetry::Counter& counter,
+                            const char* reason,
+                            const datadog::rum::conf::Directory& rum_conf) {
+  datadog::telemetry::counter::increment(
+      counter, telemetry::build_tags(reason, rum_conf.app_id_tag,
+                                     rum_conf.remote_config_tag));
 }

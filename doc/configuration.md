@@ -161,6 +161,10 @@ When calling the `</foo>` endpoint, both the team and location tags will be adde
 
 Directive to enable or disable RUM SDK Injection.
 
+RUM SDK injection applies only to responses whose `Content-Type` media type is `text/html`.
+The check is case-insensitive and accepts parameters, such as `text/html; charset=utf-8`.
+Responses with a missing or different media type are left unchanged.
+
 ## `DatadogRumSettings` section
 - **Description**: Container for Datadog RUM settings
    - **Syntax:**:
