@@ -17,6 +17,10 @@ using namespace datadog::rum;
 
 constexpr std::string_view k_injected_header = "x-datadog-sdk-injected";
 
+static void insert_injection_slices(apr_bucket* bucket,
+                                    const InjectorResult& result,
+                                    apr_bucket_alloc_t* allocator);
+
 static void init_rum_context(ap_filter_t* f, Snippet* snippet) {
   request_rec* r = f->r;
   f->ctx = apr_pcalloc(r->pool, sizeof(rum_filter_ctx));
@@ -143,21 +147,7 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
       InjectorResult result =
           injector_write(ctx->injector, (const uint8_t*)buffer, bytes);
 
-      size_t offset = 0;
-      for (size_t i = 0; i < result.slices_length; i++) {
-        const BytesSlice* slice = result.slices + i;
-        if (slice->from_incoming_chunk) {
-          offset += slice->length;
-        } else {
-          apr_bucket* b_snippet = apr_bucket_immortal_create(
-              (const char*)slice->start, slice->length,
-              f->r->connection->bucket_alloc);
-
-          apr_bucket_split(b, offset);
-          APR_BUCKET_INSERT_AFTER(b, b_snippet);
-          offset += slice->length;
-        }
-      }
+      insert_injection_slices(b, result, r->connection->bucket_alloc);
       if (result.injected) {
         ctx->state = InjectionState::done;
         apr_table_set(r->headers_out, k_injected_header.data(), "1");
@@ -177,4 +167,20 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
   ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r,
                 "[RUM] failed to inject the browser SDK.");
   return ap_pass_brigade(f->next, bb);
+}
+
+static void insert_injection_slices(apr_bucket* bucket,
+                                    const InjectorResult& result,
+                                    apr_bucket_alloc_t* allocator) {
+  size_t offset = 0;
+  for (size_t index = 0; index < result.slices_length; ++index) {
+    const BytesSlice& slice = result.slices[index];
+    if (!slice.from_incoming_chunk) {
+      apr_bucket* snippet_bucket = apr_bucket_immortal_create(
+          reinterpret_cast<const char*>(slice.start), slice.length, allocator);
+      apr_bucket_split(bucket, offset);
+      APR_BUCKET_INSERT_AFTER(bucket, snippet_bucket);
+    }
+    offset += slice.length;
+  }
 }

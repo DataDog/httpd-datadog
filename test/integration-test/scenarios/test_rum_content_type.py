@@ -88,28 +88,32 @@ ProxyPass /upstream/ http://127.0.0.1:{upstream.server_port}/
 
             for name, (content_type, body, expect_injected) in responses.items():
                 response = requests.get(server.make_url(f"{prefix}{name}?v=1"), timeout=5)
-                assert response.status_code == 200, name
-                content_length = response.headers.get("Content-Length")
-                if content_length is not None:
-                    assert int(content_length) == len(response.content), name
-                actual_type = response.headers.get("Content-Type")
-                if content_type is None:
-                    assert actual_type is None, name
-                else:
-                    assert actual_type is not None, name
-                    assert actual_type.lower() == content_type.lower(), name
-                if expect_injected:
-                    assert b"DD_RUM" in response.content, name
-                    assert response.content.endswith(b"</body></html>"), name
-                    # Streaming proxy headers can be sent before injection.
-                    if not proxied:
-                        assert response.headers.get("x-datadog-sdk-injected") == "1", name
-                else:
-                    assert response.content == body, name
-                    assert response.headers.get("x-datadog-sdk-injected") != "1", name
+                assert_rum_response(response, name, content_type, body, expect_injected, proxied)
         finally:
             server.stop(conf_path)
             if upstream is not None:
                 upstream.shutdown()
                 upstream.server_close()
                 upstream_thread.join()
+
+
+def assert_rum_response(response, name, content_type, body, expect_injected, proxied):
+    assert response.status_code == 200, name
+    content_length = response.headers.get("Content-Length")
+    if content_length is not None:
+        assert int(content_length) == len(response.content), name
+    actual_type = response.headers.get("Content-Type")
+    if content_type is None:
+        assert actual_type is None, name
+    else:
+        assert actual_type is not None, name
+        assert actual_type.lower() == content_type.lower(), name
+    if expect_injected:
+        assert b"DD_RUM" in response.content, name
+        assert response.content.endswith(b"</body></html>"), name
+        # Streaming proxy headers can be sent before injection.
+        if not proxied:
+            assert response.headers.get("x-datadog-sdk-injected") == "1", name
+    else:
+        assert response.content == body, name
+        assert response.headers.get("x-datadog-sdk-injected") != "1", name
