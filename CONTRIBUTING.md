@@ -1,73 +1,47 @@
-# Contributing
+# Contributing to the Datadog Apache Httpd Module
 
-## Fork, Clone, Branch and Create your PR
+## Documentation
 
-When cloning the repo, initialize the submodules you need. For a standard build:
+Refer to the [documentation](doc) to learn about the development processes for the Datadog Apache
+Httpd Module. In particular, review:
 
-```sh
-git submodule update --init deps/dd-trace-cpp deps/nginx-datadog
-```
+- [Conventions](doc/conventions.md)
+- [Development Processes](doc/development.md)
 
-The `deps/inject-browser-sdk` submodule is a private repo and is only required when building with `-DHTTPD_DATADOG_ENABLE_RUM=ON`. If you have access, use `--recursive` instead to pull it as well.
+## Contribution Guidelines
 
-### Rules
-- Follow the pattern of what you already see in the code.
-- Follow the coding style.
+When authoring a Pull Request (PR), you must follow these rules:
 
-# Development
+- You are the author, regardless of the tools you use.
+  - Labels and signatures that mention tools are forbidden. Do not shift responsibility. Take
+    ownership.
+- Before submitting a PR, you must review every line in detail.
+- A PR that is not humanly reviewable will be rejected. The criteria are:
+  - The diff must be of reasonable size (usually less than 300 lines).
+  - The PR description:
+    - Must be written manually. Slightly imperfect wording is better than a long, unclear or
+      cluttered description.
+    - Must state the objective, and, unless obvious, the context and a high-level explanation.
+    - Must explain what changed and why, but without restating implementation details.
+    - Must not contain irrelevant details.
+  - No long comments (unless truly needed).
+  - No useless comments.
+- The code must be clean. Notably (in addition to the above):
+  - Short and focused functions (usually less than 20 lines, and less if possible).
+  - Meaningful and understandable names. Avoid abbreviations; favor explicit names, even if long.
+  - No code duplication.
+- The PR must address only one concern.
+- The PR must not include unrelated changes, unless truly tiny. Major cleanup, reformatting or
+  reorganization must go in dedicated PRs.
+- The PR must include tests that are easy to relate to the behavior they verify.
+- The tests must focus on important behavior, not exhaustively cover minor details unlikely to
+  break.
+- The PR must have verifiable claims (such as test results).
+- Commits must be in a logical and reviewable order.
+- Commits message must be short and straight to the point (usually less than 3 lines).
 
-## Prerequisites
+## Pull Request Hygiene
 
-| Tool | Version | Notes |
-| ---- | ------- | ----- |
-| `clang` or `gcc` | 14+ or 11.4+ | |
-| `python` | 3.0+ | |
-| `cmake` | 3.12+ | |
-
-Once you got a valid Python installation, install all the dependencies with:
-
-```sh
-pip install -r requirements.txt
-```
-
-## Compiling
-
-### Setup `httpd`
-
-In order to build the module you have to configure `httpd` with the [scripts/setup-httpd.py](./scripts/setup-httpd.py) script. Check what is the latest available version on [Apache website](https://httpd.apache.org), then:
-
-```sh
-export HTTPD_VERSION=2.4.66
-python scripts/setup-httpd.py $HTTPD_VERSION
-cd httpd
-./configure --with-included-apr --prefix=$(pwd)/httpd-build --enable-mpms-shared="all"
-```
-
-### Install Rust
-
-The RUM variant requires Rust to build:
-
-```sh
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
-
-Relaunch your terminal (or do `source ~/.cargo/env`).
-
-### Build the Module
-
-CMake is our build system. If you are not familiar with CMake, read [the tutorial.](https://cmake.org/cmake/help/latest/guide/tutorial/index.html)
-
-Configure and compile all targets in release:
-
-```sh
-cmake -B build -DCMAKE_BUILD_TYPE=Release -DHTTPD_SRC_DIR=httpd .
-cmake --build build -j
-```
-
-### Testing
-
-For now there are only [integration tests](./test/integration-test/).
-
-## How to Debug
-
-Run with `-X`.
+- Draft PRs are not reviewed (unless explicitly requested).
+- PRs not updated within one month of the latest review will be converted to drafts.
+- Draft PRs not updated within three months will be closed.
