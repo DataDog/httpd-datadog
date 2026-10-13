@@ -104,7 +104,7 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
 
   // First time the filter is being called -> Init the context
   if (f->ctx == nullptr) {
-    init_rum_context(f, dir_conf->rum.snippet);
+    init_rum_context(f, dir_conf->rum.snippet.get());
     const char* const csp_header =
         apr_table_get(r->headers_out, "Content-Security-Policy");
     if (csp_header && !std::string_view(csp_header).empty()) {
