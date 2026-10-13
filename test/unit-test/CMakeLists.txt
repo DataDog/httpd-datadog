@@ -1,4 +1,5 @@
 Include(FetchContent)
+enable_testing()
 
 FetchContent_Declare(
   Catch2
@@ -14,3 +15,7 @@ target_include_directories(tests PRIVATE ${CMAKE_SOURCE_DIR}/mod_datadog/src)
 
 target_link_libraries(tests Catch2::Catch2)
 
+file(GLOB regression_checks CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*_checks.cmake")
+foreach(check_file IN LISTS regression_checks)
+  include(${check_file})
+endforeach()
