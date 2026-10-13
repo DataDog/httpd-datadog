@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -28,17 +29,11 @@ namespace datadog::rum::conf {
 
 struct Directory final {
   std::optional<bool> enabled;  // nullopt = inherit from parent
-  Snippet* snippet = nullptr;
+  std::shared_ptr<Snippet> snippet;
   std::string version;
   std::unordered_map<std::string, std::string> config;
   std::string app_id_tag;
   std::string remote_config_tag;
-
-  ~Directory() {
-    if (snippet != nullptr) {
-      snippet_cleanup(snippet);
-    }
-  }
 };
 
 void merge_directory_configuration(Directory& out, const Directory& parent,

@@ -5,6 +5,13 @@ namespace datadog::conf {
 void* init_dir_conf(apr_pool_t* pool, char*) {
   void* buffer = apr_pcalloc(pool, sizeof(Directory));
   new (buffer) Directory;
+  apr_pool_cleanup_register(
+      pool, buffer,
+      [](void* configuration) -> apr_status_t {
+        static_cast<Directory*>(configuration)->~Directory();
+        return APR_SUCCESS;
+      },
+      apr_pool_cleanup_null);
   return buffer;
 }
 

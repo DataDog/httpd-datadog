@@ -58,7 +58,7 @@ int rum_output_filter(ap_filter_t* filter, apr_bucket_brigade* brigade) {
   }
 
   if (filter->ctx == nullptr) {
-    init_rum_context(filter, rum_conf.snippet);
+    init_rum_context(filter, rum_conf.snippet.get());
     count_csp_header(*request);
   }
 
