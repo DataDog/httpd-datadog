@@ -430,12 +430,11 @@ void merge_directory_configuration(Directory& out, const Directory& parent,
   // If child explicitly set enabled, use child's value; otherwise inherit from
   // parent
   out.enabled = child.enabled.has_value() ? child.enabled : parent.enabled;
-  out.snippet = child.snippet ? child.snippet : parent.snippet;
-  out.app_id_tag =
-      child.app_id_tag.empty() ? parent.app_id_tag : child.app_id_tag;
-  out.remote_config_tag = child.remote_config_tag.empty()
-                              ? parent.remote_config_tag
-                              : child.remote_config_tag;
+  // The tags describe the snippet, so they are inherited with it.
+  const auto& source = child.snippet ? child : parent;
+  out.snippet = source.snippet;
+  out.app_id_tag = source.app_id_tag;
+  out.remote_config_tag = source.remote_config_tag;
 
   return;
 }
