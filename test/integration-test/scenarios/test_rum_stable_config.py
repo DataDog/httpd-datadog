@@ -121,7 +121,14 @@ def no_stable_config() -> Iterator[None]:
 # Prepended to every test body. $load_datadog_module is expanded by
 # make_configuration, so the fragment must go through it rather than being
 # written out directly.
-CONF_PREAMBLE = Path(relpath("conf/default.conf")).read_text() + "\n"
+CONF_PREAMBLE = (
+    Path(relpath("conf/default.conf")).read_text()
+    + """
+LoadModule mime_module modules/mod_mime.so
+TypesConfig /dev/null
+AddType text/html .html
+"""
+)
 
 
 def start(server: Server, log_dir: str, module_path: str, conf_body: str) -> str:

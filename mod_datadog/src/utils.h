@@ -3,16 +3,11 @@
 #include <fmt/core.h>
 #include <httpd.h>
 
-#include <algorithm>
-#include <string>
 #include <string_view>
 
-namespace datadog::common::utils {
+#include "string_utils.h"
 
-inline void to_lower(std::string& text) {
-  std::transform(text.begin(), text.end(), text.begin(),
-                 [](unsigned char ch) { return std::tolower(ch); });
-}
+namespace datadog::common::utils {
 
 inline std::string make_httpd_version() {
   ap_version_t httpd_version;
