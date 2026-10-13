@@ -151,11 +151,13 @@ std::string check_stream(const std::vector<std::string>& chunks,
                          Buckets buckets = Buckets::heap) {
   datadog::conf::Directory directory;
   directory.rum.enabled = true;
-  directory.rum.snippet = snippet_create_from_json(
-      "{\"majorVersion\":6,\"rum\":{\"applicationId\":\"test\","
-      "\"clientToken\":\"test\"}}");
+  directory.rum.snippet.reset(
+      snippet_create_from_json(
+          "{\"majorVersion\":6,\"rum\":{\"applicationId\":\"test\","
+          "\"clientToken\":\"test\"}}"),
+      snippet_cleanup);
   REQUIRE(directory.rum.snippet->error_code == 0);
-  const std::string snippet = snippet_text(directory.rum.snippet);
+  const std::string snippet = snippet_text(directory.rum.snippet.get());
 
   apr_initialize();
   apr_pool_t* pool = nullptr;
