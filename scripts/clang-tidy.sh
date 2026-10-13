@@ -25,7 +25,7 @@ fi
 
 build_dir=${BUILD_DIR:-.clang-tidy-build}
 # Alpine LLVM layout (no hyphen), same major as the image toolchain.
-llvm_major_version=$(clang --dumpversion | cut -d. -f1)
+llvm_major_version=$(clang -dumpversion | cut -d. -f1)
 llvm_bin=/usr/lib/llvm${llvm_major_version}/bin
 clang_tidy=$llvm_bin/clang-tidy
 run_clang_tidy=$llvm_bin/run-clang-tidy
