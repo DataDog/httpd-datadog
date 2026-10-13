@@ -25,8 +25,13 @@ import pytest
 import requests
 
 from conftest import Server
-from helper import make_configuration, relpath, save_configuration
-from test_rum import assert_rum_injected, assert_rum_not_injected
+from helper import (
+    assert_rum_injected,
+    assert_rum_not_injected,
+    make_configuration,
+    relpath,
+    save_configuration,
+)
 
 # Where the SDK looks for local stable configuration on Linux. Not
 # configurable: it is a compile-time constant in libdd-library-config
@@ -262,7 +267,7 @@ def test_rum_directive_overrides_stable_config_disable(
 
 
 @pytest.mark.requires_rum
-def test_env_overrides_stable_config_disable(
+def test_rum_env_overrides_stable_config_disable(
     server: Server,
     log_dir: str,
     module_path: str,
