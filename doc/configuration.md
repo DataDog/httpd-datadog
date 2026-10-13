@@ -156,7 +156,7 @@ When calling the `</foo>` endpoint, both the team and location tags will be adde
 ## `DatadogRum` directive
    - **Description**: Enable or disable the RUM Injection
    - **Syntax:** DatadogRum *On\|Off*
-   - **Default:** Off
+   - **Default:** Off, or On when [stable configuration](#stable-configuration) provides a valid RUM configuration
    - **Context:** Server and Directory
 
 Directive to enable or disable RUM SDK Injection.
@@ -223,6 +223,43 @@ Example:
     DatadogRumOption "allowedTracingUrls" "https://api.example.com" "https://backend.example.org" "https://staging.backend.example.org"
 </DatadogRumSettings>
 ```
+
+## Stable configuration
+
+The module also reads RUM settings from the Datadog Agent stable configuration, so RUM can be
+enabled with no change to `httpd.conf`. It reads two files:
+
+- `/etc/datadog-agent/application_monitoring.yaml` (local)
+- `/etc/datadog-agent/managed/datadog-agent/stable/application_monitoring.yaml` (managed by Fleet
+  Automation, wins over the local file)
+
+```yaml
+apm_configuration_default:
+  DD_RUM_APPLICATION_ID: "<DATADOG_APPLICATION_ID>"
+  DD_RUM_CLIENT_TOKEN: "<DATADOG_CLIENT_TOKEN>"
+  DD_RUM_SITE: "<DATADOG_SITE>"
+```
+
+Supported keys: `DD_RUM_ENABLED`, `DD_RUM_MAJOR_VERSION`, `DD_RUM_APPLICATION_ID`,
+`DD_RUM_CLIENT_TOKEN`, `DD_RUM_SITE`, `DD_RUM_SERVICE`, `DD_RUM_ENVIRONMENT`, `DD_RUM_VERSION`,
+`DD_RUM_SESSION_SAMPLE_RATE`, `DD_RUM_SESSION_REPLAY_SAMPLE_RATE`, `DD_RUM_TRACK_USER_INTERACTIONS`,
+`DD_RUM_TRACK_RESOURCES`, `DD_RUM_TRACK_LONG_TASKS`, `DD_RUM_DEFAULT_PRIVACY_LEVEL` and
+`DD_RUM_REMOTE_CONFIGURATION_ID`.
+
+The files are read when httpd loads its configuration. Reload httpd (for example `apachectl graceful`)
+to apply changes. If the configuration is invalid, httpd logs a warning and ignores it.
+
+A `DatadogRumSettings` section is merged on top of the stable configuration. Options set in the
+section win.
+
+Whether RUM is enabled is decided in this order, highest first:
+
+1. `DD_RUM_ENABLED: false` in stable configuration. It always disables RUM.
+2. The `DatadogRum` directive.
+3. The `DD_RUM_ENABLED` environment variable of the httpd process (for example set in `envvars`, not
+   with `SetEnv`). Accepted values: `true`, `false`, `1`, `0`, `yes`, `no`, `on`, `off`.
+4. `DD_RUM_ENABLED` in stable configuration.
+5. On if stable configuration provides a valid RUM configuration, otherwise Off.
 
 ## RUM Configuration Example
 `httpd.conf`
