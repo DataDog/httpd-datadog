@@ -20,7 +20,7 @@ Background: [CONTRIBUTING.md](../../../CONTRIBUTING.md),
 - First-party TUs and headers: `mod_datadog/src/`
 - `mod_datadog/src/rum/` is off in `ci-dev` and must stay out
 - Run: `make lint-tidy` (devcontainer; never a host `compile_commands.json`)
-- CI: job `clang-tidy` runs `scripts/clang-tidy.sh`
+- CI: job `lint` runs `scripts/clang-tidy.sh`
 
 Leave `deps/`, tests, and vendored trees out unless the user explicitly
 expands the path filter.

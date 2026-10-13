@@ -10,11 +10,9 @@
 
 set -euo pipefail
 
-SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
-cd "$REPO_ROOT"
-
-CLANG_TIDY_VERSION=17
+script_dir=$(cd "$(dirname "$0")" && pwd)
+repo_root=$(cd "$script_dir/.." && pwd)
+cd "$repo_root"
 
 in_container() {
     [[ -f /.dockerenv ]] || [[ -n "${KUBERNETES_SERVICE_HOST:-}" ]] || \
@@ -22,12 +20,13 @@ in_container() {
 }
 
 if ! in_container; then
-    exec make -C "$REPO_ROOT" lint-tidy
+    exec make -C "$repo_root" lint-tidy
 fi
 
 build_dir=${BUILD_DIR:-.clang-tidy-build}
 # Alpine LLVM layout (no hyphen), same major as the image toolchain.
-llvm_bin=/usr/lib/llvm${CLANG_TIDY_VERSION}/bin
+llvm_major_version=$(clang --dumpversion | cut -d. -f1)
+llvm_bin=/usr/lib/llvm${llvm_major_version}/bin
 clang_tidy=$llvm_bin/clang-tidy
 run_clang_tidy=$llvm_bin/run-clang-tidy
 
@@ -50,14 +49,15 @@ if [[ ! -x "$run_clang_tidy" ]]; then
     exit 1
 fi
 
-git config --global --add safe.directory "$REPO_ROOT" >/dev/null 2>&1 || true
+git config --global --add safe.directory "$repo_root" >/dev/null 2>&1 || true
 if [[ ! -f deps/dd-trace-cpp/CMakeLists.txt ]] || [[ ! -f deps/nginx-datadog/CMakeLists.txt ]]; then
     git submodule update --init --depth=1 deps/dd-trace-cpp deps/nginx-datadog
 fi
 
-cmake --fresh --preset=ci-dev -B "$build_dir" .
+cmake --fresh --preset=ci-dev -B "$build_dir" \
+    -DCMAKE_TOOLCHAIN_FILE="/sysroot/$(uname -m)-none-linux-musl/Toolchain.cmake" .
 
-python3 - "$build_dir/compile_commands.json" "$REPO_ROOT" <<'PY'
+python3 - "$build_dir/compile_commands.json" "$repo_root" <<'PY'
 import json, os, sys
 db_path, root = sys.argv[1], sys.argv[2]
 verified_source_count = 0
@@ -66,7 +66,7 @@ for entry in json.load(open(db_path)):
     if not os.path.isabs(path):
         path = os.path.normpath(os.path.join(entry.get("directory", root), path))
     relative_path = os.path.relpath(path, root)
-    if not relative_path.startswith("mod_datadog/src/") or relative_path.startswith("mod_datadog/src/rum/"):
+    if not relative_path.startswith("mod_datadog/src/"):
         continue
     if not relative_path.endswith((".c", ".cc", ".cpp", ".cxx")):
         continue
@@ -89,5 +89,5 @@ if ! echo '#include <string>' | "$llvm_bin/clang++" -stdlib=libc++ -x c++ - -fsy
 fi
 
 "$run_clang_tidy" -p "$build_dir" -clang-tidy-binary "$clang_tidy" \
-    -header-filter "^$REPO_ROOT/mod_datadog/src/" -quiet \
-    "^$REPO_ROOT/mod_datadog/src/"
+    -header-filter "^$repo_root/mod_datadog/src/" -quiet \
+    "^$repo_root/mod_datadog/src/"

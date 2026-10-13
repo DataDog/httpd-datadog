@@ -1,6 +1,5 @@
 name: Development
 on:
-  pull_request:
   push:
   workflow_dispatch:
   schedule:
@@ -20,7 +19,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - run: ./scripts/codestyle.sh lint
 
-  clang-tidy:
+  lint:
     runs-on: ubuntu-22.04
     container:
       image: ghcr.io/datadog/httpd-datadog/devcontainer:main
@@ -31,7 +30,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Install clang-tidy
         run: apk add --no-cache clang-extra-tools
-      - name: clang-tidy
+      - name: lint
         run: ./scripts/clang-tidy.sh
 
   build:
