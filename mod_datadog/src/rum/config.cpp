@@ -108,7 +108,7 @@ std::optional<bool> parse_bool(std::string_view raw) {
 constexpr int stable_config_absent = 10;
 
 SnippetPtr g_stable_config_snippet{nullptr, &snippet_cleanup};
-bool g_enabled_by_default = false;
+std::optional<bool> g_env_rum_enabled;
 std::string g_stable_config_app_id_tag;
 std::string g_stable_config_remote_config_tag;
 
@@ -155,10 +155,8 @@ std::optional<bool> stable_config_enabled(const Snippet& snippet) {
 }
 
 // Builds the snippet from stable configuration alone and stores it, with its
-// tags, in the process-wide globals. Returns DD_RUM_ENABLED from stable
-// configuration, or nullopt when it is unset or there is no snippet.
-std::optional<bool> load_stable_config_snippet(server_rec* base_server,
-                                               apr_pool_t* pconf) {
+// tags, in the process-wide globals.
+void load_stable_config_snippet(server_rec* base_server, apr_pool_t* pconf) {
   // Rebuild from scratch: post_config runs again on graceful restart, and the
   // on-disk stable configuration may have changed since the last load.
   g_stable_config_snippet.reset();
@@ -174,10 +172,9 @@ std::optional<bool> load_stable_config_snippet(server_rec* base_server,
                    "httpd-datadog: ignoring RUM stable configuration: %s",
                    snippet->error_message);
     }
-    return std::nullopt;
+    return;
   }
 
-  const auto enabled = stable_config_enabled(*snippet);
   ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, base_server,
                "httpd-datadog: RUM %s stable configuration",
                snippet->rum_enabled == RUM_ENABLED_FALSE ? "disabled by"
@@ -188,7 +185,6 @@ std::optional<bool> load_stable_config_snippet(server_rec* base_server,
   g_stable_config_snippet = std::move(snippet);
   apr_pool_cleanup_register(pconf, nullptr, release_stable_config_snippet,
                             apr_pool_cleanup_null);
-  return enabled;
 }
 
 std::vector<std::string> split(const std::string& str,
@@ -385,40 +381,32 @@ ResolvedConfig resolve_configuration(const Directory& dir) {
     out.remote_config_tag = g_stable_config_remote_config_tag;
   }
 
-  // A DatadogRum directive in scope decides; otherwise fall back to the
-  // process-wide default, which stable configuration can turn on or off.
-  // DD_RUM_ENABLED: false in stable configuration always wins: the SDK then
-  // returns an empty snippet, and neither a directive nor the environment can
-  // turn it back on.
-  out.enabled = dir.enabled.value_or(g_enabled_by_default) &&
-                !(out.snippet != nullptr &&
-                  out.snippet->rum_enabled == RUM_ENABLED_FALSE);
+  // DD_RUM_ENABLED from stable configuration, as merged into the snippet in
+  // use. A <DatadogRumSettings> snippet carries it too, so it still applies
+  // when stable configuration alone cannot build a snippet.
+  const auto stable_enabled = out.snippet != nullptr
+                                  ? stable_config_enabled(*out.snippet)
+                                  : std::nullopt;
+
+  // Precedence, highest first: DD_RUM_ENABLED: false in stable configuration
+  // (the SDK then returns an empty snippet), the DatadogRum directive,
+  // DD_RUM_ENABLED in the environment, DD_RUM_ENABLED in stable configuration,
+  // then "on exactly when stable configuration supplied a snippet".
+  const bool killed = stable_enabled == false;
+  const bool default_enabled = g_env_rum_enabled.value_or(
+      stable_enabled.value_or(g_stable_config_snippet != nullptr));
+  out.enabled = !killed && dir.enabled.value_or(default_enabled);
 
   return out;
 }
 
 void init_stable_config(server_rec* base_server, apr_pool_t* pconf) {
-  std::optional<bool> configured_enabled =
-      load_stable_config_snippet(base_server, pconf);
+  load_stable_config_snippet(base_server, pconf);
+  g_env_rum_enabled = env_rum_enabled(base_server);
 
-  // DD_RUM_ENABLED: false in stable configuration always wins; it is applied
-  // by resolve_configuration. Otherwise the precedence for the default,
-  // highest first: DD_RUM_ENABLED in the process environment, then
-  // DD_RUM_ENABLED in stable configuration, then "on exactly when stable
-  // configuration supplied a snippet" -- so stable configuration alone is
-  // enough to turn RUM on.
-  if (const auto env_enabled = env_rum_enabled(base_server)) {
-    configured_enabled = env_enabled;
-  }
-
-  g_enabled_by_default =
-      configured_enabled.value_or(g_stable_config_snippet != nullptr);
-
-  if (g_enabled_by_default && g_stable_config_snippet == nullptr) {
+  if (g_env_rum_enabled == true && g_stable_config_snippet == nullptr) {
     // Only a warning, not an error: a <DatadogRumSettings> block elsewhere in
-    // the configuration may still supply a snippet for some scopes. Reachable
-    // only via an explicit DD_RUM_ENABLED, since the derived default implies a
-    // snippet.
+    // the configuration may still supply a snippet for some scopes.
     ap_log_error(APLOG_MARK, APLOG_WARNING, 0, base_server,
                  "httpd-datadog: DD_RUM_ENABLED is true but stable "
                  "configuration provided no RUM snippet");

@@ -67,6 +67,14 @@ STABLE_CONFIG_YAML_DISABLED = f"""apm_configuration_default:
   DD_RUM_SITE: "datadoghq.com"
 """
 
+# Turns RUM on but lacks the applicationId and clientToken, so stable
+# configuration alone cannot build a snippet.
+STABLE_CONFIG_YAML_ENABLED_PARTIAL = """apm_configuration_default:
+  DD_RUM_ENABLED: true
+  DD_RUM_MAJOR_VERSION: 6
+  DD_RUM_SITE: "datadoghq.com"
+"""
+
 # Invalid stable configuration: a YAML read error, and a bad value.
 STABLE_CONFIG_YAML_BROKEN = "apm_configuration_default: [\n"
 
@@ -337,6 +345,40 @@ def test_rum_settings_block_ignores_invalid_stable_config(
         response = requests.get(server.make_url("/"), timeout=2)
         assert response.status_code == 200
         if expect_injected:
+            assert_rum_injected(response)
+            assert OVERLAY_APP_ID in response.text
+        else:
+            assert_rum_not_injected(response)
+
+        assert server.stop(conf_path)
+
+
+@pytest.mark.requires_rum
+@pytest.mark.parametrize(
+    "with_settings_block", [True, False], ids=["settings_block", "no_settings_block"]
+)
+def test_rum_stable_config_enable_with_partial_settings(
+    server: Server, log_dir: str, module_path: str, with_settings_block: bool
+) -> None:
+    """
+    `DD_RUM_ENABLED: true` in stable configuration turns RUM on without a
+    DatadogRum directive, even when a <DatadogRumSettings> block supplies the
+    keys stable configuration lacks. Without a block, there is nothing to
+    inject, and httpd must still start.
+    """
+    body = ""
+    if with_settings_block:
+        body = f"""<DatadogRumSettings "v6">
+  DatadogRumOption applicationId "{OVERLAY_APP_ID}"
+  DatadogRumOption clientToken "overlay-client-token"
+</DatadogRumSettings>
+"""
+    with installed_stable_config(STABLE_CONFIG_YAML_ENABLED_PARTIAL):
+        conf_path = start(server, log_dir, module_path, body)
+
+        response = requests.get(server.make_url("/"), timeout=2)
+        assert response.status_code == 200
+        if with_settings_block:
             assert_rum_injected(response)
             assert OVERLAY_APP_ID in response.text
         else:

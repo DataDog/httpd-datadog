@@ -59,7 +59,7 @@ ResolvedConfig resolve_configuration(const Directory& dir);
 
 // Reads the Agent's stable-configuration files (local + fleet-managed
 // application_monitoring.yaml) and caches the resulting snippet, the
-// identifiers that go with it, and whether RUM should be on by default.
+// identifiers that go with it, and DD_RUM_ENABLED from the environment.
 //
 // Call once per configuration load, from post_config; `pconf` scopes the cached
 // snippet to that load. Not done during directory-config merging: httpd merges
