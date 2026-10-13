@@ -250,7 +250,8 @@ The files are read when httpd loads its configuration. Reload httpd (for example
 to apply changes. If the configuration is invalid, httpd logs a warning and ignores it.
 
 A `DatadogRumSettings` section is merged on top of the stable configuration. Options set in the
-section win.
+section win. If the stable configuration is invalid, the section uses only its own options, so it
+must then be complete on its own.
 
 Whether RUM is enabled is decided in this order, highest first:
 

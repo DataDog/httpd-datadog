@@ -73,8 +73,8 @@ SnippetPtr make_stable_config_snippet(apr_pool_t* pool,
 // used rather than from the directives alone -- an applicationId that came from
 // stable configuration has to end up in the tags too.
 std::string make_app_id_tag(const Snippet& snippet) {
-  // Null when the snippet failed to build, or when stable configuration
-  // disables RUM without an applicationId.
+  // Null when stable configuration disables RUM without an applicationId.
+  // Only valid for snippets built from stable configuration.
   if (snippet.application_id == nullptr) {
     return {};
   }
@@ -328,20 +328,38 @@ const char* datadog_rum_settings_section(cmd_parms* cmd, void* cfg,
   }
 
   // The directives are an overlay: the SDK merges them on top of the Agent's
-  // stable configuration, and they win on conflict. With no stable
-  // configuration present this behaves exactly as the previous
-  // snippet_create_from_json call did.
+  // stable configuration, and they win on conflict.
   auto snippet = make_stable_config_snippet(cmd->pool, json_config.c_str());
   if (snippet->error_code != 0) {
-    return apr_psprintf(cmd->pool, "Failed to initialize RUM SDK injection: %s",
-                        snippet->error_message);
-  }
+    // Invalid stable configuration must not stop httpd: build the block alone.
+    SnippetPtr fallback(snippet_create_from_json(json_config.c_str()),
+                        snippet_cleanup);
+    if (fallback->error_code != 0) {
+      return apr_psprintf(cmd->pool,
+                          "Failed to initialize RUM SDK injection: %s",
+                          fallback->error_message);
+    }
+    ap_log_error(APLOG_MARK, APLOG_WARNING, 0, cmd->server,
+                 "httpd-datadog: ignoring RUM stable configuration for this "
+                 "<DatadogRumSettings> block: %s",
+                 snippet->error_message);
+    snippet = std::move(fallback);
 
-  // Tags come from the merged result, not from the directives: a block that
-  // overrides only the sample rate still injects the applicationId that stable
-  // configuration supplied, and its telemetry has to say so.
-  dir_conf.rum.app_id_tag = make_app_id_tag(*snippet);
-  dir_conf.rum.remote_config_tag = make_remote_config_tag(*snippet);
+    // snippet_create_from_json does not report the ids, so read the block.
+    const auto& options = dir_conf.rum.config;
+    if (auto it = options.find("applicationId"); it != options.end()) {
+      dir_conf.rum.app_id_tag = fmt::format("application_id:{}", it->second);
+    }
+    dir_conf.rum.remote_config_tag = options.count("remoteConfigurationId")
+                                         ? "remote_config_used:true"
+                                         : "remote_config_used:false";
+  } else {
+    // Tags come from the merged result, not from the directives: a block that
+    // overrides only the sample rate still injects the applicationId that
+    // stable configuration supplied, and its telemetry has to say so.
+    dir_conf.rum.app_id_tag = make_app_id_tag(*snippet);
+    dir_conf.rum.remote_config_tag = make_remote_config_tag(*snippet);
+  }
   dir_conf.rum.snippet = snippet.release();
   apr_pool_cleanup_register(cmd->pool, dir_conf.rum.snippet,
                             release_directive_snippet, apr_pool_cleanup_null);

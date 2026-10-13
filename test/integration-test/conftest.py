@@ -120,6 +120,10 @@ class Server:
         rc = self._proc.run(f"-f {conf_path} -k stop").returncode
         return rc == 0
 
+    def graceful(self, conf_path) -> bool:
+        rc = self._proc.run(f"-f {conf_path} -k graceful").returncode
+        return rc == 0
+
 
 class AgentSession:
     def __init__(self, agent: typing.Any, token: str) -> None:
