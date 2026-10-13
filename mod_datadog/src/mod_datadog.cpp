@@ -337,9 +337,12 @@ int on_fixups(request_rec* r) {
 #if defined(HTTPD_DD_RUM)
   auto* dir_conf = static_cast<datadog::conf::Directory*>(
       ap_get_module_config(r->per_dir_config, &datadog_module));
-  if (dir_conf != nullptr && dir_conf->rum.enabled == true &&
-      dir_conf->rum.snippet != nullptr) {
-    apr_table_set(r->headers_in, "x-datadog-rum-injection-pending", "1");
+  if (dir_conf != nullptr) {
+    const auto rum_conf =
+        datadog::rum::conf::resolve_configuration(dir_conf->rum);
+    if (rum_conf.enabled && rum_conf.snippet != nullptr) {
+      apr_table_set(r->headers_in, "x-datadog-rum-injection-pending", "1");
+    }
   }
 #endif
 

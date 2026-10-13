@@ -38,7 +38,7 @@ static void init_rum_context(ap_filter_t* f, Snippet* snippet) {
 }
 
 bool should_inject(rum_filter_ctx& ctx, request_rec& r,
-                   const datadog::rum::conf::Resolved& rum_conf) {
+                   const datadog::rum::conf::ResolvedConfig& rum_conf) {
   if (ctx.state != InjectionState::pending) {
     return false;
   }
@@ -96,7 +96,8 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
   auto* dir_conf = static_cast<Directory*>(
       ap_get_module_config(r->per_dir_config, &datadog_module));
 
-  const auto rum_conf = datadog::rum::conf::resolve(dir_conf->rum);
+  const auto rum_conf =
+      datadog::rum::conf::resolve_configuration(dir_conf->rum);
 
   if (!rum_conf.enabled || rum_conf.snippet == nullptr) {
     // Nothing about this decision can change mid-request, and the filter is

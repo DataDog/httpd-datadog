@@ -14,20 +14,27 @@ Precedence under test:
                           >  DD_RUM_ENABLED in stable configuration
                           >  "on iff stable config gave a snippet"
 
+Exception: `DD_RUM_ENABLED: false` in stable configuration is a kill switch.
+It wins over both the directive and the environment.
+
 Same build requirements as test_rum.py: -DHTTPD_DATADOG_ENABLE_RUM=ON.
 """
 import os
 from contextlib import contextmanager
 from pathlib import Path
+from queue import Queue
 from typing import Iterator, Optional
 
 import pytest
 import requests
+from aiohttp import web
 
 from conftest import Server
 from helper import (
+    AioHTTPServer,
     assert_rum_injected,
     assert_rum_not_injected,
+    free_port,
     make_configuration,
     relpath,
     save_configuration,
@@ -250,24 +257,42 @@ def test_rum_stable_config_can_turn_rum_off(
 
 
 @pytest.mark.requires_rum
-def test_rum_directive_overrides_stable_config_disable(
+def test_rum_directive_does_not_override_stable_config_disable(
     server: Server, log_dir: str, module_path: str, stable_config_disabled: None
 ) -> None:
-    """`DatadogRum On` outranks `DD_RUM_ENABLED: false` from stable config."""
+    """`DatadogRum On` cannot override `DD_RUM_ENABLED: false` from stable config."""
     conf_path = start(server, log_dir, module_path, "DatadogRum On\n")
 
     response = requests.get(server.make_url("/"), timeout=2)
     assert response.status_code == 200
-    assert_rum_injected(response)
-    assert STABLE_CONFIG_APP_ID in response.text, (
-        "the snippet still comes from stable configuration"
-    )
+    assert_rum_not_injected(response)
 
     assert server.stop(conf_path)
 
 
 @pytest.mark.requires_rum
-def test_rum_env_overrides_stable_config_disable(
+def test_rum_settings_block_does_not_override_stable_config_disable(
+    server: Server, log_dir: str, module_path: str, stable_config_disabled: None
+) -> None:
+    """A <DatadogRumSettings> block cannot override `DD_RUM_ENABLED: false` either."""
+    body = f"""DatadogRum On
+<DatadogRumSettings "v6">
+  DatadogRumOption applicationId "{OVERLAY_APP_ID}"
+  DatadogRumOption clientToken "overlay-client-token"
+  DatadogRumOption site "datadoghq.com"
+</DatadogRumSettings>
+"""
+    conf_path = start(server, log_dir, module_path, body)
+
+    response = requests.get(server.make_url("/"), timeout=2)
+    assert response.status_code == 200
+    assert_rum_not_injected(response)
+
+    assert server.stop(conf_path)
+
+
+@pytest.mark.requires_rum
+def test_rum_env_does_not_override_stable_config_disable(
     server: Server,
     log_dir: str,
     module_path: str,
@@ -275,8 +300,8 @@ def test_rum_env_overrides_stable_config_disable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
-    `DD_RUM_ENABLED` in the environment outranks the same key in stable
-    configuration, matching the direction the module already applied it.
+    `DD_RUM_ENABLED=true` in the environment cannot override
+    `DD_RUM_ENABLED: false` in stable configuration.
     """
     monkeypatch.setenv("DD_RUM_ENABLED", "true")
 
@@ -284,7 +309,7 @@ def test_rum_env_overrides_stable_config_disable(
 
     response = requests.get(server.make_url("/"), timeout=2)
     assert response.status_code == 200
-    assert_rum_injected(response)
+    assert_rum_not_injected(response)
 
     assert server.stop(conf_path)
 
@@ -329,3 +354,56 @@ def test_rum_enabled_env_without_snippet_still_starts(
     assert_rum_not_injected(response)
 
     assert server.stop(conf_path)
+
+
+@pytest.mark.requires_rum
+@pytest.mark.parametrize(
+    "stable_config_yaml, expect_pending",
+    [(STABLE_CONFIG_YAML, True), (STABLE_CONFIG_YAML_DISABLED, False)],
+    ids=["enabled", "disabled"],
+)
+def test_rum_proxy_injection_pending_header_from_stable_config(
+    server: Server,
+    log_dir: str,
+    module_path: str,
+    stable_config_yaml: str,
+    expect_pending: bool,
+) -> None:
+    """
+    x-datadog-rum-injection-pending follows the resolved configuration: it is
+    sent upstream when stable configuration alone enables RUM, and not sent
+    when stable configuration disables it.
+    """
+    host = "127.0.0.1"
+    port = free_port()
+    captured_headers: Queue = Queue()
+
+    async def upstream_handler(request):
+        captured_headers.put(dict(request.headers))
+        return web.Response(
+            body="<html><head><title>Upstream</title></head><body>Hello</body></html>",
+            content_type="text/html",
+        )
+
+    app = web.Application()
+    app.add_routes([web.get("/", upstream_handler)])
+
+    body = f"""LoadModule proxy_module modules/mod_proxy.so
+LoadModule proxy_http_module modules/mod_proxy_http.so
+ProxyPass "/proxy" "http://{host}:{port}"
+"""
+    with installed_stable_config(stable_config_yaml), AioHTTPServer(app, host, port):
+        conf_path = start(server, log_dir, module_path, body)
+
+        response = requests.get(server.make_url("/proxy"), timeout=2)
+        assert response.status_code == 200
+
+        upstream_headers = captured_headers.get(timeout=2)
+        if expect_pending:
+            assert upstream_headers.get("x-datadog-rum-injection-pending") == "1"
+            assert_rum_injected(response)
+        else:
+            assert "x-datadog-rum-injection-pending" not in upstream_headers
+            assert_rum_not_injected(response)
+
+        assert server.stop(conf_path)

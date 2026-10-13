@@ -34,12 +34,6 @@ struct Directory final {
   std::unordered_map<std::string, std::string> config;
   std::string app_id_tag;
   std::string remote_config_tag;
-
-  ~Directory() {
-    if (snippet != nullptr) {
-      snippet_cleanup(snippet);
-    }
-  }
 };
 
 void merge_directory_configuration(Directory& out, const Directory& parent,
@@ -48,34 +42,31 @@ void merge_directory_configuration(Directory& out, const Directory& parent,
 // Everything the response filter needs, resolved from a directory configuration
 // and the process-wide stable configuration.
 //
-// The fallbacks belong together: a scope with no <DatadogRumSettings> of its
-// own injects the stable-configuration snippet, and its telemetry has to carry
-// that snippet's identifiers. Resolving snippet and tags in separate places is
-// how they came apart -- the filter picked up the snippet and left the tags
-// empty.
-struct Resolved final {
+// Snippet and tags are resolved together: a scope with no <DatadogRumSettings>
+// of its own injects the stable-configuration snippet, and its telemetry has to
+// carry that snippet's identifiers.
+struct ResolvedConfig final {
   bool enabled = false;
-  // Never freed by the caller: owned by either the Directory or the
-  // process-wide stable configuration.
+  // Never freed by the caller: released with the configuration pool.
   Snippet* snippet = nullptr;
-  // Both are empty only when `snippet` is nullptr: a snippet cannot be built
-  // without an applicationId.
+  // Empty when `snippet` is nullptr. app_id_tag is also empty when stable
+  // configuration disables RUM without an applicationId.
   std::string_view app_id_tag;
   std::string_view remote_config_tag;
 };
 
-Resolved resolve(const Directory& dir);
+ResolvedConfig resolve_configuration(const Directory& dir);
 
 // Reads the Agent's stable-configuration files (local + fleet-managed
 // application_monitoring.yaml) and caches the resulting snippet, the
 // identifiers that go with it, and whether RUM should be on by default.
 //
 // Call once per configuration load, from post_config; `pconf` scopes the cached
-// snippet to that load. Deliberately not done during directory-config merging
-// the way nginx-datadog does it: httpd merges per-directory configuration
-// inside ap_location_walk, which runs *per request*, so building the snippet
-// there would read YAML off disk on every request. post_config also re-runs on
-// graceful restart, so the cache cannot go stale.
-void init_stable_config(server_rec* s, apr_pool_t* pconf);
+// snippet to that load. Not done during directory-config merging: httpd merges
+// per-directory configuration inside ap_location_walk, which runs *per
+// request*, so building the snippet there would read YAML off disk on every
+// request. post_config also re-runs on graceful restart, so the cache cannot go
+// stale.
+void init_stable_config(server_rec* base_server, apr_pool_t* pconf);
 
 }  // namespace datadog::rum::conf
