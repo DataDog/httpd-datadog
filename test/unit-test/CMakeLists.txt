@@ -12,8 +12,6 @@ add_executable(tests main.cpp test_utils.cpp test_rum_content_type.cpp)
 
 target_include_directories(tests PRIVATE ${CMAKE_SOURCE_DIR}/mod_datadog/src)
 
-target_include_directories(tests PRIVATE ${CMAKE_SOURCE_DIR}/mod_datadog/src)
-
 # utils.h uses headers supplied by the httpd and fmt targets.
 target_link_libraries(tests PRIVATE Catch2::Catch2 httpd fmt)
 
