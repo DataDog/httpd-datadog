@@ -45,7 +45,9 @@ stages:
   - build
   - test
   - assemble
-  - shared-pipeline
+  - shared-pipeline-build
+  - shared-pipeline-test
+  - shared-pipeline-publish
   - aws
 
 # Template jobs (hidden, reusable)
@@ -290,8 +292,8 @@ configure-branch-snapshot-expiry:
 .no-submodules: &no-submodules
   GIT_SUBMODULE_STRATEGY: none
 
-# Upstream package-oci declares no needs:, so it would be stage-gated on
-# `shared-pipeline`. Its real inputs are the ssi-build jobs, which in turn gate
+# Upstream package-oci declares no needs:, so it would wait for all earlier
+# stages. Its real inputs are the ssi-build jobs, which in turn gate
 # on test-rum:$ARCH so an untested module never reaches installtesting.
 package-oci:
   needs:
@@ -359,7 +361,7 @@ rollback-mutable-tags-prod:
 .stubbed-shared-pipeline-job:
   image: registry.ddbuild.io/images/mirror/alpine:3.23.0
   tags: ["arch:amd64"]
-  stage: shared-pipeline
+  stage: shared-pipeline-test
   needs: []
   before_script: []
   variables:
