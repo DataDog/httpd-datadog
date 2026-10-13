@@ -18,6 +18,7 @@ test-integration: dev-image
 
 # GitHub build entrypoint. RUM is off, so inject-browser-sdk is unnecessary.
 PRESET ?= ci-dev
+
 .PHONY: ci-build
 ci-build:
 	git config --global --add safe.directory "$(CURDIR)"
@@ -25,3 +26,7 @@ ci-build:
 	cmake --preset=$(PRESET) -B build .
 	cmake --build build -j --verbose
 	cmake --install build --prefix dist
+
+.PHONY: tidy
+tidy: dev-image
+	$(IN_DEVCONTAINER) env HTTPD_DATADOG_TIDY_IN_CONTAINER=1 ./scripts/clang-tidy.sh
