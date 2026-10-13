@@ -56,12 +56,13 @@ ssi-build:amd64:
   extends: .ssi-assemble
   needs:
     - job: devcontainer_image
-      artifacts: true
     - job: "build:amd64"
-      artifacts: true
     - job: "test-rum:amd64"
+      artifacts: false
     - job: "test-integration:amd64"
+      artifacts: false
     - job: "unit-test:amd64"
+      artifacts: false
   variables:
     ARCH: amd64
 
@@ -69,11 +70,12 @@ ssi-build:arm64:
   extends: .ssi-assemble
   needs:
     - job: devcontainer_image
-      artifacts: true
     - job: "build:arm64"
-      artifacts: true
     - job: "test-rum:arm64"
+      artifacts: false
     - job: "test-integration:arm64"
+      artifacts: false
     - job: "unit-test:arm64"
+      artifacts: false
   variables:
     ARCH: arm64

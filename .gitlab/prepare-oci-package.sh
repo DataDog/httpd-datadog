@@ -40,7 +40,7 @@ fi
 
 echo "Copying sources from ${SOURCES_DIR} to sources/"
 mkdir -p sources
-cp -r "${SOURCES_DIR}/"* sources/
+cp -r "${SOURCES_DIR}/." sources/
 
 so_count=$(find sources -name '*.so' -type f | wc -l)
 if [ "$so_count" -eq 0 ]; then
