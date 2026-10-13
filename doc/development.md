@@ -18,12 +18,12 @@ git submodule update --init --recursive
 
 ## Prerequisites
 
-| Tool | Version |
-| ---- | ------- |
-| `clang` | 17+ |
-| `cmake` | 3.12+ |
-| `gcc` | 13.2+ |
-| `python` | 3.11+ |
+| Tool     | Version |
+| -------- | ------- |
+| `clang`  | 17+     |
+| `cmake`  | 3.12+   |
+| `gcc`    | 13.2+   |
+| `python` | 3.11+   |
 
 Once you got a valid Python installation, install all the dependencies with:
 
@@ -84,7 +84,7 @@ C++ code is analyzed with Clang Tidy. Run it with:
 make lint-tidy
 ```
 
-### Testing
+## Testing
 
 For now there are only [integration tests](../test/integration-test/).
 
