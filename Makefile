@@ -27,6 +27,6 @@ ci-build:
 	cmake --build build -j --verbose
 	cmake --install build --prefix dist
 
-.PHONY: lint-tidy
-lint-tidy: dev-image
+.PHONY: tidy
+tidy: dev-image
 	$(IN_DEVCONTAINER) env HTTPD_DATADOG_TIDY_IN_CONTAINER=1 ./scripts/clang-tidy.sh

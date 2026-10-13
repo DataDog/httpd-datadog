@@ -81,7 +81,7 @@ C++ code is formatted with Clang Format:
 C++ code is analyzed with Clang Tidy. Run it with:
 
 ```shell
-make lint-tidy
+make tidy
 ```
 
 ## Testing

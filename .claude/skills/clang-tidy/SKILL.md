@@ -11,7 +11,7 @@ allowed-tools: Bash Read Grep Glob Edit
 Grow the blocking tidy job **one check at a time**. Do not turn this
 into a style-guide dump or a clang-format gate.
 
-Background: [CONTRIBUTING.md](../../../CONTRIBUTING.md),
+Background: [doc/development.md](../../../doc/development.md),
 [`.clang-tidy`](../../../.clang-tidy),
 [`scripts/clang-tidy.sh`](../../../scripts/clang-tidy.sh).
 
@@ -19,7 +19,7 @@ Background: [CONTRIBUTING.md](../../../CONTRIBUTING.md),
 
 - First-party TUs and headers: `mod_datadog/src/`
 - `mod_datadog/src/rum/` is off in `ci-dev` and must stay out
-- Run: `make lint-tidy` (devcontainer; never a host `compile_commands.json`)
+- Run: `make tidy` (devcontainer; never a host `compile_commands.json`)
 - CI: job `lint` runs `scripts/clang-tidy.sh`
 
 Leave `deps/`, tests, and vendored trees out unless the user explicitly
@@ -35,7 +35,7 @@ expands the path filter.
 - Do not pass `-extra-arg` to clang-tidy. The compile database from
   `ci-dev` (musl `/sysroot`) is the compile line.
 - Do not run tidy on the host. `scripts/clang-tidy.sh` re-execs through
-  `make lint-tidy`.
+  `make tidy`.
 - Do not mark the tidy job `allow_failure`. The job is meant to block.
 - Do not widen `-header-filter` or the `mod_datadog/src/` TU regex
   unless asked. Do not add `rum/` while RUM is off.
@@ -48,17 +48,17 @@ expands the path filter.
    “Deferred until existing findings are cleaned up”, uncomment that
    one line and add it to `Checks`.
 2. Otherwise add **one** check name to `Checks` (after `-*`).
-3. Run `make lint-tidy` from the repo root.
+3. Run `make tidy` from the repo root.
 4. If it fails:
    - Mechanical first-party fixes in `mod_datadog/src/` (not `rum/`)
      are OK in the same change.
    - Do not edit `deps/` or generated files to silence tidy.
    - If the cleanup is large or opinionated, comment the check back out
      (name the failing files) and stop. Ask before a repo-wide rewrite.
-5. Keep the check only if `make lint-tidy` exits 0.
+5. Keep the check only if `make tidy` exits 0.
 
 ## Local command
 
 ```bash
-make lint-tidy
+make tidy
 ```

@@ -5,7 +5,7 @@
 # mod_datadog/src/ so tidy uses that compile_commands.json.
 #
 # Usage:
-#   make lint-tidy
+#   make tidy
 #   ./scripts/clang-tidy.sh
 
 set -euo pipefail
@@ -20,7 +20,7 @@ in_container() {
 }
 
 if ! in_container; then
-    exec make -C "$repo_root" lint-tidy
+    exec make -C "$repo_root" tidy
 fi
 
 build_dir=${BUILD_DIR:-.clang-tidy-build}
