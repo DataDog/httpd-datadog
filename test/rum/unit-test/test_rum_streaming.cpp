@@ -121,11 +121,7 @@ std::string write_stream(ap_filter_t* filter, apr_bucket_brigade* brigade,
 
 void check_output(std::string expected, const std::string& snippet) {
   const size_t closing = expected.find("</head>");
-  if (closing == std::string::npos) {
-    expected.append(snippet.size(), ' ');
-  } else {
-    expected.insert(closing, snippet);
-  }
+  if (closing != std::string::npos) expected.insert(closing, snippet);
   CHECK(downstream.output == expected);
   CHECK(downstream.endings == 1);
 }
