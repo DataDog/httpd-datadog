@@ -33,6 +33,32 @@ jobs:
       - name: lint
         run: ./scripts/clang-tidy.sh
 
+  directory-lifetime:
+    runs-on: ubuntu-24.04
+    env:
+      ASAN_OPTIONS: detect_leaks=1
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Install native Apache dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y apache2-dev libapr1-dev libaprutil1-dev
+      - name: Initialize tracing dependency
+        run: git submodule update --init --depth 1 deps/dd-trace-cpp
+      - name: Configure native lifetime check
+        run: |
+          cmake -S . -B build-lifetime \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DHTTPD_SRC_DIR=/usr \
+            -DAPACHE_INCLUDE_DIR=/usr/include/apache2 \
+            -DAPR_INCLUDE_DIR=/usr/include/apr-1.0 \
+            -DHTTPD_DATADOG_ENABLE_RUM=OFF \
+            -DDD_TRACE_TRANSPORT=none
+      - name: Build lifetime check
+        run: cmake --build build-lifetime --target directory_lifetime_tests -j2
+      - name: Run lifetime check with leak detection
+        run: ctest --test-dir build-lifetime -R '^directory-lifetime$' --no-tests=error --output-on-failure
+
   build:
     needs: format
     runs-on: ubuntu-22.04
