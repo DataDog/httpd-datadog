@@ -104,11 +104,7 @@ static std::string write_stream(ap_filter_t* filter,
 
 static void check_output(std::string expected, const std::string& snippet) {
   const size_t closing = expected.find("</head>");
-  if (closing == std::string::npos) {
-    expected.append(snippet.size(), ' ');
-  } else {
-    expected.insert(closing, snippet);
-  }
+  if (closing != std::string::npos) expected.insert(closing, snippet);
   CHECK(output == expected);
   CHECK(endings == 1);
 }

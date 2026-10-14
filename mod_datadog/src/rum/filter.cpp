@@ -173,7 +173,7 @@ static apr_status_t inject_into_brigade(
 static void end_injection(rum_filter_ctx& ctx, request_rec& request,
                           apr_bucket* eos_bucket,
                           const datadog::rum::conf::Directory& rum_conf) {
-  const InjectorResult result = injector_end(ctx.injector);
+  const InjectorResult result = injector_end_without_padding(ctx.injector);
   insert_injection_slices(eos_bucket, result, request.connection->bucket_alloc);
   ctx.state = InjectionState::done;
   count_injection(telemetry::injection_failed, "reason:missing_header_tag",
