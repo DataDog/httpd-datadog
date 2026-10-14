@@ -221,6 +221,43 @@ def test_rum_directive_overlays_stable_config(
 
 
 @pytest.mark.requires_rum
+def test_rum_nested_locations_with_stable_config(
+    server: Server, log_dir: str, module_path: str, stable_config: None
+) -> None:
+    """
+    Stable configuration applies to every scope, and each <Location> can still
+    turn RUM off or overlay its own settings.
+    """
+    body = f"""<Location "/health.html">
+  DatadogRum Off
+</Location>
+<Location "/app.html">
+  <DatadogRumSettings "v6">
+    DatadogRumOption applicationId "{OVERLAY_APP_ID}"
+  </DatadogRumSettings>
+</Location>
+"""
+    conf_path = start(server, log_dir, module_path, body)
+
+    root = requests.get(server.make_url("/"), timeout=2)
+    assert root.status_code == 200
+    assert_rum_injected(root)
+    assert STABLE_CONFIG_APP_ID in root.text
+
+    health = requests.get(server.make_url("/health.html"), timeout=2)
+    assert health.status_code == 200
+    assert_rum_not_injected(health)
+
+    app = requests.get(server.make_url("/app.html"), timeout=2)
+    assert app.status_code == 200
+    assert_rum_injected(app)
+    assert OVERLAY_APP_ID in app.text
+    assert STABLE_CONFIG_APP_ID not in app.text
+
+    assert server.stop(conf_path)
+
+
+@pytest.mark.requires_rum
 def test_rum_directive_off_overrides_stable_config(
     server: Server, log_dir: str, module_path: str, stable_config: None
 ) -> None:
