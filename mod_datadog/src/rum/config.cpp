@@ -18,6 +18,13 @@
 using namespace datadog::conf;
 
 namespace {
+bool valid_version(const std::string& version) {
+  return version.size() >= 2 && version.front() == 'v' &&
+         std::all_of(version.begin() + 1, version.end(), [](char character) {
+           return character >= '0' && character <= '9';
+         });
+}
+
 double parse_sample_rate(const std::string& key, const std::string& value) {
   size_t consumed = 0;
   double rate;
@@ -148,10 +155,7 @@ const char* datadog_rum_settings_section(cmd_parms* cmd, void* cfg,
     }
   }
 
-  if (version.length() < 2 || version.front() != 'v' ||
-      !std::all_of(version.begin() + 1, version.end(), [](char character) {
-        return character >= '0' && character <= '9';
-      })) {
+  if (!valid_version(version)) {
     return apr_pstrcat(cmd->pool, cmd->cmd->name, "> version format error",
                        nullptr);
   }
