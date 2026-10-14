@@ -152,19 +152,20 @@ static apr_status_t inject_into_brigade(
     if (APR_BUCKET_IS_EOS(bucket)) {
       end_injection(ctx, request, bucket, rum_conf);
       break;
-    } else if (APR_BUCKET_IS_METADATA(bucket)) {
-      bucket = APR_BUCKET_NEXT(bucket);
-    } else {
-      const apr_status_t status =
-          inject_into_bucket(ctx, request, rum_conf, bucket);
-      if (status != APR_SUCCESS) return status;
-
-      // Reading a bucket can add more input buckets.
-      apr_bucket* const next = APR_BUCKET_NEXT(bucket);
-      apr_bucket_delete(bucket);
-      if (ctx.state == InjectionState::done) break;
-      bucket = next;
     }
+    if (APR_BUCKET_IS_METADATA(bucket)) {
+      bucket = APR_BUCKET_NEXT(bucket);
+      continue;
+    }
+    const apr_status_t status =
+        inject_into_bucket(ctx, request, rum_conf, bucket);
+    if (status != APR_SUCCESS) return status;
+
+    // Reading a bucket can add more input buckets.
+    apr_bucket* const next = APR_BUCKET_NEXT(bucket);
+    apr_bucket_delete(bucket);
+    if (ctx.state == InjectionState::done) break;
+    bucket = next;
   }
   return APR_SUCCESS;
 }
