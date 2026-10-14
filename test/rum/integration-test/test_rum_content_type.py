@@ -75,8 +75,10 @@ def static_docroot() -> Iterator[str]:
 
 
 @contextmanager
-def upstream_proxy() -> Iterator[str]:
-    upstream = ThreadingHTTPServer(("127.0.0.1", 0), UpstreamHandler)
+def upstream_proxy(
+    handler_type: type[BaseHTTPRequestHandler] | None = None,
+) -> Iterator[str]:
+    upstream = ThreadingHTTPServer(("127.0.0.1", 0), handler_type or UpstreamHandler)
     upstream_thread = threading.Thread(target=upstream.serve_forever)
     upstream_thread.start()
     try:
