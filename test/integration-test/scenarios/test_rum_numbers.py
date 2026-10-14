@@ -7,6 +7,9 @@ import pytest
 from helper import make_configuration, save_configuration
 
 
+pytestmark = pytest.mark.requires_rum
+
+
 def check_settings(server, log_dir, module_path, version, option, value):
     configuration = make_configuration(
         {"path": "conf/default.conf", "var": {}}, log_dir, module_path
@@ -24,7 +27,6 @@ DatadogRum On
     return server._proc.run(f"-f {conf_path} -t")
 
 
-@pytest.mark.requires_rum
 @pytest.mark.parametrize("option", ["sessionSampleRate", "sessionReplaySampleRate"])
 @pytest.mark.parametrize(
     "value", ["invalid", "1e9999", "10junk", "10 ", "nan", "inf"],
@@ -36,7 +38,6 @@ def test_rum_invalid_rate_is_config_error(server, log_dir, module_path, option, 
     assert b"Syntax error" in result.stderr
 
 
-@pytest.mark.requires_rum
 @pytest.mark.parametrize("version", ["v99999999999999999999", "w6"])
 def test_rum_invalid_version_is_config_error(server, log_dir, module_path, version):
     result = check_settings(
@@ -46,7 +47,6 @@ def test_rum_invalid_version_is_config_error(server, log_dir, module_path, versi
     assert b"Syntax error" in result.stderr
 
 
-@pytest.mark.requires_rum
 @pytest.mark.parametrize("option", ["sessionSampleRate", "sessionReplaySampleRate"])
 @pytest.mark.parametrize("value", ["0", "10.5", "100", "1e1"])
 def test_rum_valid_rates_are_accepted(server, log_dir, module_path, option, value):
