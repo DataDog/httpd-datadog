@@ -79,16 +79,34 @@ static std::string snippet_text(Snippet* snippet) {
   return text;
 }
 
+// Without mmap, reading a file bucket splits it into a heap bucket of
+// APR_BUCKET_BUFF_SIZE bytes and a file bucket for the rest.
+static apr_bucket* make_file_bucket(ap_filter_t* filter,
+                                    const std::string& chunk) {
+  char path[] = "/tmp/rum-streaming-XXXXXX";
+  apr_file_t* file = nullptr;
+  REQUIRE(apr_file_mktemp(&file, path, 0, filter->r->pool) == APR_SUCCESS);
+  REQUIRE(apr_file_write_full(file, chunk.data(), chunk.size(), nullptr) ==
+          APR_SUCCESS);
+  apr_bucket* bucket = apr_bucket_file_create(
+      file, 0, chunk.size(), filter->r->pool, filter->c->bucket_alloc);
+  apr_bucket_file_enable_mmap(bucket, 0);
+  return bucket;
+}
+
 static std::string write_stream(ap_filter_t* filter,
                                 apr_bucket_brigade* brigade,
                                 const std::vector<std::string>& chunks,
-                                bool together, bool with_flush) {
+                                bool together, bool with_flush,
+                                bool file_buckets) {
   std::string expected;
   for (const std::string& chunk : chunks) {
     expected += chunk;
     APR_BRIGADE_INSERT_TAIL(
-        brigade, apr_bucket_heap_create(chunk.data(), chunk.size(), nullptr,
-                                        filter->c->bucket_alloc));
+        brigade, file_buckets ? make_file_bucket(filter, chunk)
+                              : apr_bucket_heap_create(
+                                    chunk.data(), chunk.size(), nullptr,
+                                    filter->c->bucket_alloc));
     if (with_flush) {
       APR_BRIGADE_INSERT_TAIL(brigade,
                               apr_bucket_flush_create(filter->c->bucket_alloc));
@@ -112,7 +130,8 @@ static void check_output(std::string expected, const std::string& snippet) {
 // Returns the snippet text, so callers can check positions in the output.
 static std::string check_stream(const std::vector<std::string>& chunks,
                                 bool together, bool deferred,
-                                bool with_flush = false) {
+                                bool with_flush = false,
+                                bool file_buckets = false) {
   defer_reads = deferred;
   apr_initialize();
   apr_pool_t* pool = nullptr;
@@ -144,7 +163,8 @@ static std::string check_stream(const std::vector<std::string>& chunks,
   output.clear();
   flush_offsets.clear();
   endings = 0;
-  check_output(write_stream(&filter, brigade, chunks, together, with_flush),
+  check_output(write_stream(&filter, brigade, chunks, together, with_flush,
+                            file_buckets),
                snippet);
   apr_pool_destroy(pool);
   apr_terminate();
@@ -184,4 +204,14 @@ TEST_CASE("RUM keeps flush buckets at their position", "[rum]") {
   const std::vector<size_t> expected = {3, 10 + snippet.size(),
                                         13 + snippet.size()};
   CHECK(flush_offsets == expected);
+}
+
+TEST_CASE("RUM handles file buckets split by reads", "[rum]") {
+  const std::string before_split(APR_BUCKET_BUFF_SIZE - 2, 'x');
+  check_stream({before_split + "</head>def"}, false, false, false, true);
+  check_stream({before_split + "</headless>"}, false, false, false, true);
+}
+
+TEST_CASE("RUM keeps an empty body", "[rum]") {
+  check_stream({}, false, false);
 }
