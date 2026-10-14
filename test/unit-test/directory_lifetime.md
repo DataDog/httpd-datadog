@@ -12,3 +12,8 @@ ASAN_OPTIONS=detect_leaks=1 ctest --test-dir build -R directory-lifetime \
 ```
 
 Use `HTTPD_DATADOG_ENABLE_RUM=OFF` to check tracing-only configs as well.
+
+The GitHub `directory-lifetime` job builds the tracing-only check with native
+Apache/APR libraries and runs it with LeakSanitizer enabled. The job fails if
+CTest cannot find the check. RUM snippet ownership checks use the RUM-enabled
+native build above.
