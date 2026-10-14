@@ -1,7 +1,11 @@
-find_library(STREAM_APR_LIBRARY NAMES apr-1)
-find_library(STREAM_APRUTIL_LIBRARY NAMES aprutil-1)
-if(HTTPD_DATADOG_ENABLE_RUM AND STREAM_APR_LIBRARY AND STREAM_APRUTIL_LIBRARY
-    AND NOT CMAKE_CROSSCOMPILING)
+if(HTTPD_DATADOG_ENABLE_RUM AND NOT CMAKE_CROSSCOMPILING)
+  find_library(STREAM_APR_LIBRARY NAMES apr-1
+    HINTS "${HTTPD_SRC_DIR}/httpd-build/lib")
+  find_library(STREAM_APRUTIL_LIBRARY NAMES aprutil-1
+    HINTS "${HTTPD_SRC_DIR}/httpd-build/lib")
+  if(NOT STREAM_APR_LIBRARY OR NOT STREAM_APRUTIL_LIBRARY)
+    message(FATAL_ERROR "RUM streaming tests need native APR and APR-util libraries")
+  endif()
   add_executable(rum_streaming_tests test_rum_streaming.cpp
     ../../mod_datadog/src/rum/filter.cpp
     ../../mod_datadog/src/rum/telemetry.cpp)
@@ -14,7 +18,7 @@ if(HTTPD_DATADOG_ENABLE_RUM AND STREAM_APR_LIBRARY AND STREAM_APRUTIL_LIBRARY
   target_link_libraries(rum_streaming_tests PRIVATE
     httpd dd-trace-cpp-static inject_browser_sdk_ffi fmt
     ${STREAM_APR_LIBRARY} ${STREAM_APRUTIL_LIBRARY})
-  foreach(mode split same-brigade false-prefix eof deferred flush)
+  foreach(mode split same-brigade false-prefix eof deferred flush large)
     add_test(NAME rum-streaming-${mode} COMMAND rum_streaming_tests ${mode})
     set_tests_properties(rum-streaming-${mode} PROPERTIES TIMEOUT 10)
   endforeach()

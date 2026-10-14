@@ -34,13 +34,16 @@ int ap_get_request_module_loglevel(const request_rec*, int) { return 0; }
 static apr_bucket_brigade* downstream = nullptr;
 static std::string output;
 static bool defer_reads = false;
-static int flushes = 0;
+static std::vector<size_t> flush_offsets;
+static int endings = 0;
 
 static void read_output() {
   for (apr_bucket* bucket = APR_BRIGADE_FIRST(downstream);
        bucket != APR_BRIGADE_SENTINEL(downstream);
        bucket = APR_BUCKET_NEXT(bucket)) {
-    if (APR_BUCKET_IS_FLUSH(bucket)) ++flushes;
+    assert(endings == 0);
+    if (APR_BUCKET_IS_EOS(bucket)) ++endings;
+    if (APR_BUCKET_IS_FLUSH(bucket)) flush_offsets.push_back(output.size());
     if (APR_BUCKET_IS_METADATA(bucket)) continue;
     const char* buffer = nullptr;
     apr_size_t length = 0;
@@ -114,7 +117,8 @@ static void check_stream(const std::vector<std::string>& chunks, bool together,
   apr_bucket_brigade* brigade =
       apr_brigade_create(pool, connection.bucket_alloc);
   output.clear();
-  flushes = 0;
+  flush_offsets.clear();
+  endings = 0;
   std::string expected;
   for (const std::string& chunk : chunks) {
     expected += chunk;
@@ -138,7 +142,12 @@ static void check_stream(const std::vector<std::string>& chunks, bool together,
     expected.insert(closing, snippet);
   }
   assert(output == expected);
-  if (with_flush) assert(flushes == static_cast<int>(chunks.size()));
+  assert(endings == 1);
+  if (with_flush) {
+    const std::vector<size_t> expected_offsets = {3, 3 + snippet.size() + 7,
+                                                  expected.size()};
+    assert(flush_offsets == expected_offsets);
+  }
   apr_pool_destroy(pool);
 }
 
@@ -146,18 +155,24 @@ int main(int argc, char* argv[]) {
   assert(argc == 2);
   apr_initialize();
   const std::string mode = argv[1];
-  defer_reads = mode == "deferred";
+  defer_reads = mode == "deferred" || mode == "large";
   if (mode == "false-prefix") {
     check_stream({"abc</he", "ader>def"}, false);
   } else if (mode == "eof") {
     check_stream({"abc</he"}, false);
   } else if (mode == "deferred") {
     check_stream({"abc</he", "ader>def</he", "ad>tail", "after"}, false);
+  } else if (mode == "large") {
+    check_stream(
+        {std::string(100000, 'x') + "</head>" + std::string(100000, 'y')},
+        true);
+  } else if (mode == "flush") {
+    check_stream({"abc", "</head>", "def"}, false, true);
   } else {
     const std::string body = "abc</head>def";
     for (size_t split = 1; split < body.size(); ++split) {
       check_stream({body.substr(0, split), body.substr(split)},
-                   mode == "same-brigade", mode == "flush");
+                   mode == "same-brigade");
     }
   }
   apr_terminate();
