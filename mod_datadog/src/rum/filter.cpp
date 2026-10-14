@@ -20,9 +20,9 @@ constexpr std::string_view k_injected_header = "x-datadog-sdk-injected";
 static void count_injection(const datadog::telemetry::Counter& counter,
                             const char* reason,
                             const datadog::rum::conf::Directory& rum_conf);
-static void insert_injection_slices(apr_bucket* bucket,
-                                    const InjectorResult& result,
-                                    apr_bucket_alloc_t* allocator);
+static void insert_slices_before(apr_bucket* position,
+                                 const InjectorResult& result,
+                                 apr_bucket_alloc_t* allocator);
 
 static void init_rum_context(ap_filter_t* f, Snippet* snippet) {
   request_rec* r = f->r;
@@ -124,23 +124,36 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
   apr_table_unset(r->headers_out, "Content-Length");
   r->clength = -1;
 
+  apr_bucket_alloc_t* const allocator = r->connection->bucket_alloc;
   size_t bytes;
   const char* buffer;
 
-  for (apr_bucket* b = APR_BRIGADE_FIRST(bb); b != APR_BRIGADE_SENTINEL(bb);
-       b = APR_BUCKET_NEXT(b)) {
-    if (APR_BUCKET_IS_EOS(b)) {
-      injector_end(ctx->injector);
+  apr_bucket* bucket = APR_BRIGADE_FIRST(bb);
+  while (bucket != APR_BRIGADE_SENTINEL(bb)) {
+    if (APR_BUCKET_IS_EOS(bucket)) {
+      insert_slices_before(bucket, injector_end(ctx->injector), allocator);
       count_injection(telemetry::injection_failed, "reason:missing_header_tag",
                       dir_conf->rum);
-    } else if (APR_BUCKET_IS_METADATA(b)) {
+      bucket = APR_BUCKET_NEXT(bucket);
+    } else if (APR_BUCKET_IS_METADATA(bucket)) {
       // TODO: Handle metadata bucket like flush
-    } else if (apr_bucket_read(b, &buffer, &bytes, APR_BLOCK_READ) ==
-               APR_SUCCESS) {
+      bucket = APR_BUCKET_NEXT(bucket);
+    } else {
+      const apr_status_t status =
+          apr_bucket_read(bucket, &buffer, &bytes, APR_BLOCK_READ);
+      if (status != APR_SUCCESS) {
+        ap_log_rerror(APLOG_MARK, APLOG_ERR, status, r,
+                      "[RUM] failed to read the response body.");
+        return status;
+      }
       InjectorResult result =
           injector_write(ctx->injector, (const uint8_t*)buffer, bytes);
 
-      insert_injection_slices(b, result, r->connection->bucket_alloc);
+      // Take the next bucket after the read: reading can split the bucket.
+      apr_bucket* const next = APR_BUCKET_NEXT(bucket);
+      insert_slices_before(bucket, result, allocator);
+      apr_bucket_delete(bucket);
+      bucket = next;
       if (result.injected) {
         ctx->state = InjectionState::done;
         apr_table_set(r->headers_out, k_injected_header.data(), "1");
@@ -162,19 +175,17 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
   return ap_pass_brigade(f->next, bb);
 }
 
-static void insert_injection_slices(apr_bucket* bucket,
-                                    const InjectorResult& result,
-                                    apr_bucket_alloc_t* allocator) {
-  size_t offset = 0;
+// Slices point into the incoming bucket or into injector memory that the next
+// call reuses, so they are copied.
+static void insert_slices_before(apr_bucket* position,
+                                 const InjectorResult& result,
+                                 apr_bucket_alloc_t* allocator) {
   for (size_t index = 0; index < result.slices_length; ++index) {
     const BytesSlice& slice = result.slices[index];
-    if (!slice.from_incoming_chunk) {
-      apr_bucket* snippet_bucket = apr_bucket_immortal_create(
-          reinterpret_cast<const char*>(slice.start), slice.length, allocator);
-      apr_bucket_split(bucket, offset);
-      APR_BUCKET_INSERT_AFTER(bucket, snippet_bucket);
-    }
-    offset += slice.length;
+    apr_bucket* slice_bucket =
+        apr_bucket_heap_create(reinterpret_cast<const char*>(slice.start),
+                               slice.length, nullptr, allocator);
+    APR_BUCKET_INSERT_BEFORE(position, slice_bucket);
   }
 }
 
