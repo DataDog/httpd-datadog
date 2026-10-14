@@ -9,4 +9,3 @@ ASAN_OPTIONS=detect_leaks=1 ctest --test-dir build -R rum-streaming --output-on-
 
 Native ASAN checks need APR/APR-util and verify split input, EOF, deferred reads,
 flush/EOS order, and 200 KB slices. Musl CI runs only the HTTP checks.
-The pinned injector pads skipped HTML with snippet-sized spaces.

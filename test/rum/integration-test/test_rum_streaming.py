@@ -18,6 +18,7 @@ STREAMS = {
     "split": [b"<html><head><title>Page</title></he", b"ad><body>Page</body></html>"],
     "false-prefix": [b"<html><head></he", b"ader></head><body>Page</body></html>"],
     "eof": [b"<html><head><title>Page</title></he"],
+    "no-head": [b"<html><body><", b"div>Page</div></body></html>"],
     "large": [b"<html><head></head><body>" + b"0123456789" * 10000 + b"</body></html>"],
 }
 
@@ -63,9 +64,7 @@ def test_rum_streaming(streaming_proxy: Server, mode: str) -> None:
     body = b"".join(STREAMS[mode])
     closing = body.find(b"</head>")
     if closing < 0:
-        assert response.content[: len(body)] == body
-        padding = response.content[len(body) :]
-        assert padding and padding.strip(b" ") == b""
+        assert response.content == body
     else:
         added = len(response.content) - len(body)
         assert added > 0

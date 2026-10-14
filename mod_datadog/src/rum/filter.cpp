@@ -130,7 +130,7 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
   apr_bucket* b = APR_BRIGADE_FIRST(bb);
   while (b != APR_BRIGADE_SENTINEL(bb)) {
     if (APR_BUCKET_IS_EOS(b)) {
-      const InjectorResult result = injector_end(ctx->injector);
+      const InjectorResult result = injector_end_without_padding(ctx->injector);
       insert_injection_slices(b, result, r->connection->bucket_alloc);
       ctx->state = InjectionState::done;
       count_injection(telemetry::injection_failed, "reason:missing_header_tag",
