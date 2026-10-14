@@ -2,9 +2,8 @@
 
 from collections.abc import Iterator
 from contextlib import ExitStack
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
-import threading
 import time
 
 import pytest
@@ -12,7 +11,7 @@ import requests
 
 from conftest import Server
 from helper import make_configuration, save_configuration
-from test_rum_content_type import static_docroot
+from test_rum_content_type import static_docroot, upstream_proxy
 
 
 STREAMS = {
@@ -42,36 +41,24 @@ class StreamingUpstream(BaseHTTPRequestHandler):
 @pytest.fixture
 def streaming_proxy(server: Server, log_dir: str, module_path: str) -> Iterator[Server]:
     conf_path = str(Path(log_dir) / "httpd.conf")
-    upstream = ThreadingHTTPServer(("127.0.0.1", 0), StreamingUpstream)
-    worker = threading.Thread(target=upstream.serve_forever)
-    worker.start()
-    try:
-        with ExitStack() as cleanup:
-            docroot = cleanup.enter_context(static_docroot())
-            cleanup.callback(server.stop, conf_path)
-            proxy = f"""
-LoadModule proxy_module modules/mod_proxy.so
-LoadModule proxy_http_module modules/mod_proxy_http.so
-ProxyPass /stream/ http://127.0.0.1:{upstream.server_port}/
-"""
-            configuration = {
-                "path": "conf/rum_content_type.conf",
-                "var": {"htdoc_dir": docroot, "proxy_configuration": proxy},
-            }
-            save_configuration(make_configuration(configuration, log_dir, module_path), conf_path)
-            assert server.check_configuration(conf_path)
-            assert server.load_configuration(conf_path)
-            yield server
-    finally:
-        upstream.shutdown()
-        upstream.server_close()
-        worker.join()
+    with ExitStack() as cleanup:
+        docroot = cleanup.enter_context(static_docroot())
+        proxy = cleanup.enter_context(upstream_proxy(StreamingUpstream))
+        cleanup.callback(server.stop, conf_path)
+        configuration = {
+            "path": "conf/rum_content_type.conf",
+            "var": {"htdoc_dir": docroot, "proxy_configuration": proxy},
+        }
+        save_configuration(make_configuration(configuration, log_dir, module_path), conf_path)
+        assert server.check_configuration(conf_path)
+        assert server.load_configuration(conf_path)
+        yield server
 
 
 @pytest.mark.requires_rum
 @pytest.mark.parametrize("mode", STREAMS)
 def test_rum_streaming(streaming_proxy: Server, mode: str) -> None:
-    response = requests.get(streaming_proxy.make_url(f"/stream/{mode}"), timeout=3)
+    response = requests.get(streaming_proxy.make_url(f"/upstream/{mode}"), timeout=3)
     assert response.status_code == 200
     body = b"".join(STREAMS[mode])
     closing = body.find(b"</head>")

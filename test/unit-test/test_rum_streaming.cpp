@@ -144,7 +144,7 @@ static void check_stream(const std::vector<std::string>& chunks, bool together,
   assert(output == expected);
   assert(endings == 1);
   if (with_flush) {
-    const std::vector<size_t> expected_offsets = {3, 3 + snippet.size() + 7,
+    const std::vector<size_t> expected_offsets = {3, 10 + snippet.size(),
                                                   expected.size()};
     assert(flush_offsets == expected_offsets);
   }
