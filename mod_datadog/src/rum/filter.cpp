@@ -131,7 +131,8 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
   apr_bucket* bucket = APR_BRIGADE_FIRST(bb);
   while (bucket != APR_BRIGADE_SENTINEL(bb)) {
     if (APR_BUCKET_IS_EOS(bucket)) {
-      insert_slices_before(bucket, injector_end(ctx->injector), allocator);
+      insert_slices_before(bucket, injector_end_without_padding(ctx->injector),
+                           allocator);
       count_injection(telemetry::injection_failed, "reason:missing_header_tag",
                       dir_conf->rum);
       bucket = APR_BUCKET_NEXT(bucket);

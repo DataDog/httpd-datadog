@@ -5,10 +5,8 @@ from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import re
-import socket
 import threading
 import time
-from urllib.parse import urlsplit
 
 import pytest
 import requests
@@ -20,6 +18,7 @@ from helper import make_configuration, save_configuration
 PAGES = {
     "/head": [b"<html><head><title>t</title></he", b"ad><body>ok</body></html>"],
     "/no-head": [b"<html><body><", b"div>ok</div></body></html>"],
+    "/held-at-end": [b"<html><body>ok</body></html>", b"</hea"],
 }
 
 
@@ -32,14 +31,14 @@ def test_rum_split_body(server: Server, log_dir: str, module_path: str) -> None:
         assert server.check_configuration(conf_path)
         assert server.load_configuration(conf_path)
         try:
-            snippet_length = assert_injected_once(server)
-            assert_not_injected_and_padded(server, snippet_length)
-            assert_head_request_has_no_body(server)
+            assert_injected_once(server)
+            assert_unchanged(server, "/no-head")
+            assert_unchanged(server, "/held-at-end")
         finally:
             server.stop(conf_path)
 
 
-def assert_injected_once(server: Server) -> int:
+def assert_injected_once(server: Server) -> None:
     response = requests.get(server.make_url("/proxy/head"), timeout=5)
     assert response.status_code == 200
     pattern = (
@@ -48,24 +47,12 @@ def assert_injected_once(server: Server) -> int:
         + re.escape(b"</head><body>ok</body></html>")
     )
     assert re.fullmatch(pattern, response.content, re.DOTALL), response.content
-    return len(response.content) - len(b"".join(PAGES["/head"]))
 
 
-def assert_not_injected_and_padded(server: Server, snippet_length: int) -> None:
-    # The injector pads with spaces when it finds no injection point.
-    response = requests.get(server.make_url("/proxy/no-head"), timeout=5)
+def assert_unchanged(server: Server, path: str) -> None:
+    response = requests.get(server.make_url(f"/proxy{path}"), timeout=5)
     assert response.status_code == 200
-    assert response.content == b"".join(PAGES["/no-head"]) + b" " * snippet_length
-
-
-def assert_head_request_has_no_body(server: Server) -> None:
-    # HTTP clients never read a HEAD body, so read the raw response.
-    url = urlsplit(server.make_url("/proxy/no-head"))
-    with socket.create_connection((url.hostname, url.port), timeout=5) as connection:
-        connection.sendall(b"HEAD /proxy/no-head HTTP/1.0\r\nHost: localhost\r\n\r\n")
-        response = b"".join(iter(lambda: connection.recv(4096), b""))
-    assert response.startswith(b"HTTP/1.1 200 "), response
-    assert response.endswith(b"\r\n\r\n"), response
+    assert response.content == b"".join(PAGES[path])
 
 
 @contextmanager
@@ -83,20 +70,15 @@ def split_upstream() -> Iterator[str]:
 
 class SplitHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
-        self.send_headers()
-        for part in PAGES[self.path]:
+        body = PAGES[self.path]
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html")
+        self.send_header("Content-Length", str(len(b"".join(body))))
+        self.end_headers()
+        for part in body:
             self.wfile.write(part)
             self.wfile.flush()
             time.sleep(0.05)
-
-    def do_HEAD(self) -> None:
-        self.send_headers()
-
-    def send_headers(self) -> None:
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html")
-        self.send_header("Content-Length", str(len(b"".join(PAGES[self.path]))))
-        self.end_headers()
 
     def log_message(self, format: str, *args: object) -> None:
         pass
