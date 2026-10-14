@@ -136,34 +136,35 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
       count_injection(telemetry::injection_failed, "reason:missing_header_tag",
                       dir_conf->rum);
       break;
-    } else if (APR_BUCKET_IS_METADATA(b)) {
+    }
+    if (APR_BUCKET_IS_METADATA(b)) {
       b = APR_BUCKET_NEXT(b);
-    } else {
-      const apr_status_t status =
-          apr_bucket_read(b, &buffer, &bytes, APR_BLOCK_READ);
-      if (status != APR_SUCCESS) return status;
+      continue;
+    }
+    const apr_status_t status =
+        apr_bucket_read(b, &buffer, &bytes, APR_BLOCK_READ);
+    if (status != APR_SUCCESS) return status;
 
-      InjectorResult result = injector_write(
-          ctx->injector, reinterpret_cast<const uint8_t*>(buffer), bytes);
+    InjectorResult result = injector_write(
+        ctx->injector, reinterpret_cast<const uint8_t*>(buffer), bytes);
 
-      // Reading a bucket can add more input buckets.
-      apr_bucket* next = APR_BUCKET_NEXT(b);
-      insert_injection_slices(b, result, r->connection->bucket_alloc);
-      apr_bucket_delete(b);
-      b = next;
-      if (result.injected) {
-        ctx->state = InjectionState::done;
-        apr_table_set(r->headers_out, k_injected_header.data(), "1");
+    // Reading a bucket can add more input buckets.
+    apr_bucket* next = APR_BUCKET_NEXT(b);
+    insert_injection_slices(b, result, r->connection->bucket_alloc);
+    apr_bucket_delete(b);
+    b = next;
+    if (result.injected) {
+      ctx->state = InjectionState::done;
+      apr_table_set(r->headers_out, k_injected_header.data(), "1");
 
-        ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r,
-                      "[RUM] successfully injected the browser SDK.");
-        datadog::telemetry::counter::increment(
-            telemetry::injection_succeed,
-            telemetry::build_tags(dir_conf->rum.app_id_tag,
-                                  dir_conf->rum.remote_config_tag));
+      ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r,
+                    "[RUM] successfully injected the browser SDK.");
+      datadog::telemetry::counter::increment(
+          telemetry::injection_succeed,
+          telemetry::build_tags(dir_conf->rum.app_id_tag,
+                                dir_conf->rum.remote_config_tag));
 
-        return ap_pass_brigade(f->next, bb);
-      }
+      return ap_pass_brigade(f->next, bb);
     }
   }
 
