@@ -34,6 +34,7 @@ namespace {
 enum class Brigades { separate, single };
 enum class Reads { immediate, deferred };
 enum class Flushes { none, after_each_chunk };
+enum class Buckets { heap, file };
 
 struct Downstream {
   apr_bucket_brigade* brigade = nullptr;
@@ -95,15 +96,31 @@ std::string snippet_text(Snippet* snippet) {
   return text;
 }
 
+// Without mmap, reading a file bucket splits it into a heap bucket of
+// APR_BUCKET_BUFF_SIZE bytes and a file bucket for the rest.
+apr_bucket* make_file_bucket(ap_filter_t* filter, const std::string& chunk) {
+  char path[] = "/tmp/rum-streaming-XXXXXX";
+  apr_file_t* file = nullptr;
+  REQUIRE(apr_file_mktemp(&file, path, 0, filter->r->pool) == APR_SUCCESS);
+  REQUIRE(apr_file_write_full(file, chunk.data(), chunk.size(), nullptr) ==
+          APR_SUCCESS);
+  apr_bucket* bucket = apr_bucket_file_create(
+      file, 0, chunk.size(), filter->r->pool, filter->c->bucket_alloc);
+  apr_bucket_file_enable_mmap(bucket, 0);
+  return bucket;
+}
+
 std::string write_stream(ap_filter_t* filter, apr_bucket_brigade* brigade,
                          const std::vector<std::string>& chunks,
-                         Brigades brigades, Flushes flushes) {
+                         Brigades brigades, Flushes flushes, Buckets buckets) {
   std::string expected;
   for (const std::string& chunk : chunks) {
     expected += chunk;
     APR_BRIGADE_INSERT_TAIL(
-        brigade, apr_bucket_heap_create(chunk.data(), chunk.size(), nullptr,
-                                        filter->c->bucket_alloc));
+        brigade, buckets == Buckets::file
+                     ? make_file_bucket(filter, chunk)
+                     : apr_bucket_heap_create(chunk.data(), chunk.size(),
+                                              nullptr, filter->c->bucket_alloc));
     if (flushes == Flushes::after_each_chunk) {
       APR_BRIGADE_INSERT_TAIL(brigade,
                               apr_bucket_flush_create(filter->c->bucket_alloc));
@@ -130,7 +147,8 @@ void check_output(std::string expected, const std::string& snippet) {
 std::string check_stream(const std::vector<std::string>& chunks,
                          Brigades brigades = Brigades::separate,
                          Reads reads = Reads::immediate,
-                         Flushes flushes = Flushes::none) {
+                         Flushes flushes = Flushes::none,
+                         Buckets buckets = Buckets::heap) {
   datadog::conf::Directory directory;
   directory.rum.enabled = true;
   directory.rum.snippet = snippet_create_from_json(
@@ -161,7 +179,8 @@ std::string check_stream(const std::vector<std::string>& chunks,
   downstream.reads = reads;
   apr_bucket_brigade* brigade =
       apr_brigade_create(pool, connection.bucket_alloc);
-  check_output(write_stream(&filter, brigade, chunks, brigades, flushes),
+  check_output(
+      write_stream(&filter, brigade, chunks, brigades, flushes, buckets),
                snippet);
   apr_pool_destroy(pool);
   apr_terminate();
@@ -210,4 +229,16 @@ TEST_CASE("RUM keeps flush buckets at their position", "[rum]") {
       chunks[0].size() - partial_tag.size(), snippet.size() + head,
       snippet.size() + head + chunks[2].size()};
   CHECK(downstream.flush_offsets == expected);
+}
+
+TEST_CASE("RUM handles file buckets split by reads", "[rum]") {
+  const std::string before_split(APR_BUCKET_BUFF_SIZE - 2, 'x');
+  check_stream({before_split + "</head>def"}, Brigades::separate,
+               Reads::immediate, Flushes::none, Buckets::file);
+  check_stream({before_split + "</headless>"}, Brigades::separate,
+               Reads::immediate, Flushes::none, Buckets::file);
+}
+
+TEST_CASE("RUM keeps an empty body", "[rum]") {
+  check_stream({});
 }
