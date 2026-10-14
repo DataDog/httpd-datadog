@@ -38,6 +38,7 @@ venv/
 test/integration-test/.coverage
 test/.pytest_cache/
 test/integration-test/.pytest_cache/
+test/.venv/
 test/integration-test/.venv/
 test/integration-test/*.conf.tmp
 test/integration-test/htmlcov/

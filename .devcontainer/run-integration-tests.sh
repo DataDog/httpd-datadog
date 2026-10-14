@@ -29,10 +29,10 @@ fi
 
 cd "$repo_root/test"
 export UV_PROJECT_ENVIRONMENT="$HOME/.venv-httpd-datadog-tests"
-uv sync --project integration-test --locked
+uv sync --locked
 
 # The equals form keeps pytest's early parser from treating values as paths.
-uv run --project integration-test pytest \
+uv run pytest \
   --bin-path=/httpd/httpd-build/bin/apachectl \
   --module-path="$module_path" \
   --log-dir="$repo_root/logs" \

@@ -49,7 +49,7 @@ add_subdirectory(test/unit-test)
 enable_testing()
 add_test(
   NAME integration-tests
-  COMMAND uv run --project integration-test pytest
+  COMMAND uv run pytest
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/test
 )
 set_tests_properties(integration-tests PROPERTIES

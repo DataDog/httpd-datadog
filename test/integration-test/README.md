@@ -41,13 +41,13 @@ The tests have the following optional markers:
 So, to run only smoke tests:
 
 ```sh
-docker run --rm httpd-datadog-tests uv run --project integration-test pytest --bin-path=/httpd/httpd-build/bin/apachectl -v -m smoke
+docker run --rm httpd-datadog-tests uv run pytest --bin-path=/httpd/httpd-build/bin/apachectl -v -m smoke
 ```
 
 Similarly, to run only CI tests:
 
 ```sh
-docker run --rm httpd-datadog-tests uv run --project integration-test pytest --bin-path=/httpd/httpd-build/bin/apachectl -v -m ci
+docker run --rm httpd-datadog-tests uv run pytest --bin-path=/httpd/httpd-build/bin/apachectl -v -m ci
 ```
 
 ### Run a Specific Test
@@ -55,13 +55,13 @@ docker run --rm httpd-datadog-tests uv run --project integration-test pytest --b
 To run a specific test file:
 
 ```sh
-docker run --rm httpd-datadog-tests uv run --project integration-test pytest --bin-path=/httpd/httpd-build/bin/apachectl -v integration-test/scenarios/test_smoke.py
+docker run --rm httpd-datadog-tests uv run pytest --bin-path=/httpd/httpd-build/bin/apachectl -v integration-test/scenarios/test_smoke.py
 ```
 
 To run a specific test function:
 
 ```sh
-docker run --rm httpd-datadog-tests uv run --project integration-test pytest --bin-path=/httpd/httpd-build/bin/apachectl -v integration-test/scenarios/test_smoke.py::test_version_symbol
+docker run --rm httpd-datadog-tests uv run pytest --bin-path=/httpd/httpd-build/bin/apachectl -v integration-test/scenarios/test_smoke.py::test_version_symbol
 ```
 
 ### Command-Line Options
@@ -79,7 +79,7 @@ Optional options:
 RUM tests verify selective browser SDK injection using Apache `<Location>` directives.
 
 ```sh
-docker run --rm httpd-datadog-tests uv run --project integration-test pytest \
+docker run --rm httpd-datadog-tests uv run pytest \
   rum/integration-test --bin-path=/httpd/httpd-build/bin/apachectl -v -m requires_rum
 ```
 
@@ -110,8 +110,8 @@ docker run --rm -v "$PWD:/workspace" -w /workspace \
     cmake -B build -G Ninja -DHTTPD_DATADOG_ENABLE_RUM=ON .
     cmake --build build -j && cmake --install build --prefix dist
     cd test
-    uv sync --project integration-test --locked
-    uv run --project integration-test pytest rum/integration-test \
+    uv sync --locked
+    uv run pytest rum/integration-test \
            --bin-path=/httpd/httpd-build/bin/apachectl \
            --module-path=/workspace/dist/lib/mod_datadog.so -v
   "
