@@ -6,7 +6,8 @@ if(TEST_APR_LIBRARY AND TEST_APRUTIL_LIBRARY AND NOT CMAKE_CROSSCOMPILING)
     test_directory_lifetime.cpp
     ../../mod_datadog/src/common_conf.cpp)
   target_include_directories(directory_lifetime_tests PRIVATE
-    ${CMAKE_SOURCE_DIR}/mod_datadog/src)
+    ${CMAKE_SOURCE_DIR}/mod_datadog/src
+    ${APACHE_INCLUDE_DIR} ${APR_INCLUDE_DIR})
   target_link_libraries(directory_lifetime_tests PRIVATE
     httpd dd-trace-cpp-static ${TEST_APR_LIBRARY} ${TEST_APRUTIL_LIBRARY})
   target_compile_options(directory_lifetime_tests PRIVATE
