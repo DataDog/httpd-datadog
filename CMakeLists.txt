@@ -49,8 +49,8 @@ add_subdirectory(test/unit-test)
 enable_testing()
 add_test(
   NAME integration-tests
-  COMMAND uv run pytest
-  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/test/integration-test
+  COMMAND uv run --project integration-test pytest
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/test
 )
 set_tests_properties(integration-tests PROPERTIES
   ENVIRONMENT "HTTPD_MODULE_PATH=${CMAKE_BINARY_DIR}/mod_datadog/mod_datadog.so"

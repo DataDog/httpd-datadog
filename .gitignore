@@ -36,6 +36,7 @@ httpd/
 venv/
 
 test/integration-test/.coverage
+test/.pytest_cache/
 test/integration-test/.pytest_cache/
 test/integration-test/.venv/
 test/integration-test/*.conf.tmp

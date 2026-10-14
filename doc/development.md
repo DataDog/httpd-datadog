@@ -86,7 +86,8 @@ make tidy
 
 ## Testing
 
-For now there are only [integration tests](../test/integration-test/).
+Tests include [unit tests](../test/unit-test/), [integration tests](../test/integration-test/),
+and [RUM tests](../test/rum/). Both integration suites share the pytest setup in `test`.
 
 ### Build Devcontainer Image
 
@@ -105,7 +106,7 @@ source, Rust, and uv.
 make dev-shell
 # Inside container:
 .devcontainer/run-integration-tests.sh \
-  scenarios/test_rum.py::test_rum_selective_disabling -m requires_rum
+  rum/integration-test/test_rum.py::test_rum_selective_disabling -m requires_rum
 ```
 
 ### Test Markers

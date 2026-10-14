@@ -27,12 +27,12 @@ if [ -z "$module_path" ]; then
   module_path="$dist_dir/lib/mod_datadog.so"
 fi
 
-cd "$repo_root/test/integration-test"
+cd "$repo_root/test"
 export UV_PROJECT_ENVIRONMENT="$HOME/.venv-httpd-datadog-tests"
-uv sync --locked
+uv sync --project integration-test --locked
 
 # The equals form keeps pytest's early parser from treating values as paths.
-uv run pytest \
+uv run --project integration-test pytest \
   --bin-path=/httpd/httpd-build/bin/apachectl \
   --module-path="$module_path" \
   --log-dir="$repo_root/logs" \

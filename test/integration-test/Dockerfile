@@ -59,9 +59,9 @@ RUN cmake -B build-rum \
     && cmake --build build-rum -j$(nproc)
 
 # Python test dependencies
-WORKDIR /workspace/test/integration-test
-RUN uv sync
+WORKDIR /workspace/test
+RUN uv sync --project integration-test --locked
 
 # Run all integration tests by default.
 # The test suite auto-selects the correct module variant (RUM / non-RUM) per test.
-CMD ["uv", "run", "pytest", "--bin-path=/httpd/httpd-build/bin/apachectl", "-v"]
+CMD ["uv", "run", "--project", "integration-test", "pytest", "--bin-path=/httpd/httpd-build/bin/apachectl", "-v"]

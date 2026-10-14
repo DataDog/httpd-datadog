@@ -4,5 +4,8 @@ build-rum/
 !build-rum/_deps/injectbrowsersdk-src/
 httpd/
 test/integration-test/.venv/
+test/.pytest_cache/
+test/__pycache__/
+test/rum/integration-test/__pycache__/
 test/integration-test/.pytest_cache/
 test/integration-test/__pycache__/
