@@ -87,6 +87,46 @@ static void own_snippet(SnippetOwner& owner, Snippet* snippet) {
   }
 }
 
+static std::string write_stream(ap_filter_t* filter,
+                                apr_bucket_brigade* brigade,
+                                const std::vector<std::string>& chunks,
+                                bool together, bool with_flush) {
+  std::string expected;
+  for (const std::string& chunk : chunks) {
+    expected += chunk;
+    APR_BRIGADE_INSERT_TAIL(
+        brigade, apr_bucket_heap_create(chunk.data(), chunk.size(), nullptr,
+                                        filter->c->bucket_alloc));
+    if (with_flush) {
+      APR_BRIGADE_INSERT_TAIL(brigade,
+                              apr_bucket_flush_create(filter->c->bucket_alloc));
+    }
+    if (!together) assert(rum_output_filter(filter, brigade) == APR_SUCCESS);
+  }
+  APR_BRIGADE_INSERT_TAIL(brigade,
+                          apr_bucket_eos_create(filter->c->bucket_alloc));
+  assert(rum_output_filter(filter, brigade) == APR_SUCCESS);
+  read_output();
+  return expected;
+}
+
+static void check_output(std::string expected, const std::string& snippet,
+                         bool with_flush) {
+  const size_t closing = expected.find("</head>");
+  if (closing == std::string::npos) {
+    expected.append(snippet.size(), ' ');
+  } else {
+    expected.insert(closing, snippet);
+  }
+  assert(output == expected);
+  assert(endings == 1);
+  if (with_flush) {
+    const std::vector<size_t> expected_offsets = {3, 10 + snippet.size(),
+                                                  expected.size()};
+    assert(flush_offsets == expected_offsets);
+  }
+}
+
 static void check_stream(const std::vector<std::string>& chunks, bool together,
                          bool with_flush = false) {
   apr_pool_t* pool = nullptr;
@@ -119,35 +159,8 @@ static void check_stream(const std::vector<std::string>& chunks, bool together,
   output.clear();
   flush_offsets.clear();
   endings = 0;
-  std::string expected;
-  for (const std::string& chunk : chunks) {
-    expected += chunk;
-    APR_BRIGADE_INSERT_TAIL(
-        brigade, apr_bucket_heap_create(chunk.data(), chunk.size(), nullptr,
-                                        connection.bucket_alloc));
-    if (with_flush) {
-      APR_BRIGADE_INSERT_TAIL(brigade,
-                              apr_bucket_flush_create(connection.bucket_alloc));
-    }
-    if (!together) assert(rum_output_filter(&filter, brigade) == APR_SUCCESS);
-  }
-  APR_BRIGADE_INSERT_TAIL(brigade,
-                          apr_bucket_eos_create(connection.bucket_alloc));
-  assert(rum_output_filter(&filter, brigade) == APR_SUCCESS);
-  read_output();
-  const size_t closing = expected.find("</head>");
-  if (closing == std::string::npos) {
-    expected.append(snippet.size(), ' ');
-  } else {
-    expected.insert(closing, snippet);
-  }
-  assert(output == expected);
-  assert(endings == 1);
-  if (with_flush) {
-    const std::vector<size_t> expected_offsets = {3, 10 + snippet.size(),
-                                                  expected.size()};
-    assert(flush_offsets == expected_offsets);
-  }
+  check_output(write_stream(&filter, brigade, chunks, together, with_flush),
+               snippet, with_flush);
   apr_pool_destroy(pool);
 }
 
