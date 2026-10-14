@@ -167,7 +167,7 @@ int main(int argc, char* argv[]) {
         {std::string(100000, 'x') + "</head>" + std::string(100000, 'y')},
         true);
   } else if (mode == "flush") {
-    check_stream({"abc", "</head>", "def"}, false, true);
+    check_stream({"abc</he", "ad>", "def"}, false, true);
   } else {
     const std::string body = "abc</head>def";
     for (size_t split = 1; split < body.size(); ++split) {
