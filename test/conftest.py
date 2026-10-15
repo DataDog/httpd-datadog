@@ -116,9 +116,23 @@ class Server:
         # A TCP probe avoids creating a traced HTTP request.
         return self.wait_until_ready(conf_path)
 
-    def stop(self, conf_path) -> None:
+    def stop(self, conf_path) -> bool:
         rc = self._proc.run(f"-f {conf_path} -k stop").returncode
-        return rc == 0
+        return rc == 0 and self.wait_until_stopped()
+
+    def wait_until_stopped(self, timeout: float = 10.0) -> bool:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                with socket.socket() as listener:
+                    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    listener.bind((self.host, int(self.port)))
+                return True
+            except OSError:
+                time.sleep(0.1)
+
+        print(f"[error] Apache still holds port {self.port} after {timeout} seconds")
+        return False
 
 
 class AgentSession:

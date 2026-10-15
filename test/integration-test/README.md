@@ -1,6 +1,7 @@
 # httpd-datadog Integration Tests
 
-Integration tests for Apache httpd Datadog module using pytest.
+Integration tests for Apache httpd Datadog module using pytest. RUM tests and their fixtures
+live in `test/rum/integration-test`. Both suites share the pytest setup in `test`.
 
 ## All Tests
 
@@ -54,13 +55,13 @@ docker run --rm httpd-datadog-tests uv run pytest --bin-path=/httpd/httpd-build/
 To run a specific test file:
 
 ```sh
-docker run --rm httpd-datadog-tests uv run pytest --bin-path=/httpd/httpd-build/bin/apachectl -v scenarios/test_smoke.py
+docker run --rm httpd-datadog-tests uv run pytest --bin-path=/httpd/httpd-build/bin/apachectl -v integration-test/scenarios/test_smoke.py
 ```
 
 To run a specific test function:
 
 ```sh
-docker run --rm httpd-datadog-tests uv run pytest --bin-path=/httpd/httpd-build/bin/apachectl -v scenarios/test_smoke.py::test_version_symbol
+docker run --rm httpd-datadog-tests uv run pytest --bin-path=/httpd/httpd-build/bin/apachectl -v integration-test/scenarios/test_smoke.py::test_version_symbol
 ```
 
 ### Command-Line Options
@@ -76,6 +77,11 @@ Optional options:
 ## RUM Tests
 
 RUM tests verify selective browser SDK injection using Apache `<Location>` directives.
+
+```sh
+docker run --rm httpd-datadog-tests uv run pytest \
+  rum/integration-test --bin-path=/httpd/httpd-build/bin/apachectl -v -m requires_rum
+```
 
 **Configuration Example:**
 ```apache
@@ -103,9 +109,10 @@ docker run --rm -v "$PWD:/workspace" -w /workspace \
   sh -c "
     cmake -B build -G Ninja -DHTTPD_DATADOG_ENABLE_RUM=ON .
     cmake --build build -j && cmake --install build --prefix dist
-    cd test/integration-test
-    pip install -r requirements.txt --break-system-packages
-    uv run pytest --bin-path=/httpd/httpd-build/bin/apachectl \
+    cd test
+    uv sync --locked
+    uv run pytest rum/integration-test \
+           --bin-path=/httpd/httpd-build/bin/apachectl \
            --module-path=/workspace/dist/lib/mod_datadog.so -v
   "
 ```

@@ -35,12 +35,12 @@ httpd-*/
 httpd/
 venv/
 
-test/integration-test/.coverage
-test/integration-test/.pytest_cache/
-test/integration-test/.venv/
+test/.coverage
+test/**/.venv/
+test/**/.pytest_cache/
+test/**/__pycache__/
 test/integration-test/*.conf.tmp
-test/integration-test/htmlcov/
-test/integration-test/log-*/
+test/htmlcov/
 test/integration-test/logs/
 
 .devcontainer/.git-common
