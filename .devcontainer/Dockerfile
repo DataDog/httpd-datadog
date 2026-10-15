@@ -20,7 +20,7 @@ ENV SYSROOT=/sysroot/${ARCH}-none-linux-musl
 COPY deps/nginx-datadog/build_env/CHECKSUMS /CHECKSUMS
 
 RUN apk --no-cache add alpine-sdk coreutils sudo bash samurai python3 linux-headers \
-	compiler-rt clang llvm lld wget cmake make binutils musl-dev git patchelf xz lit
+	compiler-rt clang clang-extra-tools llvm lld wget cmake make binutils musl-dev git patchelf xz lit
 RUN wget https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/llvm-project-${LLVM_VERSION}.src.tar.xz && \
     grep -F llvm-project-${LLVM_VERSION}.src.tar.xz /CHECKSUMS | sha512sum --check && \
     tar -xvf llvm-project-${LLVM_VERSION}.src.tar.xz

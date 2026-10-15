@@ -3,3 +3,6 @@
 
 # Default owners, overridden by file/directory specific owners below
 * @DataDog/dd-trace-cpp
+
+/mod_datadog/src/rum/ @DataDog/dd-trace-cpp @DataDog/injection-platform @DataDog/squad-rum-injection
+/test/rum/ @DataDog/dd-trace-cpp @DataDog/injection-platform @DataDog/squad-rum-injection

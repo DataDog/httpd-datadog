@@ -17,6 +17,7 @@ To run these tests, you must:
 For more information: https://www.datadoghq.com/private-beta/rum-sdk-auto-injection/
 """
 import os
+from pathlib import Path
 from queue import Queue
 import requests
 import pytest
@@ -33,6 +34,8 @@ from helper import (
     assert_rum_not_injected,
 )
 
+RUM_TEST_DIR = Path(__file__).parent
+
 
 @pytest.mark.requires_rum
 def test_rum_selective_disabling(server: Server, agent: AgentSession, log_dir: str, module_path: str) -> None:
@@ -46,8 +49,8 @@ def test_rum_selective_disabling(server: Server, agent: AgentSession, log_dir: s
     3. The injection header is properly set when RUM is injected
     """
     config = {
-        "path": relpath("conf/rum_selective.conf"),
-        "var": {},
+        "path": RUM_TEST_DIR / "conf/rum_selective.conf",
+        "var": {"htdoc_dir": RUM_TEST_DIR / "htdocs"},
     }
 
     conf_path = os.path.join(log_dir, "httpd.conf")
@@ -124,7 +127,7 @@ DatadogRum On
 
     config = {
         "path": relpath("conf/default.conf"),  # Will be overridden
-        "var": {},
+        "var": {"htdoc_dir": RUM_TEST_DIR / "htdocs"},
     }
 
     conf_path = os.path.join(log_dir, "httpd.conf")
@@ -181,8 +184,8 @@ def test_rum_configuration_validation(server: Server, log_dir: str, module_path:
     """
     # Test valid configuration
     valid_config = {
-        "path": relpath("conf/rum_selective.conf"),
-        "var": {},
+        "path": RUM_TEST_DIR / "conf/rum_selective.conf",
+        "var": {"htdoc_dir": RUM_TEST_DIR / "htdocs"},
     }
 
     with make_temporary_configuration(valid_config, module_path) as conf_path:
@@ -211,7 +214,7 @@ def test_rum_proxy_injection_pending_header(server: Server, agent: AgentSession,
     app.add_routes([web.get("/", upstream_handler)])
 
     config = {
-        "path": relpath("conf/rum_proxy.conf"),
+        "path": RUM_TEST_DIR / "conf/rum_proxy.conf",
         "var": {"upstream_url": f"http://{host}:{port}"},
     }
 

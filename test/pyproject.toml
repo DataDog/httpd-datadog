@@ -20,21 +20,3 @@ dev = [
     "pytest-xdist>=3.5.0,<4",  # Parallel test execution
     "pytest-timeout>=2.2.0,<3",  # Test timeouts
 ]
-
-[tool.pytest.ini_options]
-filterwarnings = [
-    "ignore::DeprecationWarning",
-]
-testpaths = ["scenarios"]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-plugins = ["pytest_plugins.integration_helpers"]
-addopts = [
-    "-v",
-    "--strict-markers",
-]
-markers = [
-    "smoke: marks tests as smoke tests",
-    "ci: marks tests suitable for CI environment",
-]

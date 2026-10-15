@@ -15,6 +15,8 @@ import requests
 from conftest import Server
 from helper import make_configuration, save_configuration
 
+RUM_TEST_DIR = Path(__file__).parent
+
 
 class ExpectedResponse(NamedTuple):
     content_type: str | None
@@ -47,7 +49,7 @@ def test_rum_respects_response_content_type(
         proxy_configuration = cleanup.enter_context(upstream_proxy()) if proxied else ""
         cleanup.callback(server.stop, conf_path)
         config = {
-            "path": "conf/rum_content_type.conf",
+            "path": RUM_TEST_DIR / "conf/rum_content_type.conf",
             "var": {"htdoc_dir": docroot, "proxy_configuration": proxy_configuration},
         }
         save_configuration(make_configuration(config, log_dir, module_path), conf_path)

@@ -8,7 +8,7 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(Catch2)
 
-add_executable(tests main.cpp test_utils.cpp test_rum_content_type.cpp)
+add_executable(tests main.cpp test_utils.cpp ../rum/unit-test/test_rum_content_type.cpp)
 
 target_include_directories(tests PRIVATE ${CMAKE_SOURCE_DIR}/mod_datadog/src)
 

@@ -27,7 +27,7 @@ if [ -z "$module_path" ]; then
   module_path="$dist_dir/lib/mod_datadog.so"
 fi
 
-cd "$repo_root/test/integration-test"
+cd "$repo_root/test"
 export UV_PROJECT_ENVIRONMENT="$HOME/.venv-httpd-datadog-tests"
 uv sync --locked
 

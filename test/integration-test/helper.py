@@ -14,7 +14,7 @@ from aiohttp import web
 
 
 def relpath(p: str) -> str:
-    return Path(__file__).parent / p
+    return Path(__file__).parent / "scenarios" / p
 
 
 def save_configuration(content: str, destination: str) -> None:

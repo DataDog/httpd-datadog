@@ -32,11 +32,14 @@ devcontainer_to_ghcr:
   before_script:
     - |
       crane_archive=/tmp/go-containerregistry_Linux_x86_64.tar.gz
+      crane_bin_dir="$CI_PROJECT_DIR/.ci-bin"
       curl -fsSL \
         "https://github.com/google/go-containerregistry/releases/download/${CRANE_VERSION}/go-containerregistry_Linux_x86_64.tar.gz" \
         -o "$crane_archive"
       printf '%s  %s\n' "$CRANE_LINUX_X86_64_SHA256" "$crane_archive" | sha256sum -c -
-      tar -xzf "$crane_archive" -C /usr/local/bin crane
+      mkdir -p "$crane_bin_dir"
+      tar -xzf "$crane_archive" -C "$crane_bin_dir" crane
+      export PATH="$crane_bin_dir:$PATH"
       crane version
     - |
       umask 077
@@ -80,7 +83,7 @@ devcontainer_to_ghcr:
       test "$(crane digest "$stable_ref")" = "$published_digest"
       echo "Published $stable_ref@$published_digest"
   after_script:
-    - crane auth logout ghcr.io || true
+    - '"$CI_PROJECT_DIR/.ci-bin/crane" auth logout ghcr.io || true'
     - |
       if [ -z "${GHCR_TOKEN:-}" ] && [ -s "$DEVCONTAINER_GHCR_TOKEN_FILE" ]; then
         dd-octo-sts revoke --token "$(cat "$DEVCONTAINER_GHCR_TOKEN_FILE")" \

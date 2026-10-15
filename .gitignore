@@ -16,12 +16,16 @@
 *.so
 
 .cache/
-.claude/
+.clang-tidy-build/
+.claude/*
+!.claude/skills/
 .vscode/
 
 .DS_Store
 compile_commands.json
 
+.deps/
+/logs/
 __pycache__/
 build-container/
 build-rum/
@@ -29,21 +33,20 @@ build/
 dist-container/
 httpd-*/
 httpd/
-/logs/
-.deps/
 venv/
 
 packaging/*.tar
 packaging/sources/version
 
-test/integration-test/.coverage
-test/integration-test/.pytest_cache/
-test/integration-test/.venv/
+test/.coverage
+test/**/.venv/
+test/**/.pytest_cache/
+test/**/__pycache__/
 test/integration-test/*.conf.tmp
-test/integration-test/htmlcov/
-test/integration-test/log-*/
+test/htmlcov/
 test/integration-test/logs/
-.devcontainer/.staged/
+
+.devcontainer/.git-common
 .devcontainer/.image-ref
 .devcontainer/.image-ref-x86_64
-.devcontainer/.git-common
+.devcontainer/.staged/

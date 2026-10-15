@@ -18,12 +18,12 @@ git submodule update --init --recursive
 
 ## Prerequisites
 
-| Tool | Version |
-| ---- | ------- |
-| `clang` | 17+ |
-| `cmake` | 3.12+ |
-| `gcc` | 13.2+ |
-| `python` | 3.11+ |
+| Tool     | Version |
+| -------- | ------- |
+| `clang`  | 17+     |
+| `cmake`  | 3.12+   |
+| `gcc`    | 13.2+   |
+| `python` | 3.11+   |
 
 Once you got a valid Python installation, install all the dependencies with:
 
@@ -67,9 +67,27 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release -DHTTPD_SRC_DIR=httpd .
 cmake --build build -j
 ```
 
-### Testing
+## Format
 
-For now there are only [integration tests](../test/integration-test/).
+C++ code is formatted with Clang Format:
+
+```shell
+./scripts/codestyle.sh lint     # check; fails on drift
+./scripts/codestyle.sh format   # rewrite files
+```
+
+## Static Analysis
+
+C++ code is analyzed with Clang Tidy. Run it with:
+
+```shell
+make tidy
+```
+
+## Testing
+
+Tests include [unit tests](../test/unit-test/), [integration tests](../test/integration-test/),
+and [RUM tests](../test/rum/). Both integration suites share the pytest setup in `test`.
 
 ### Build Devcontainer Image
 
@@ -88,21 +106,21 @@ source, Rust, and uv.
 make dev-shell
 # Inside container:
 .devcontainer/run-integration-tests.sh \
-  scenarios/test_rum.py::test_rum_selective_disabling -m requires_rum
+  rum/integration-test/test_rum.py::test_rum_selective_disabling -m requires_rum
 ```
+
+### Test Markers
+
+- `requires_rum` — tests needing RUM-enabled build (`-DHTTPD_DATADOG_ENABLE_RUM=ON`).
+- Tests without markers run against the standard build.
+
+## CI
+
+GitLab CI status can be checked via `glab ci` on the [automated
+mirror](https://gitlab.ddbuild.io/DataDog/httpd-datadog).
 
 ### Key Paths Inside the CI Image
 
 - `/httpd` — httpd source
 - `/httpd/httpd-build/bin/apachectl` — pre-built apachectl binary
 - `/sysroot/{arch}-none-linux-musl/Toolchain.cmake` — cross-compilation toolchain
-
-### Test Markers
-
-- `requires_rum` — tests needing RUM-enabled build (`-DHTTPD_DATADOG_ENABLE_RUM=ON`)
-- Tests without markers run against the standard build
-
-## CI
-
-GitLab CI status can be checked via `glab ci` on the [automated
-mirror](https://gitlab.ddbuild.io/DataDog/httpd-datadog).

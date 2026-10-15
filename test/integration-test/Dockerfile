@@ -59,8 +59,8 @@ RUN cmake -B build-rum \
     && cmake --build build-rum -j$(nproc)
 
 # Python test dependencies
-WORKDIR /workspace/test/integration-test
-RUN uv sync
+WORKDIR /workspace/test
+RUN uv sync --locked
 
 # Run all integration tests by default.
 # The test suite auto-selects the correct module variant (RUM / non-RUM) per test.
