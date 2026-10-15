@@ -134,6 +134,10 @@ class Server:
         print(f"[error] Apache still holds port {self.port} after {timeout} seconds")
         return False
 
+    def graceful(self, conf_path) -> bool:
+        rc = self._proc.run(f"-f {conf_path} -k graceful").returncode
+        return rc == 0
+
 
 class AgentSession:
     def __init__(self, agent: typing.Any, token: str) -> None:

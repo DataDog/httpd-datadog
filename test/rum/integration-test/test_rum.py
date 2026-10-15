@@ -29,6 +29,9 @@ from helper import (
     save_configuration,
     AioHTTPServer,
     free_port,
+    make_temporary_configuration,
+    assert_rum_injected,
+    assert_rum_not_injected,
 )
 
 RUM_TEST_DIR = Path(__file__).parent
@@ -247,72 +250,3 @@ def test_rum_proxy_injection_pending_header(server: Server, agent: AgentSession,
 
         assert server.stop(conf_path)
 
-
-# Helper functions
-
-def assert_rum_injected(response: requests.Response) -> None:
-    """
-    Verify that RUM SDK was injected into the response.
-
-    Checks for:
-    1. RUM SDK script in response body
-    2. Injection marker header
-    """
-    content = response.text
-
-    # Check for Datadog RUM SDK markers
-    # The SDK injects a script tag with the browser SDK
-    rum_markers = [
-        "datadoghq-browser-sdk",
-        "DD_RUM",
-        "applicationId",
-        "clientToken",
-    ]
-
-    found_markers = [marker for marker in rum_markers if marker in content]
-
-    assert len(found_markers) > 0, (
-        f"Expected RUM SDK to be injected but found no markers. "
-        f"Response length: {len(content)}, "
-        f"Content preview: {content[:200]}"
-    )
-
-    # Check for injection header
-    injection_header = response.headers.get("x-datadog-sdk-injected")
-    assert injection_header == "1", (
-        f"Expected x-datadog-sdk-injected header to be '1' but got '{injection_header}'"
-    )
-
-
-def assert_rum_not_injected(response: requests.Response) -> None:
-    """
-    Verify that RUM SDK was NOT injected into the response.
-
-    Checks that:
-    1. RUM SDK script is absent from response body
-    2. Injection marker header is not set or is set to a value other than "1"
-    """
-    content = response.text
-
-    # Check that Datadog RUM SDK markers are NOT present
-    rum_markers = [
-        "datadoghq-browser-sdk",
-        "DD_RUM",
-    ]
-
-    found_markers = [marker for marker in rum_markers if marker in content]
-
-    assert len(found_markers) == 0, (
-        f"Expected RUM SDK NOT to be injected but found markers: {found_markers}. "
-        f"Content preview: {content[:500]}"
-    )
-
-    # Check injection header is not set to "1"
-    injection_header = response.headers.get("x-datadog-sdk-injected")
-    assert injection_header != "1", (
-        f"Expected x-datadog-sdk-injected header NOT to be '1' but got '{injection_header}'"
-    )
-
-
-# Import make_temporary_configuration for test_rum_configuration_validation
-from helper import make_temporary_configuration

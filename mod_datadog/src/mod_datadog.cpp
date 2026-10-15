@@ -108,7 +108,18 @@ void register_hooks(apr_pool_t*) {
 #endif
 }
 
-int on_post_config(apr_pool_t*, apr_pool_t*, apr_pool_t*, server_rec* s) {
+int on_post_config(apr_pool_t* pconf, apr_pool_t*, apr_pool_t*, server_rec* s) {
+#if defined(HTTPD_DD_RUM)
+  // Above the g_log_module_status guard on purpose: that guard makes everything
+  // below it run only once, but stable configuration must be re-read on every
+  // configuration load, including graceful restarts. `pconf` scopes the cached
+  // snippet to this load, so it is released when httpd discards the
+  // configuration rather than leaking one snippet per restart.
+  datadog::rum::conf::init_stable_config(s, pconf);
+#else
+  (void)pconf;
+#endif
+
   if (!g_log_module_status) {
     return OK;
   }
@@ -326,9 +337,12 @@ int on_fixups(request_rec* r) {
 #if defined(HTTPD_DD_RUM)
   auto* dir_conf = static_cast<datadog::conf::Directory*>(
       ap_get_module_config(r->per_dir_config, &datadog_module));
-  if (dir_conf != nullptr && dir_conf->rum.enabled == true &&
-      dir_conf->rum.snippet != nullptr) {
-    apr_table_set(r->headers_in, "x-datadog-rum-injection-pending", "1");
+  if (dir_conf != nullptr) {
+    const auto rum_conf =
+        datadog::rum::conf::resolve_configuration(dir_conf->rum);
+    if (rum_conf.enabled && rum_conf.snippet != nullptr) {
+      apr_table_set(r->headers_in, "x-datadog-rum-injection-pending", "1");
+    }
   }
 #endif
 

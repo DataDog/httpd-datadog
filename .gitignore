@@ -35,6 +35,9 @@ httpd-*/
 httpd/
 venv/
 
+packaging/*.tar
+packaging/sources/version
+
 test/.coverage
 test/**/.venv/
 test/**/.pytest_cache/
