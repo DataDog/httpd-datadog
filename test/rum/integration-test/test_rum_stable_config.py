@@ -135,6 +135,8 @@ def no_stable_config() -> Iterator[None]:
         yield
 
 
+RUM_TEST_DIR = Path(__file__).parent
+
 # Prepended to every test body. $load_datadog_module is expanded by
 # make_configuration, so the fragment must go through it rather than being
 # written out directly.
@@ -162,7 +164,11 @@ def start(server: Server, log_dir: str, module_path: str, conf_body: str) -> str
 
     conf_path = os.path.join(log_dir, "httpd.conf")
     save_configuration(
-        make_configuration({"path": fragment_path, "var": {}}, log_dir, module_path),
+        make_configuration(
+            {"path": fragment_path, "var": {"htdoc_dir": RUM_TEST_DIR / "htdocs"}},
+            log_dir,
+            module_path,
+        ),
         conf_path,
     )
 
