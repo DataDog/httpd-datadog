@@ -6,7 +6,7 @@ if(HTTPD_DATADOG_ENABLE_RUM AND NOT CMAKE_CROSSCOMPILING)
   if(NOT STREAM_APR_LIBRARY OR NOT STREAM_APRUTIL_LIBRARY)
     message(FATAL_ERROR "RUM streaming tests need native APR and APR-util libraries")
   endif()
-  add_executable(rum_streaming_tests test_rum_streaming.cpp
+  add_executable(rum_streaming_tests ../rum/unit-test/test_rum_streaming.cpp
     ../../mod_datadog/src/rum/filter.cpp
     ../../mod_datadog/src/rum/telemetry.cpp)
   target_include_directories(rum_streaming_tests PRIVATE

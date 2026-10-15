@@ -1,5 +1,5 @@
-HTTP checks run in the RUM and integration CI jobs. From `test/integration-test`:
-`uv run pytest scenarios/test_rum_streaming.py --module-path=/path/to/mod_datadog.so --bin-path=/path/to/apachectl -v`
+HTTP checks run in the RUM and integration CI jobs. From `test`:
+`uv run pytest rum/integration-test/test_rum_streaming.py --module-path=/path/to/mod_datadog.so --bin-path=/path/to/apachectl -v`
 
 ```sh
 cmake -S . -B build -DHTTPD_SRC_DIR=/path/to/httpd -DHTTPD_DATADOG_ENABLE_RUM=ON
