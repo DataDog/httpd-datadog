@@ -33,6 +33,25 @@ stages:
   - test
   - aws
 
+devcontainer-ghcr-policy-check:
+  stage: .pre
+  image: registry.ddbuild.io/images/dd-octo-sts-ci-base:2025.07-1
+  tags: ["arch:amd64"]
+  needs: []
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"'
+    - changes:
+        - .github/chainguard/self.gitlab.github-release.sts.yaml
+        - .gitlab/devcontainer-to-ghcr.yml
+        - .gitlab-ci.yml
+    - when: never
+  script:
+    - git config --global --add safe.directory "$CI_PROJECT_DIR"
+    - >
+      dd-octo-sts check --repo "$CI_PROJECT_DIR"
+      --scope "$DEVCONTAINER_GHCR_SCOPE" --policy "$DEVCONTAINER_GHCR_POLICY"
+      --skip-token-check
+
 # Template jobs (hidden, reusable)
 .build-template:
   stage: build
