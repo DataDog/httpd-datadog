@@ -5,6 +5,8 @@
 #include <rapidjson/stringbuffer.h>
 #include <rapidjson/writer.h>
 
+#include <cmath>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 
@@ -16,6 +18,29 @@
 using namespace datadog::conf;
 
 namespace {
+bool valid_version(const std::string& version) {
+  return version.size() >= 2 && version.front() == 'v' &&
+         std::all_of(version.begin() + 1, version.end(), [](char character) {
+           return character >= '0' && character <= '9';
+         });
+}
+
+double parse_sample_rate(const std::string& key, const std::string& value) {
+  size_t consumed = 0;
+  double rate;
+  try {
+    rate = std::stod(value, &consumed);
+  } catch (const std::exception&) {
+    throw std::invalid_argument(fmt::format("{} must be a number", key));
+  }
+  if (value.find_first_not_of(" \t\r\n\f\v", consumed) != std::string::npos ||
+      !std::isfinite(rate)) {
+    throw std::invalid_argument(
+        fmt::format("{} must be a complete, finite number", key));
+  }
+  return rate;
+}
+
 std::vector<std::string> split(const std::string& str,
                                const std::string& delimiter = ",") {
   std::vector<std::string> result;
@@ -35,16 +60,16 @@ std::string make_rum_json_config(
   doc.SetObject();
 
   rapidjson::Document::AllocatorType& allocator = doc.GetAllocator();
-  doc.AddMember("majorVersion",
-                rapidjson::Value(std::stoi(config_version.data() + 1)),
-                allocator);
+  const int major_version = std::stoi(std::string(config_version.substr(1)));
+  doc.AddMember("majorVersion", rapidjson::Value(major_version), allocator);
 
   rapidjson::Value rum(rapidjson::kObjectType);
   for (const auto& [key, value] : config) {
     auto value_is_array = datadog::common::utils::contains(value, ",");
     if (key == "sessionSampleRate" || key == "sessionReplaySampleRate") {
       rum.AddMember(rapidjson::Value(key.c_str(), allocator).Move(),
-                    rapidjson::Value(std::stod(value)).Move(), allocator);
+                    rapidjson::Value(parse_sample_rate(key, value)).Move(),
+                    allocator);
     } else if (key == "trackResources" || key == "trackLongTasks" ||
                key == "trackUserInteractions") {
       auto b = (value == "true" ? true : false);
@@ -131,9 +156,7 @@ const char* datadog_rum_settings_section(cmd_parms* cmd, void* cfg,
     }
   }
 
-  if (version.length() < 2 ||
-      !std::all_of(version.begin() + 1, version.end(),
-                   [](char c) { return std::isdigit(c); })) {
+  if (!valid_version(version)) {
     return apr_pstrcat(cmd->pool, cmd->cmd->name, "> version format error",
                        nullptr);
   }
@@ -157,8 +180,13 @@ const char* datadog_rum_settings_section(cmd_parms* cmd, void* cfg,
           ? "remote_config_used:true"
           : "remote_config_used:false";
 
-  const auto json_config =
-      make_rum_json_config(dir_conf.rum.version, dir_conf.rum.config);
+  std::string json_config;
+  try {
+    json_config =
+        make_rum_json_config(dir_conf.rum.version, dir_conf.rum.config);
+  } catch (const std::exception& error) {
+    return apr_psprintf(cmd->pool, "Invalid RUM settings: %s", error.what());
+  }
   if (json_config.empty()) {
     return "failed to generate the RUM SDK script";
   }
