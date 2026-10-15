@@ -46,7 +46,7 @@ def streaming_proxy(server: Server, log_dir: str, module_path: str) -> Iterator[
         proxy = cleanup.enter_context(upstream_proxy(StreamingUpstream))
         cleanup.callback(server.stop, conf_path)
         configuration = {
-            "path": "conf/rum_content_type.conf",
+            "path": Path(__file__).parent / "conf/rum_content_type.conf",
             "var": {"htdoc_dir": docroot, "proxy_configuration": proxy},
         }
         save_configuration(make_configuration(configuration, log_dir, module_path), conf_path)
