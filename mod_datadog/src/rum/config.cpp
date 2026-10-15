@@ -33,7 +33,8 @@ double parse_sample_rate(const std::string& key, const std::string& value) {
   } catch (const std::exception&) {
     throw std::invalid_argument(fmt::format("{} must be a number", key));
   }
-  if (consumed != value.size() || !std::isfinite(rate)) {
+  if (value.find_first_not_of(" \t\r\n\f\v", consumed) != std::string::npos ||
+      !std::isfinite(rate)) {
     throw std::invalid_argument(
         fmt::format("{} must be a complete, finite number", key));
   }

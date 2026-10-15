@@ -29,8 +29,12 @@ DatadogRum On
 
 @pytest.mark.parametrize("option", ["sessionSampleRate", "sessionReplaySampleRate"])
 @pytest.mark.parametrize(
-    "value", ["invalid", "1e9999", "10junk", "10 ", "nan", "inf"],
-    ids=["invalid", "overflow", "trailing-text", "trailing-space", "nan", "inf"],
+    "value",
+    ["invalid", "1e9999", "10junk", "nan", "inf", "", " \t ", "1 0"],
+    ids=[
+        "invalid", "overflow", "trailing-text", "nan", "inf", "empty",
+        "whitespace", "internal-space",
+    ],
 )
 def test_rum_invalid_rate_is_config_error(server, log_dir, module_path, option, value):
     result = check_settings(server, log_dir, module_path, "v6", option, value)
@@ -48,7 +52,13 @@ def test_rum_invalid_version_is_config_error(server, log_dir, module_path, versi
 
 
 @pytest.mark.parametrize("option", ["sessionSampleRate", "sessionReplaySampleRate"])
-@pytest.mark.parametrize("value", ["0", "10.5", "100", "1e1"])
+@pytest.mark.parametrize(
+    "value", ["0", "10.5", "100", "1e1", " 10", "10 ", "\t10.5\t"],
+    ids=[
+        "zero", "fraction", "full", "exponent", "leading-space", "trailing-space",
+        "surrounding-tabs",
+    ],
+)
 def test_rum_valid_rates_are_accepted(server, log_dir, module_path, option, value):
     result = check_settings(server, log_dir, module_path, "v6", option, value)
     assert result.returncode == 0, result.stderr
