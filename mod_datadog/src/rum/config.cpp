@@ -191,13 +191,14 @@ const char* datadog_rum_settings_section(cmd_parms* cmd, void* cfg,
     return "failed to generate the RUM SDK script";
   }
 
-  Snippet* snippet = snippet_create_from_json(json_config.c_str());
+  std::shared_ptr<Snippet> snippet(
+      snippet_create_from_json(json_config.c_str()), snippet_cleanup);
   if (snippet->error_code != 0) {
     return apr_psprintf(cmd->pool, "Failed to initialize RUM SDK injection: %s",
                         snippet->error_message);
   }
 
-  dir_conf.rum.snippet = snippet;
+  dir_conf.rum.snippet = std::move(snippet);
 
   return NULL;
 }
