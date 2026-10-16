@@ -18,7 +18,7 @@ if(HTTPD_DATADOG_ENABLE_RUM AND NOT CMAKE_CROSSCOMPILING)
   target_link_libraries(rum_streaming_tests PRIVATE
     httpd dd-trace-cpp-static inject_browser_sdk_ffi fmt
     ${STREAM_APR_LIBRARY} ${STREAM_APRUTIL_LIBRARY})
-  foreach(mode split same-brigade false-prefix eof deferred flush large)
+  foreach(mode split same-brigade false-prefix eof deferred flush large file empty)
     add_test(NAME rum-streaming-${mode} COMMAND rum_streaming_tests ${mode})
     set_tests_properties(rum-streaming-${mode} PROPERTIES TIMEOUT 10)
   endforeach()

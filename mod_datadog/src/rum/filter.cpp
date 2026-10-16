@@ -127,54 +127,60 @@ int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
   size_t bytes;
   const char* buffer;
 
-  for (apr_bucket* b = APR_BRIGADE_FIRST(bb); b != APR_BRIGADE_SENTINEL(bb);
-       b = APR_BUCKET_NEXT(b)) {
+  apr_bucket* b = APR_BRIGADE_FIRST(bb);
+  while (b != APR_BRIGADE_SENTINEL(bb)) {
     if (APR_BUCKET_IS_EOS(b)) {
-      injector_end(ctx->injector);
+      const InjectorResult result = injector_end_without_padding(ctx->injector);
+      insert_injection_slices(b, result, r->connection->bucket_alloc);
+      ctx->state = InjectionState::done;
       count_injection(telemetry::injection_failed, "reason:missing_header_tag",
                       dir_conf->rum);
-    } else if (APR_BUCKET_IS_METADATA(b)) {
-      // TODO: Handle metadata bucket like flush
-    } else if (apr_bucket_read(b, &buffer, &bytes, APR_BLOCK_READ) ==
-               APR_SUCCESS) {
-      InjectorResult result =
-          injector_write(ctx->injector, (const uint8_t*)buffer, bytes);
+      break;
+    }
+    if (APR_BUCKET_IS_METADATA(b)) {
+      b = APR_BUCKET_NEXT(b);
+      continue;
+    }
+    const apr_status_t status =
+        apr_bucket_read(b, &buffer, &bytes, APR_BLOCK_READ);
+    if (status != APR_SUCCESS) return status;
 
-      insert_injection_slices(b, result, r->connection->bucket_alloc);
-      if (result.injected) {
-        ctx->state = InjectionState::done;
-        apr_table_set(r->headers_out, k_injected_header.data(), "1");
+    InjectorResult result = injector_write(
+        ctx->injector, reinterpret_cast<const uint8_t*>(buffer), bytes);
 
-        ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r,
-                      "[RUM] successfully injected the browser SDK.");
-        datadog::telemetry::counter::increment(
-            telemetry::injection_succeed,
-            telemetry::build_tags(dir_conf->rum.app_id_tag,
-                                  dir_conf->rum.remote_config_tag));
+    // Reading a bucket can add more input buckets.
+    apr_bucket* next = APR_BUCKET_NEXT(b);
+    insert_injection_slices(b, result, r->connection->bucket_alloc);
+    apr_bucket_delete(b);
+    b = next;
+    if (result.injected) {
+      ctx->state = InjectionState::done;
+      apr_table_set(r->headers_out, k_injected_header.data(), "1");
 
-        return ap_pass_brigade(f->next, bb);
-      }
+      ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r,
+                    "[RUM] successfully injected the browser SDK.");
+      datadog::telemetry::counter::increment(
+          telemetry::injection_succeed,
+          telemetry::build_tags(dir_conf->rum.app_id_tag,
+                                dir_conf->rum.remote_config_tag));
+
+      return ap_pass_brigade(f->next, bb);
     }
   }
 
-  ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r,
-                "[RUM] failed to inject the browser SDK.");
   return ap_pass_brigade(f->next, bb);
 }
 
 static void insert_injection_slices(apr_bucket* bucket,
                                     const InjectorResult& result,
                                     apr_bucket_alloc_t* allocator) {
-  size_t offset = 0;
   for (size_t index = 0; index < result.slices_length; ++index) {
     const BytesSlice& slice = result.slices[index];
-    if (!slice.from_incoming_chunk) {
-      apr_bucket* snippet_bucket = apr_bucket_immortal_create(
-          reinterpret_cast<const char*>(slice.start), slice.length, allocator);
-      apr_bucket_split(bucket, offset);
-      APR_BUCKET_INSERT_AFTER(bucket, snippet_bucket);
-    }
-    offset += slice.length;
+    if (slice.length == 0) continue;
+    apr_bucket* output_bucket =
+        apr_bucket_heap_create(reinterpret_cast<const char*>(slice.start),
+                               slice.length, nullptr, allocator);
+    APR_BUCKET_INSERT_BEFORE(bucket, output_bucket);
   }
 }
 

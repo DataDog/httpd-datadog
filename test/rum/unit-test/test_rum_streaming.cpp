@@ -34,6 +34,7 @@ int ap_get_request_module_loglevel(const request_rec*, int) { return 0; }
 static apr_bucket_brigade* downstream = nullptr;
 static std::string output;
 static bool defer_reads = false;
+static bool file_buckets = false;
 static std::vector<size_t> flush_offsets;
 static int endings = 0;
 
@@ -87,6 +88,24 @@ static void own_snippet(SnippetOwner& owner, Snippet* snippet) {
   }
 }
 
+// Without mmap, reading a file bucket splits it into a heap bucket of
+// APR_BUCKET_BUFF_SIZE bytes and a file bucket for the rest.
+static apr_bucket* make_bucket(ap_filter_t* filter, const std::string& chunk) {
+  if (!file_buckets) {
+    return apr_bucket_heap_create(chunk.data(), chunk.size(), nullptr,
+                                  filter->c->bucket_alloc);
+  }
+  char path[] = "/tmp/rum-streaming-XXXXXX";
+  apr_file_t* file = nullptr;
+  assert(apr_file_mktemp(&file, path, 0, filter->r->pool) == APR_SUCCESS);
+  assert(apr_file_write_full(file, chunk.data(), chunk.size(), nullptr) ==
+         APR_SUCCESS);
+  apr_bucket* bucket = apr_bucket_file_create(
+      file, 0, chunk.size(), filter->r->pool, filter->c->bucket_alloc);
+  apr_bucket_file_enable_mmap(bucket, 0);
+  return bucket;
+}
+
 static std::string write_stream(ap_filter_t* filter,
                                 apr_bucket_brigade* brigade,
                                 const std::vector<std::string>& chunks,
@@ -94,9 +113,7 @@ static std::string write_stream(ap_filter_t* filter,
   std::string expected;
   for (const std::string& chunk : chunks) {
     expected += chunk;
-    APR_BRIGADE_INSERT_TAIL(
-        brigade, apr_bucket_heap_create(chunk.data(), chunk.size(), nullptr,
-                                        filter->c->bucket_alloc));
+    APR_BRIGADE_INSERT_TAIL(brigade, make_bucket(filter, chunk));
     if (with_flush) {
       APR_BRIGADE_INSERT_TAIL(brigade,
                               apr_bucket_flush_create(filter->c->bucket_alloc));
@@ -113,11 +130,7 @@ static std::string write_stream(ap_filter_t* filter,
 static void check_output(std::string expected, const std::string& snippet,
                          bool with_flush) {
   const size_t closing = expected.find("</head>");
-  if (closing == std::string::npos) {
-    expected.append(snippet.size(), ' ');
-  } else {
-    expected.insert(closing, snippet);
-  }
+  if (closing != std::string::npos) expected.insert(closing, snippet);
   assert(output == expected);
   assert(endings == 1);
   if (with_flush) {
@@ -169,7 +182,14 @@ int main(int argc, char* argv[]) {
   apr_initialize();
   const std::string mode = argv[1];
   defer_reads = mode == "deferred" || mode == "large";
-  if (mode == "false-prefix") {
+  file_buckets = mode == "file";
+  if (mode == "file") {
+    const std::string before_split(APR_BUCKET_BUFF_SIZE - 2, 'x');
+    check_stream({before_split + "</head>def"}, false);
+    check_stream({before_split + "</headless>"}, false);
+  } else if (mode == "empty") {
+    check_stream({}, false);
+  } else if (mode == "false-prefix") {
     check_stream({"abc</he", "ader>def"}, false);
   } else if (mode == "eof") {
     check_stream({"abc</he"}, false);
