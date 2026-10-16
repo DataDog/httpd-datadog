@@ -1,7 +1,7 @@
+#include <apr_strings.h>
 #include <apr_uri.h>
 #include <datadog/runtime_id.h>
 #include <datadog/tracer.h>
-#include <fmt/core.h>
 #include <http_core.h>
 #include <http_log.h>
 #include <http_protocol.h>
@@ -173,10 +173,8 @@ const char* set_agent_url(cmd_parms* cmd, void* /* cfg */, const char* arg) {
   apr_status_t status = apr_uri_parse(cmd->pool, arg, &uri);
   if (status != 0 || uri.is_initialized == 0 || uri.scheme == nullptr ||
       uri.hostinfo == nullptr) {
-    char* err_msg = new char[256];
-    fmt::format_to_n(err_msg, 256, "{}: failed to parse \"{}\" URL",
-                     cmd->directive->directive, arg);
-    return err_msg;
+    return apr_psprintf(cmd->pool, "%s: failed to parse \"%s\" URL",
+                        cmd->directive->directive, arg);
   }
 
   module_conf->tracing.agent.url = arg;
@@ -192,18 +190,14 @@ const char* set_sampling_rate(cmd_parms* cmd, void* /* cfg */,
 
   double rate = strtod(arg, &end);
   if (errno == ERANGE || *end != 0) {
-    char* err_msg = new char[256];
-    fmt::format_to_n(err_msg, 256, "{}: could not parse \"{}\" input",
-                     cmd->directive->directive, arg);
-    return err_msg;
+    return apr_psprintf(cmd->pool, "%s: could not parse \"%s\" input",
+                        cmd->directive->directive, arg);
   }
 
   if (rate < 0.0 || rate > 1.0) {
-    char* err_msg = new char[256];
-    fmt::format_to_n(err_msg, 256,
-                     "{}: \"{}\" input is not in the [0;1] expected range",
-                     cmd->directive->directive, arg);
-    return err_msg;
+    return apr_psprintf(cmd->pool,
+                        "%s: \"%s\" input is not in the [0;1] expected range",
+                        cmd->directive->directive, arg);
   }
 
   module_conf->tracing.trace_sampler.sample_rate = rate;
@@ -236,13 +230,12 @@ const char* set_propagation_style(cmd_parms* cmd, void* /* cfg */, int argc,
     } else if (arg == "b3") {
       propagation.emplace_back(dd::PropagationStyle::B3);
     } else {
-      char* err_msg = new char[256];
-      fmt::format_to_n(err_msg, 256,
-                       "{}: \"{}\" is not a supported propagation style. Only "
-                       "\"datadog\", \"tracecontext\" and \"b3\" are valid "
-                       "propagation styles",
-                       cmd->directive->directive, arg);
-      return err_msg;
+      return apr_psprintf(
+          cmd->pool,
+          "%s: \"%s\" is not a supported propagation style. Only "
+          "\"datadog\", \"tracecontext\" and \"b3\" are valid propagation "
+          "styles",
+          cmd->directive->directive, arg.c_str());
     }
   }
 
