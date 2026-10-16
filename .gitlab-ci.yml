@@ -39,11 +39,12 @@ devcontainer-ghcr-policy-check:
   tags: ["arch:amd64"]
   needs: []
   rules:
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"'
     - changes:
-        - .github/chainguard/self.gitlab.github-release.sts.yaml
-        - .gitlab/devcontainer-to-ghcr.yml
-        - .gitlab-ci.yml
+        paths:
+          - .github/chainguard/self.gitlab.github-release.sts.yaml
+          - .gitlab/devcontainer-to-ghcr.yml
+          - .gitlab-ci.yml
+        compare_to: refs/heads/main
     - when: never
   script:
     - git config --global --add safe.directory "$CI_PROJECT_DIR"
