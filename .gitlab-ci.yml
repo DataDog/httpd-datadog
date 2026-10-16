@@ -1,6 +1,6 @@
 include:
   - local: .gitlab/devcontainer.yml
-  - local: .gitlab/devcontainer-to-ghcr.yml
+  - local: .gitlab/devcontainer-to-public.yml
 
 variables:
   # Inputs to .gitlab/devcontainer.yml (the dd-repo-tools shared
@@ -33,25 +33,23 @@ stages:
   - test
   - aws
 
-devcontainer-ghcr-policy-check:
-  stage: .pre
-  image: registry.ddbuild.io/images/dd-octo-sts-ci-base:2025.07-1
-  tags: ["arch:amd64"]
-  needs: []
+test-public-devcontainer-publisher:
+  stage: test
+  extends: .amd64
+  needs:
+    - job: devcontainer_image
+      artifacts: true
   rules:
     - changes:
         paths:
-          - .github/chainguard/self.gitlab.github-release.sts.yaml
-          - .gitlab/devcontainer-to-ghcr.yml
+          - .gitlab/devcontainer-to-public.yml
+          - .gitlab/publish-devcontainer.sh
           - .gitlab-ci.yml
+          - test/ci/test_publish_devcontainer.py
         compare_to: refs/heads/main
     - when: never
   script:
-    - git config --global --add safe.directory "$CI_PROJECT_DIR"
-    - >
-      dd-octo-sts check --repo "$CI_PROJECT_DIR"
-      --scope "$DEVCONTAINER_GHCR_SCOPE" --policy "$DEVCONTAINER_GHCR_POLICY"
-      --skip-token-check
+    - python3 -m unittest discover -s test/ci -p test_publish_devcontainer.py
 
 # Template jobs (hidden, reusable)
 .build-template:
