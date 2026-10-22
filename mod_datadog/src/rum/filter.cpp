@@ -32,9 +32,9 @@ static apr_status_t inject_into_bucket(
     const datadog::rum::conf::Directory& rum_conf, apr_bucket* bucket);
 static void record_injection(rum_filter_ctx& ctx, request_rec& request,
                              const datadog::rum::conf::Directory& rum_conf);
-static void insert_injection_slices(apr_bucket* bucket,
-                                    const InjectorResult& result,
-                                    apr_bucket_alloc_t* allocator);
+static void insert_injector_output(apr_bucket* bucket,
+                                   const InjectorResult& result,
+                                   apr_bucket_alloc_t* allocator);
 
 static void init_rum_context(ap_filter_t* filter, Snippet* snippet) {
   request_rec* const request = filter->r;
@@ -174,7 +174,7 @@ static void end_injection(rum_filter_ctx& ctx, request_rec& request,
                           apr_bucket* eos_bucket,
                           const datadog::rum::conf::Directory& rum_conf) {
   const InjectorResult result = injector_end_without_padding(ctx.injector);
-  insert_injection_slices(eos_bucket, result, request.connection->bucket_alloc);
+  insert_injector_output(eos_bucket, result, request.connection->bucket_alloc);
   ctx.state = InjectionState::done;
   count_injection(telemetry::injection_failed, "reason:missing_header_tag",
                   rum_conf);
@@ -191,7 +191,7 @@ static apr_status_t inject_into_bucket(
 
   const InjectorResult result = injector_write(
       ctx.injector, reinterpret_cast<const uint8_t*>(data), length);
-  insert_injection_slices(bucket, result, request.connection->bucket_alloc);
+  insert_injector_output(bucket, result, request.connection->bucket_alloc);
   if (result.injected) record_injection(ctx, request, rum_conf);
   return APR_SUCCESS;
 }
@@ -207,9 +207,9 @@ static void record_injection(rum_filter_ctx& ctx, request_rec& request,
       telemetry::build_tags(rum_conf.app_id_tag, rum_conf.remote_config_tag));
 }
 
-static void insert_injection_slices(apr_bucket* bucket,
-                                    const InjectorResult& result,
-                                    apr_bucket_alloc_t* allocator) {
+static void insert_injector_output(apr_bucket* bucket,
+                                   const InjectorResult& result,
+                                   apr_bucket_alloc_t* allocator) {
   for (size_t index = 0; index < result.slices_length; ++index) {
     const BytesSlice& slice = result.slices[index];
     if (slice.length == 0) continue;
