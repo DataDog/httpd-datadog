@@ -4,6 +4,7 @@ from collections.abc import Iterator
 from contextlib import ExitStack
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
+import tempfile
 import time
 
 import pytest
@@ -11,15 +12,18 @@ import requests
 
 from conftest import Server
 from helper import make_configuration, save_configuration
-from test_rum_content_type import static_docroot, upstream_proxy
+from upstream import upstream_proxy
 
 
-STREAMS = {
+STREAMS_WITH_CLOSING_TAG = {
     "split": [b"<html><head><title>Page</title></he", b"ad><body>Page</body></html>"],
     "false-prefix": [b"<html><head></he", b"ader></head><body>Page</body></html>"],
-    "eof": [b"<html><head><title>Page</title></he"],
     "large": [b"<html><head></head><body>" + b"0123456789" * 10000 + b"</body></html>"],
 }
+STREAMS_WITHOUT_CLOSING_TAG = {
+    "eof": [b"<html><head><title>Page</title></he"],
+}
+STREAMS = {**STREAMS_WITH_CLOSING_TAG, **STREAMS_WITHOUT_CLOSING_TAG}
 
 
 class StreamingUpstream(BaseHTTPRequestHandler):
@@ -42,7 +46,7 @@ class StreamingUpstream(BaseHTTPRequestHandler):
 def streaming_proxy(server: Server, log_dir: str, module_path: str) -> Iterator[Server]:
     conf_path = str(Path(log_dir) / "httpd.conf")
     with ExitStack() as cleanup:
-        docroot = cleanup.enter_context(static_docroot())
+        docroot = cleanup.enter_context(tempfile.TemporaryDirectory(prefix="rum-streaming-"))
         proxy = cleanup.enter_context(upstream_proxy(StreamingUpstream))
         cleanup.callback(server.stop, conf_path)
         configuration = {
@@ -55,20 +59,30 @@ def streaming_proxy(server: Server, log_dir: str, module_path: str) -> Iterator[
         yield server
 
 
-@pytest.mark.requires_rum
-@pytest.mark.parametrize("mode", STREAMS)
-def test_rum_streaming(streaming_proxy: Server, mode: str) -> None:
-    response = requests.get(streaming_proxy.make_url(f"/upstream/{mode}"), timeout=3)
+def fetch_stream(proxy: Server, mode: str) -> bytes:
+    response = requests.get(proxy.make_url(f"/upstream/{mode}"), timeout=3)
     assert response.status_code == 200
+    return response.content
+
+
+@pytest.mark.requires_rum
+@pytest.mark.parametrize("mode", STREAMS_WITH_CLOSING_TAG)
+def test_rum_streaming_injects_before_closing_tag(streaming_proxy: Server, mode: str) -> None:
+    content = fetch_stream(streaming_proxy, mode)
     body = b"".join(STREAMS[mode])
     closing = body.find(b"</head>")
-    if closing < 0:
-        assert response.content[: len(body)] == body
-        padding = response.content[len(body) :]
-        assert padding and padding.strip(b" ") == b""
-    else:
-        added = len(response.content) - len(body)
-        assert added > 0
-        assert response.content[:closing] == body[:closing]
-        assert b"DD_RUM" in response.content[closing : closing + added]
-        assert response.content[closing + added :] == body[closing:]
+    added = len(content) - len(body)
+    assert added > 0
+    assert content[:closing] == body[:closing]
+    assert b"DD_RUM" in content[closing : closing + added]
+    assert content[closing + added :] == body[closing:]
+
+
+@pytest.mark.requires_rum
+@pytest.mark.parametrize("mode", STREAMS_WITHOUT_CLOSING_TAG)
+def test_rum_streaming_keeps_body_without_closing_tag(streaming_proxy: Server, mode: str) -> None:
+    content = fetch_stream(streaming_proxy, mode)
+    body = b"".join(STREAMS[mode])
+    assert content[: len(body)] == body
+    padding = content[len(body) :]
+    assert padding and padding.strip(b" ") == b""

@@ -2,10 +2,9 @@
 
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 import tempfile
-import threading
 import time
 from typing import NamedTuple
 
@@ -14,6 +13,7 @@ import requests
 
 from conftest import Server
 from helper import make_configuration, save_configuration
+from upstream import upstream_proxy
 
 RUM_TEST_DIR = Path(__file__).parent
 
@@ -46,7 +46,7 @@ def test_rum_respects_response_content_type(
     conf_path = str(Path(log_dir) / "httpd.conf")
     with ExitStack() as cleanup:
         docroot = cleanup.enter_context(static_docroot())
-        proxy_configuration = cleanup.enter_context(upstream_proxy()) if proxied else ""
+        proxy_configuration = cleanup.enter_context(upstream_proxy(UpstreamHandler)) if proxied else ""
         cleanup.callback(server.stop, conf_path)
         config = {
             "path": RUM_TEST_DIR / "conf/rum_content_type.conf",
@@ -72,26 +72,6 @@ def static_docroot() -> Iterator[str]:
             path.write_bytes(expected.body)
             path.chmod(0o644)
         yield docroot
-
-
-@contextmanager
-def upstream_proxy(
-    handler_type: type[BaseHTTPRequestHandler] | None = None,
-) -> Iterator[str]:
-    upstream = ThreadingHTTPServer(("127.0.0.1", 0), handler_type or UpstreamHandler)
-    upstream_thread = threading.Thread(target=upstream.serve_forever)
-    upstream_thread.start()
-    try:
-        yield f"""
-LoadModule proxy_module modules/mod_proxy.so
-LoadModule proxy_http_module modules/mod_proxy_http.so
-ProxyRequests Off
-ProxyPass /upstream/ http://127.0.0.1:{upstream.server_port}/
-"""
-    finally:
-        upstream.shutdown()
-        upstream.server_close()
-        upstream_thread.join()
 
 
 class UpstreamHandler(BaseHTTPRequestHandler):
