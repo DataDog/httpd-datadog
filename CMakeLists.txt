@@ -43,10 +43,11 @@ endif (UNIX)
 
 add_subdirectory(deps)
 add_subdirectory(mod_datadog)
+# Must come before the test subdirectories, or CTest skips their tests.
+enable_testing()
 add_subdirectory(test/unit-test)
 
 # Integration tests
-enable_testing()
 add_test(
   NAME integration-tests
   COMMAND uv run pytest
