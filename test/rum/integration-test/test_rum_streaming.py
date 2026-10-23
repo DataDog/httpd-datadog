@@ -22,6 +22,7 @@ STREAMS_WITH_CLOSING_TAG = {
 }
 STREAMS_WITHOUT_CLOSING_TAG = {
     "eof": [b"<html><head><title>Page</title></he"],
+    "no-head": [b"<html><body><", b"div>Page</div></body></html>"],
 }
 STREAMS = {**STREAMS_WITH_CLOSING_TAG, **STREAMS_WITHOUT_CLOSING_TAG}
 
@@ -81,8 +82,4 @@ def test_rum_streaming_injects_before_closing_tag(streaming_proxy: Server, mode:
 @pytest.mark.requires_rum
 @pytest.mark.parametrize("mode", STREAMS_WITHOUT_CLOSING_TAG)
 def test_rum_streaming_keeps_body_without_closing_tag(streaming_proxy: Server, mode: str) -> None:
-    content = fetch_stream(streaming_proxy, mode)
-    body = b"".join(STREAMS[mode])
-    assert content[: len(body)] == body
-    padding = content[len(body) :]
-    assert padding and padding.strip(b" ") == b""
+    assert fetch_stream(streaming_proxy, mode) == b"".join(STREAMS[mode])
