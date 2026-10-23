@@ -5,10 +5,8 @@
 #include <http_log.h>
 #include <util_filter.h>
 
-#include <cassert>
-#include <memory>
+#include <catch2/catch.hpp>
 #include <string>
-#include <type_traits>
 #include <vector>
 
 #include "common_conf.h"
@@ -37,18 +35,20 @@ static bool defer_reads = false;
 static std::vector<size_t> flush_offsets;
 static int endings = 0;
 
+// Called from the filter: use CHECK, so a failure does not throw through it.
 static void read_output() {
   for (apr_bucket* bucket = APR_BRIGADE_FIRST(downstream);
        bucket != APR_BRIGADE_SENTINEL(downstream);
        bucket = APR_BUCKET_NEXT(bucket)) {
-    assert(endings == 0);
+    CHECK(endings == 0);
     if (APR_BUCKET_IS_EOS(bucket)) ++endings;
     if (APR_BUCKET_IS_FLUSH(bucket)) flush_offsets.push_back(output.size());
     if (APR_BUCKET_IS_METADATA(bucket)) continue;
     const char* buffer = nullptr;
     apr_size_t length = 0;
-    assert(apr_bucket_read(bucket, &buffer, &length, APR_BLOCK_READ) ==
-           APR_SUCCESS);
+    const apr_status_t status =
+        apr_bucket_read(bucket, &buffer, &length, APR_BLOCK_READ);
+    CHECK(status == APR_SUCCESS);
     output.append(buffer, length);
   }
   apr_brigade_cleanup(downstream);
@@ -64,7 +64,7 @@ extern "C" apr_status_t ap_pass_brigade(ap_filter_t*,
 static std::string snippet_text(Snippet* snippet) {
   Injector* injector = injector_create(snippet);
   const std::string closing_tag = "</head>";
-  InjectorResult result = injector_write(
+  const InjectorResult result = injector_write(
       injector, reinterpret_cast<const uint8_t*>(closing_tag.data()),
       closing_tag.size());
   std::string text;
@@ -72,19 +72,11 @@ static std::string snippet_text(Snippet* snippet) {
     text.append(reinterpret_cast<const char*>(result.slices[index].start),
                 result.slices[index].length);
   }
-  assert(result.injected);
+  const bool injected = result.injected;
   injector_cleanup(injector);
+  REQUIRE(injected);
   text.resize(text.size() - closing_tag.size());
   return text;
-}
-
-template <typename SnippetOwner>
-static void own_snippet(SnippetOwner& owner, Snippet* snippet) {
-  if constexpr (std::is_pointer_v<SnippetOwner>) {
-    owner = snippet;
-  } else {
-    owner = std::shared_ptr<Snippet>(snippet, snippet_cleanup);
-  }
 }
 
 static std::string write_stream(ap_filter_t* filter,
@@ -101,34 +93,32 @@ static std::string write_stream(ap_filter_t* filter,
       APR_BRIGADE_INSERT_TAIL(brigade,
                               apr_bucket_flush_create(filter->c->bucket_alloc));
     }
-    if (!together) assert(rum_output_filter(filter, brigade) == APR_SUCCESS);
+    if (!together) CHECK(rum_output_filter(filter, brigade) == APR_SUCCESS);
   }
   APR_BRIGADE_INSERT_TAIL(brigade,
                           apr_bucket_eos_create(filter->c->bucket_alloc));
-  assert(rum_output_filter(filter, brigade) == APR_SUCCESS);
+  CHECK(rum_output_filter(filter, brigade) == APR_SUCCESS);
   read_output();
   return expected;
 }
 
-static void check_output(std::string expected, const std::string& snippet,
-                         bool with_flush) {
+static void check_output(std::string expected, const std::string& snippet) {
   const size_t closing = expected.find("</head>");
   if (closing == std::string::npos) {
     expected.append(snippet.size(), ' ');
   } else {
     expected.insert(closing, snippet);
   }
-  assert(output == expected);
-  assert(endings == 1);
-  if (with_flush) {
-    const std::vector<size_t> expected_offsets = {3, 10 + snippet.size(),
-                                                  expected.size()};
-    assert(flush_offsets == expected_offsets);
-  }
+  CHECK(output == expected);
+  CHECK(endings == 1);
 }
 
-static void check_stream(const std::vector<std::string>& chunks, bool together,
-                         bool with_flush = false) {
+// Returns the snippet text, so callers can check positions in the output.
+static std::string check_stream(const std::vector<std::string>& chunks,
+                                bool together, bool deferred,
+                                bool with_flush = false) {
+  defer_reads = deferred;
+  apr_initialize();
   apr_pool_t* pool = nullptr;
   apr_pool_create(&pool, nullptr);
   conn_rec connection = {};
@@ -142,12 +132,11 @@ static void check_stream(const std::vector<std::string>& chunks, bool together,
   request.headers_out = apr_table_make(pool, 4);
   datadog::conf::Directory directory;
   directory.rum.enabled = true;
-  Snippet* snippet_pointer = snippet_create_from_json(
+  directory.rum.snippet = snippet_create_from_json(
       "{\"majorVersion\":6,\"rum\":{\"applicationId\":\"test\","
       "\"clientToken\":\"test\"}}");
-  own_snippet(directory.rum.snippet, snippet_pointer);
-  assert(snippet_pointer->error_code == 0);
-  const std::string snippet = snippet_text(snippet_pointer);
+  CHECK(directory.rum.snippet->error_code == 0);
+  const std::string snippet = snippet_text(directory.rum.snippet);
   void* configuration[] = {&directory};
   request.per_dir_config = reinterpret_cast<ap_conf_vector_t*>(configuration);
   ap_filter_t filter = {};
@@ -160,33 +149,43 @@ static void check_stream(const std::vector<std::string>& chunks, bool together,
   flush_offsets.clear();
   endings = 0;
   check_output(write_stream(&filter, brigade, chunks, together, with_flush),
-               snippet, with_flush);
+               snippet);
   apr_pool_destroy(pool);
+  apr_terminate();
+  return snippet;
 }
 
-int main(int argc, char* argv[]) {
-  assert(argc == 2);
-  apr_initialize();
-  const std::string mode = argv[1];
-  defer_reads = mode == "deferred" || mode == "large";
-  if (mode == "false-prefix") {
-    check_stream({"abc</he", "ader>def"}, false);
-  } else if (mode == "eof") {
-    check_stream({"abc</he"}, false);
-  } else if (mode == "deferred") {
-    check_stream({"abc</he", "ader>def</he", "ad>tail", "after"}, false);
-  } else if (mode == "large") {
-    check_stream(
-        {std::string(100000, 'x') + "</head>" + std::string(100000, 'y')},
-        true);
-  } else if (mode == "flush") {
-    check_stream({"abc</he", "ad>", "def"}, false, true);
-  } else {
-    const std::string body = "abc</head>def";
-    for (size_t split = 1; split < body.size(); ++split) {
-      check_stream({body.substr(0, split), body.substr(split)},
-                   mode == "same-brigade");
-    }
+TEST_CASE("RUM injects when the closing tag is split across buckets", "[rum]") {
+  const bool together = GENERATE(false, true);
+  const std::string body = "abc</head>def";
+  for (size_t split = 1; split < body.size(); ++split) {
+    INFO("split at " << split << (together ? ", same brigade" : ""));
+    check_stream({body.substr(0, split), body.substr(split)}, together, false);
   }
-  apr_terminate();
+}
+
+TEST_CASE("RUM keeps a false prefix of the closing tag", "[rum]") {
+  check_stream({"abc</he", "ader>def"}, false, false);
+}
+
+TEST_CASE("RUM keeps a partial closing tag at the end of the stream", "[rum]") {
+  check_stream({"abc</he"}, false, false);
+}
+
+TEST_CASE("RUM output stays valid when downstream reads later", "[rum]") {
+  check_stream({"abc</he", "ader>def</he", "ad>tail", "after"}, false, true);
+}
+
+TEST_CASE("RUM injects into a large response", "[rum]") {
+  check_stream(
+      {std::string(100000, 'x') + "</head>" + std::string(100000, 'y')}, true,
+      true);
+}
+
+TEST_CASE("RUM keeps flush buckets at their position", "[rum]") {
+  const std::string snippet =
+      check_stream({"abc</he", "ad>", "def"}, false, false, true);
+  const std::vector<size_t> expected = {3, 10 + snippet.size(),
+                                        13 + snippet.size()};
+  CHECK(flush_offsets == expected);
 }
