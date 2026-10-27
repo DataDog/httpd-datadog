@@ -12,5 +12,6 @@ add_executable(tests main.cpp test_utils.cpp ../rum/unit-test/test_rum_content_t
 
 target_include_directories(tests PRIVATE ${CMAKE_SOURCE_DIR}/mod_datadog/src)
 
-target_link_libraries(tests Catch2::Catch2)
+# httpd and fmt are only needed for the headers of utils.h.
+target_link_libraries(tests PRIVATE Catch2::Catch2 httpd fmt)
 
