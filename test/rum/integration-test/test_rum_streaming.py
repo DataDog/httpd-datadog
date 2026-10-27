@@ -59,17 +59,17 @@ def streaming_proxy(server: Server, log_dir: str, module_path: str) -> Iterator[
         yield server
 
 
-def fetch_stream(proxy: Server, mode: str) -> bytes:
-    response = requests.get(proxy.make_url(f"/upstream/{mode}"), timeout=3)
+def fetch_stream(proxy: Server, stream_name: str) -> bytes:
+    response = requests.get(proxy.make_url(f"/upstream/{stream_name}"), timeout=3)
     assert response.status_code == 200
     return response.content
 
 
 @pytest.mark.requires_rum
-@pytest.mark.parametrize("mode", STREAMS_WITH_CLOSING_TAG)
-def test_rum_streaming_injects_before_closing_tag(streaming_proxy: Server, mode: str) -> None:
-    content = fetch_stream(streaming_proxy, mode)
-    body = b"".join(STREAMS[mode])
+@pytest.mark.parametrize("stream_name", STREAMS_WITH_CLOSING_TAG)
+def test_rum_streaming_injects_before_closing_tag(streaming_proxy: Server, stream_name: str) -> None:
+    content = fetch_stream(streaming_proxy, stream_name)
+    body = b"".join(STREAMS[stream_name])
     closing = body.find(b"</head>")
     added = len(content) - len(body)
     assert added > 0
@@ -79,10 +79,10 @@ def test_rum_streaming_injects_before_closing_tag(streaming_proxy: Server, mode:
 
 
 @pytest.mark.requires_rum
-@pytest.mark.parametrize("mode", STREAMS_WITHOUT_CLOSING_TAG)
-def test_rum_streaming_keeps_body_without_closing_tag(streaming_proxy: Server, mode: str) -> None:
-    content = fetch_stream(streaming_proxy, mode)
-    body = b"".join(STREAMS[mode])
+@pytest.mark.parametrize("stream_name", STREAMS_WITHOUT_CLOSING_TAG)
+def test_rum_streaming_keeps_body_without_closing_tag(streaming_proxy: Server, stream_name: str) -> None:
+    content = fetch_stream(streaming_proxy, stream_name)
+    body = b"".join(STREAMS[stream_name])
     assert content[: len(body)] == body
     padding = content[len(body) :]
     assert padding and padding.strip(b" ") == b""

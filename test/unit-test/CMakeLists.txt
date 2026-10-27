@@ -15,8 +15,9 @@ target_include_directories(tests PRIVATE ${CMAKE_SOURCE_DIR}/mod_datadog/src)
 # httpd and fmt are only needed for the headers of utils.h.
 target_link_libraries(tests PRIVATE Catch2::Catch2 httpd fmt)
 
-# The RUM streaming tests run the output filter on real APR buckets.
-if(HTTPD_DATADOG_ENABLE_RUM AND NOT CMAKE_CROSSCOMPILING)
+# These tests link the host APR, and run at build time to list test cases.
+if(HTTPD_DATADOG_ENABLE_RUM AND
+   CMAKE_SYSTEM_PROCESSOR STREQUAL CMAKE_HOST_SYSTEM_PROCESSOR)
   find_library(STREAM_APR_LIBRARY NAMES apr-1
     HINTS "${HTTPD_SRC_DIR}/httpd-build/lib")
   find_library(STREAM_APRUTIL_LIBRARY NAMES aprutil-1

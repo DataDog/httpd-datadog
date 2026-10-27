@@ -29,39 +29,55 @@ int ap_get_request_module_loglevel(const request_rec*, int) { return 0; }
 #endif
 }
 
-static apr_bucket_brigade* downstream = nullptr;
-static std::string output;
-static bool defer_reads = false;
-static std::vector<size_t> flush_offsets;
-static int endings = 0;
+namespace {
+
+enum class Brigades { separate, single };
+enum class Reads { immediate, deferred };
+enum class Flushes { none, after_each_chunk };
+
+struct Downstream {
+  apr_bucket_brigade* brigade = nullptr;
+  Reads reads = Reads::immediate;
+  std::string output;
+  std::vector<size_t> flush_offsets;
+  int endings = 0;
+};
+
+Downstream downstream;
 
 // Called from the filter: use CHECK, so a failure does not throw through it.
-static void read_output() {
-  for (apr_bucket* bucket = APR_BRIGADE_FIRST(downstream);
-       bucket != APR_BRIGADE_SENTINEL(downstream);
+void read_output() {
+  for (apr_bucket* bucket = APR_BRIGADE_FIRST(downstream.brigade);
+       bucket != APR_BRIGADE_SENTINEL(downstream.brigade);
        bucket = APR_BUCKET_NEXT(bucket)) {
-    CHECK(endings == 0);
-    if (APR_BUCKET_IS_EOS(bucket)) ++endings;
-    if (APR_BUCKET_IS_FLUSH(bucket)) flush_offsets.push_back(output.size());
+    CHECK(downstream.endings == 0);
+    if (APR_BUCKET_IS_EOS(bucket)) ++downstream.endings;
+    if (APR_BUCKET_IS_FLUSH(bucket)) {
+      downstream.flush_offsets.push_back(downstream.output.size());
+    }
     if (APR_BUCKET_IS_METADATA(bucket)) continue;
     const char* buffer = nullptr;
     apr_size_t length = 0;
     const apr_status_t status =
         apr_bucket_read(bucket, &buffer, &length, APR_BLOCK_READ);
     CHECK(status == APR_SUCCESS);
-    output.append(buffer, length);
+    downstream.output.append(buffer, length);
   }
-  apr_brigade_cleanup(downstream);
+  apr_brigade_cleanup(downstream.brigade);
 }
+
+}  // namespace
 
 extern "C" apr_status_t ap_pass_brigade(ap_filter_t*,
                                         apr_bucket_brigade* brigade) {
-  APR_BRIGADE_CONCAT(downstream, brigade);
-  if (!defer_reads) read_output();
+  APR_BRIGADE_CONCAT(downstream.brigade, brigade);
+  if (downstream.reads == Reads::immediate) read_output();
   return APR_SUCCESS;
 }
 
-static std::string snippet_text(Snippet* snippet) {
+namespace {
+
+std::string snippet_text(Snippet* snippet) {
   Injector* injector = injector_create(snippet);
   const std::string closing_tag = "</head>";
   const InjectorResult result = injector_write(
@@ -79,21 +95,22 @@ static std::string snippet_text(Snippet* snippet) {
   return text;
 }
 
-static std::string write_stream(ap_filter_t* filter,
-                                apr_bucket_brigade* brigade,
-                                const std::vector<std::string>& chunks,
-                                bool together, bool with_flush) {
+std::string write_stream(ap_filter_t* filter, apr_bucket_brigade* brigade,
+                         const std::vector<std::string>& chunks,
+                         Brigades brigades, Flushes flushes) {
   std::string expected;
   for (const std::string& chunk : chunks) {
     expected += chunk;
     APR_BRIGADE_INSERT_TAIL(
         brigade, apr_bucket_heap_create(chunk.data(), chunk.size(), nullptr,
                                         filter->c->bucket_alloc));
-    if (with_flush) {
+    if (flushes == Flushes::after_each_chunk) {
       APR_BRIGADE_INSERT_TAIL(brigade,
                               apr_bucket_flush_create(filter->c->bucket_alloc));
     }
-    if (!together) CHECK(rum_output_filter(filter, brigade) == APR_SUCCESS);
+    if (brigades == Brigades::separate) {
+      CHECK(rum_output_filter(filter, brigade) == APR_SUCCESS);
+    }
   }
   APR_BRIGADE_INSERT_TAIL(brigade,
                           apr_bucket_eos_create(filter->c->bucket_alloc));
@@ -102,22 +119,30 @@ static std::string write_stream(ap_filter_t* filter,
   return expected;
 }
 
-static void check_output(std::string expected, const std::string& snippet) {
+void check_output(std::string expected, const std::string& snippet) {
   const size_t closing = expected.find("</head>");
   if (closing == std::string::npos) {
     expected.append(snippet.size(), ' ');
   } else {
     expected.insert(closing, snippet);
   }
-  CHECK(output == expected);
-  CHECK(endings == 1);
+  CHECK(downstream.output == expected);
+  CHECK(downstream.endings == 1);
 }
 
 // Returns the snippet text, so callers can check positions in the output.
-static std::string check_stream(const std::vector<std::string>& chunks,
-                                bool together, bool deferred,
-                                bool with_flush = false) {
-  defer_reads = deferred;
+std::string check_stream(const std::vector<std::string>& chunks,
+                         Brigades brigades = Brigades::separate,
+                         Reads reads = Reads::immediate,
+                         Flushes flushes = Flushes::none) {
+  datadog::conf::Directory directory;
+  directory.rum.enabled = true;
+  directory.rum.snippet = snippet_create_from_json(
+      "{\"majorVersion\":6,\"rum\":{\"applicationId\":\"test\","
+      "\"clientToken\":\"test\"}}");
+  REQUIRE(directory.rum.snippet->error_code == 0);
+  const std::string snippet = snippet_text(directory.rum.snippet);
+
   apr_initialize();
   apr_pool_t* pool = nullptr;
   apr_pool_create(&pool, nullptr);
@@ -130,62 +155,63 @@ static std::string check_stream(const std::vector<std::string>& chunks,
   request.connection = &connection;
   request.content_type = "text/html";
   request.headers_out = apr_table_make(pool, 4);
-  datadog::conf::Directory directory;
-  directory.rum.enabled = true;
-  directory.rum.snippet = snippet_create_from_json(
-      "{\"majorVersion\":6,\"rum\":{\"applicationId\":\"test\","
-      "\"clientToken\":\"test\"}}");
-  CHECK(directory.rum.snippet->error_code == 0);
-  const std::string snippet = snippet_text(directory.rum.snippet);
   void* configuration[] = {&directory};
   request.per_dir_config = reinterpret_cast<ap_conf_vector_t*>(configuration);
   ap_filter_t filter = {};
   filter.r = &request;
   filter.c = &connection;
-  downstream = apr_brigade_create(pool, connection.bucket_alloc);
+  downstream = {};
+  downstream.brigade = apr_brigade_create(pool, connection.bucket_alloc);
+  downstream.reads = reads;
   apr_bucket_brigade* brigade =
       apr_brigade_create(pool, connection.bucket_alloc);
-  output.clear();
-  flush_offsets.clear();
-  endings = 0;
-  check_output(write_stream(&filter, brigade, chunks, together, with_flush),
+  check_output(write_stream(&filter, brigade, chunks, brigades, flushes),
                snippet);
   apr_pool_destroy(pool);
   apr_terminate();
   return snippet;
 }
 
+}  // namespace
+
 TEST_CASE("RUM injects when the closing tag is split across buckets", "[rum]") {
-  const bool together = GENERATE(false, true);
+  const Brigades brigades = GENERATE(Brigades::separate, Brigades::single);
   const std::string body = "abc</head>def";
   for (size_t split = 1; split < body.size(); ++split) {
-    INFO("split at " << split << (together ? ", same brigade" : ""));
-    check_stream({body.substr(0, split), body.substr(split)}, together, false);
+    INFO("split at " << split
+                     << (brigades == Brigades::single ? ", same brigade" : ""));
+    check_stream({body.substr(0, split), body.substr(split)}, brigades);
   }
 }
 
 TEST_CASE("RUM keeps a false prefix of the closing tag", "[rum]") {
-  check_stream({"abc</he", "ader>def"}, false, false);
+  check_stream({"abc</he", "ader>def"});
 }
 
 TEST_CASE("RUM keeps a partial closing tag at the end of the stream", "[rum]") {
-  check_stream({"abc</he"}, false, false);
+  check_stream({"abc</he"});
 }
 
 TEST_CASE("RUM output stays valid when downstream reads later", "[rum]") {
-  check_stream({"abc</he", "ader>def</he", "ad>tail", "after"}, false, true);
+  check_stream({"abc</he", "ader>def</he", "ad>tail", "after"},
+               Brigades::separate, Reads::deferred);
 }
 
 TEST_CASE("RUM injects into a large response", "[rum]") {
   check_stream(
-      {std::string(100000, 'x') + "</head>" + std::string(100000, 'y')}, true,
-      true);
+      {std::string(100000, 'x') + "</head>" + std::string(100000, 'y')},
+      Brigades::single, Reads::deferred);
 }
 
 TEST_CASE("RUM keeps flush buckets at their position", "[rum]") {
-  const std::string snippet =
-      check_stream({"abc</he", "ad>", "def"}, false, false, true);
-  const std::vector<size_t> expected = {3, 10 + snippet.size(),
-                                        13 + snippet.size()};
-  CHECK(flush_offsets == expected);
+  const std::string partial_tag = "</he";
+  const std::vector<std::string> chunks = {"abc" + partial_tag, "ad>", "def"};
+  const std::string snippet = check_stream(
+      chunks, Brigades::separate, Reads::immediate, Flushes::after_each_chunk);
+  // The partial tag is held back until the next chunk.
+  const size_t head = chunks[0].size() + chunks[1].size();
+  const std::vector<size_t> expected = {
+      chunks[0].size() - partial_tag.size(), snippet.size() + head,
+      snippet.size() + head + chunks[2].size()};
+  CHECK(downstream.flush_offsets == expected);
 }
