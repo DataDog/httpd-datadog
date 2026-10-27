@@ -102,15 +102,16 @@ source, Rust, and uv.
 
 ### Unit Tests
 
-Unit tests use Catch2. The RUM streaming tests run the output filter on native APR buckets, so
-they only build in native RUM builds. They use AddressSanitizer when the toolchain supports it.
-From `make dev-shell`:
+Unit tests use Catch2. The directory lifetime and RUM streaming tests use native APR pools, so
+they only build when the target matches the host. They use AddressSanitizer, which also reports
+leaks, when the toolchain supports it. From `make dev-shell`:
 
 ```shell
 cmake -S . -B build-native -DHTTPD_SRC_DIR=/httpd -DHTTPD_DATADOG_ENABLE_RUM=ON
-cmake --build build-native --target tests rum_streaming_tests
+cmake --build build-native --target tests directory_lifetime_tests rum_streaming_tests
 ./build-native/test/unit-test/tests
-ctest --test-dir build-native -R rum-streaming --no-tests=error --output-on-failure
+./build-native/test/unit-test/directory_lifetime_tests
+./build-native/test/unit-test/rum_streaming_tests
 ```
 
 ### Running Specific Tests Inside Docker
