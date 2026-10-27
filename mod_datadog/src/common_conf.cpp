@@ -2,7 +2,7 @@
 
 namespace datadog::conf {
 
-static apr_status_t destroy_directory(void* configuration) {
+static apr_status_t destroy_dir_conf(void* configuration) {
   static_cast<Directory*>(configuration)->~Directory();
   return APR_SUCCESS;
 }
@@ -10,7 +10,7 @@ static apr_status_t destroy_directory(void* configuration) {
 void* init_dir_conf(apr_pool_t* pool, char*) {
   void* buffer = apr_pcalloc(pool, sizeof(Directory));
   new (buffer) Directory;
-  apr_pool_cleanup_register(pool, buffer, destroy_directory,
+  apr_pool_cleanup_register(pool, buffer, destroy_dir_conf,
                             apr_pool_cleanup_null);
   return buffer;
 }
