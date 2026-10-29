@@ -1,8 +1,3 @@
-# Automatically assign the team as a reviewer.
-# https://help.github.com/en/articles/about-code-owners
-
-# Default owners, overridden by file/directory specific owners below
-* @DataDog/dd-trace-cpp
-
-/mod_datadog/src/rum/ @DataDog/dd-trace-cpp @DataDog/injection-platform @DataDog/squad-rum-injection
-/test/rum/ @DataDog/dd-trace-cpp @DataDog/injection-platform @DataDog/squad-rum-injection
+* @DataDog/apm-proxy
+/mod_datadog/src/rum/ @DataDog/injection-platform @DataDog/apm-proxy
+/test/rum/ @DataDog/injection-platform @DataDog/apm-proxy
