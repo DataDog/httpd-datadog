@@ -98,7 +98,6 @@ devcontainer-ghcr-policy-check:
 .unit-test-template:
   stage: test
   script:
-    # Not ctest: it would need to configure CMake again.
     - chmod +x build/test/unit-test/tests build/test/unit-test/rum_streaming_tests
     - ./build/test/unit-test/tests --success
     - timeout 300 ./build/test/unit-test/rum_streaming_tests
