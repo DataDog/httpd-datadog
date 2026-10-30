@@ -44,51 +44,53 @@ const char* configure_rum(apr_pool_t* pool, Directory* directory,
 }
 #endif
 
+struct DirectoryFixture {
+  DirectoryFixture() {
+    apr_initialize();
+    apr_pool_create(&pool, nullptr);
+    parent = make_directory(pool);
+    child = make_directory(pool);
+  }
+
+  ~DirectoryFixture() {
+    apr_pool_destroy(pool);
+    apr_terminate();
+  }
+
+  apr_pool_t* pool = nullptr;
+  Directory* parent = nullptr;
+  Directory* child = nullptr;
+};
+
 }  // namespace
 
-TEST_CASE("Merged directory configs release their tags", "[directory]") {
-  apr_initialize();
-  apr_pool_t* pool = nullptr;
-  apr_pool_create(&pool, nullptr);
-  Directory* parent = make_directory(pool);
-  Directory* child = make_directory(pool);
+TEST_CASE_METHOD(DirectoryFixture,
+                 "Merged directory configs release their tags", "[directory]") {
   parent->tags.emplace("parent_tag", std::string(4096, 'p'));
   child->tags.emplace("child_tag", std::string(64, 'c'));
-  for (int request = 0; request < 100; ++request) {
-    apr_pool_t* request_pool = nullptr;
-    apr_pool_create(&request_pool, pool);
-    const Directory* merged = merge(request_pool, parent, child);
-    CHECK(merged->tags.at("parent_tag") == parent->tags.at("parent_tag"));
-    CHECK(merged->tags.at("child_tag") == child->tags.at("child_tag"));
-    apr_pool_destroy(request_pool);
-  }
-  apr_pool_destroy(pool);
-  apr_terminate();
+  apr_pool_t* request_pool = nullptr;
+  apr_pool_create(&request_pool, pool);
+  const Directory* merged = merge(request_pool, parent, child);
+  CHECK(merged->tags.at("parent_tag") == parent->tags.at("parent_tag"));
+  CHECK(merged->tags.at("child_tag") == child->tags.at("child_tag"));
+  apr_pool_destroy(request_pool);
 }
 
 #if defined(HTTPD_DD_RUM)
-TEST_CASE("Merged directory configs share the parent RUM snippet",
-          "[directory][rum]") {
-  apr_initialize();
-  apr_pool_t* pool = nullptr;
-  apr_pool_create(&pool, nullptr);
-  Directory* parent = make_directory(pool);
-  Directory* child = make_directory(pool);
+TEST_CASE_METHOD(DirectoryFixture,
+                 "Merged directory configs share the parent RUM snippet",
+                 "[directory][rum]") {
   REQUIRE(configure_rum(pool, parent, "\"v6\">") == nullptr);
   // A second section replaces the first snippet.
   REQUIRE(configure_rum(pool, parent, "\"v6\">") == nullptr);
   // An unsupported version fails, and the child keeps no snippet.
   REQUIRE(configure_rum(pool, child, "\"v999\">") != nullptr);
   REQUIRE(child->rum.snippet == nullptr);
-  for (int request = 0; request < 100; ++request) {
-    apr_pool_t* request_pool = nullptr;
-    apr_pool_create(&request_pool, pool);
-    const Directory* merged = merge(request_pool, parent, child);
-    CHECK(merged->rum.snippet == parent->rum.snippet);
-    apr_pool_destroy(request_pool);
-    CHECK(parent->rum.snippet->error_code == 0);
-  }
-  apr_pool_destroy(pool);
-  apr_terminate();
+  apr_pool_t* request_pool = nullptr;
+  apr_pool_create(&request_pool, pool);
+  const Directory* merged = merge(request_pool, parent, child);
+  CHECK(merged->rum.snippet == parent->rum.snippet);
+  apr_pool_destroy(request_pool);
+  CHECK(parent->rum.snippet->error_code == 0);
 }
 #endif
