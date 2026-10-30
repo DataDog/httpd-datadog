@@ -17,17 +17,13 @@ concurrency:
 
 permissions:
   contents: read
-  packages: read
 
 jobs:
   build-artifacts:
     runs-on: ubuntu-22.04
     container:
-      # Advanced by .gitlab/devcontainer-to-ghcr.yml after main builds.
-      image: ghcr.io/datadog/httpd-datadog/devcontainer:main
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+      # Advanced by .gitlab/devcontainer-to-public.yml after main builds.
+      image: registry.datadoghq.com/httpd-datadog-ci-dev:main
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Build
