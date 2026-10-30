@@ -92,21 +92,15 @@ devcontainer-ghcr-policy-check:
       - artifacts/$ARCH/mod_datadog.so
       - artifacts/$ARCH/mod_datadog.so.debug
       - upload/mod_datadog-${ARCH}.zip
-      - build/test/unit-test/tests
-      - build/test/unit-test/directory_lifetime_tests
-      - build/test/unit-test/rum_streaming_tests
+      - build/test/unit-test/*tests
 
 .unit-test-template:
   stage: test
   script:
     # Not ctest: it would need to configure CMake again.
-    - >
-      chmod +x build/test/unit-test/tests
-      build/test/unit-test/directory_lifetime_tests
-      build/test/unit-test/rum_streaming_tests
+    - chmod +x build/test/unit-test/*tests
     - ./build/test/unit-test/tests --success
-    - timeout 300 ./build/test/unit-test/directory_lifetime_tests
-    - timeout 300 ./build/test/unit-test/rum_streaming_tests
+    - timeout 300 ./build/test/unit-test/apr_tests
 
 .test-rum-template:
   stage: test

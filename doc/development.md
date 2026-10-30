@@ -108,10 +108,9 @@ leaks, when the toolchain supports it. From `make dev-shell`:
 
 ```shell
 cmake -S . -B build-native -DHTTPD_SRC_DIR=/httpd -DHTTPD_DATADOG_ENABLE_RUM=ON
-cmake --build build-native --target tests directory_lifetime_tests rum_streaming_tests
+cmake --build build-native --target tests apr_tests
 ./build-native/test/unit-test/tests
-./build-native/test/unit-test/directory_lifetime_tests
-./build-native/test/unit-test/rum_streaming_tests
+./build-native/test/unit-test/apr_tests
 ```
 
 ### Running Specific Tests Inside Docker
