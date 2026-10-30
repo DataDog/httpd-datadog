@@ -92,22 +92,21 @@ int on_fixups(request_rec* r, Tracer& g_tracer, module* datadog_module) {
     return DECLINED;
   }
 
+  auto* dir_conf = static_cast<datadog::conf::Directory*>(
+      ap_get_module_config(r->per_dir_config, datadog_module));
+  if (dir_conf == nullptr || !dir_conf->tracing_enabled.value_or(true)) {
+    return DECLINED;
+  }
+
   Span* span = nullptr;
   InjectionOptions injection_opts;
 
   if (r->prev || r->main != nullptr) {
     // Trace internal redirection or subrequests
-    // TODO: What if `per_dir_config` is not copied for each
-    //       subrequests/internal redirection?
-    request_rec* main_r = r->prev ? r->prev : r->main;
+    request_rec* parent_request = r->prev ? r->prev : r->main;
 
-    auto* dir_conf = static_cast<datadog::conf::Directory*>(
-        ap_get_module_config(main_r->per_dir_config, datadog_module));
-    if (dir_conf == nullptr || !dir_conf->tracing_enabled.value_or(true)) {
-      return DECLINED;
-    }
-
-    void* data = ap_get_module_config(main_r->request_config, datadog_module);
+    void* data =
+        ap_get_module_config(parent_request->request_config, datadog_module);
     if (!data) return DECLINED;
 
     Span* parent_span = static_cast<Span*>(data);
@@ -116,12 +115,6 @@ int on_fixups(request_rec* r, Tracer& g_tracer, module* datadog_module) {
     span = new Span(parent_span->create_child(options));
   } else {
     // Trace request
-    auto* dir_conf = static_cast<datadog::conf::Directory*>(
-        ap_get_module_config(r->per_dir_config, datadog_module));
-    if (dir_conf == nullptr || !dir_conf->tracing_enabled.value_or(true)) {
-      return DECLINED;
-    }
-
     void* data = ap_get_module_config(r->request_config, datadog_module);
     if (data)
       return DECLINED;  ///< `start_span` can not be called twice on the same
