@@ -2,6 +2,7 @@
 import os
 import requests
 import pytest
+from conftest import Server
 from helper import (
     relpath,
     make_configuration,
@@ -195,6 +196,64 @@ def test_datadog_agent_url_input(server, module_path, test_input):
 
     with make_temporary_configuration(config, module_path) as conf_path:
         assert server.check_configuration(conf_path) == test_input["expected_status"]
+
+
+# Longer than the old 256-byte error buffer.
+LONG_INPUT_LENGTH = 400
+
+
+@pytest.mark.ci
+@pytest.mark.parametrize(
+    "directive,value,error",
+    [
+        pytest.param(
+            "DatadogAgentUrl",
+            "x" * LONG_INPUT_LENGTH,
+            'failed to parse "{value}" URL',
+            id="agent-url",
+        ),
+        pytest.param(
+            "DatadogSamplingRate",
+            "x" * LONG_INPUT_LENGTH,
+            'could not parse "{value}" input',
+            id="sampling-parse",
+        ),
+        pytest.param(
+            "DatadogSamplingRate",
+            "2." + "0" * LONG_INPUT_LENGTH,
+            '"{value}" input is not in the [0;1] expected range',
+            id="sampling-range",
+        ),
+        pytest.param(
+            "DatadogPropagationStyle",
+            "x" * LONG_INPUT_LENGTH,
+            '"{value}" is not a supported propagation style. Only "datadog", '
+            '"tracecontext" and "b3" are valid propagation styles',
+            id="propagation",
+        ),
+    ],
+)
+def test_config_error_keeps_long_input(
+    server: Server,
+    log_dir: str,
+    module_path: str,
+    directive: str,
+    value: str,
+    error: str,
+) -> None:
+    """
+    Verify a config error shows the full input on one line.
+    """
+    config = {"path": relpath("conf/default.conf"), "var": {}}
+    configuration = make_configuration(config, log_dir, module_path)
+    configuration += f'\n{directive} "{value}"\n'
+    conf_path = os.path.join(log_dir, "httpd.conf")
+    save_configuration(configuration, conf_path)
+
+    result = server.run_configuration_test(conf_path)
+    assert result.returncode == 1, result.stderr
+    expected_error = f"{directive}: {error.format(value=value)}".encode()
+    assert expected_error in result.stderr.splitlines(), result.stderr
 
 
 def test_trust_inbound_span_directive(server, agent, log_dir, module_path):
