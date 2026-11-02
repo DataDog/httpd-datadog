@@ -50,8 +50,9 @@ static SpanConfig make_span_config(
 
   if (r->hostname != nullptr) tags.emplace("http.host", r->hostname);
   if (r->unparsed_uri != nullptr) tags.emplace("http.url", r->unparsed_uri);
-  if (r->useragent_ip != nullptr)
+  if (r->useragent_ip != nullptr) {
     tags.emplace("http.client_ip", r->useragent_ip);
+  }
 
   if (auto mpm_name = ap_show_mpm(); mpm_name != nullptr) {
     tags.emplace("httpd.mpm", mpm_name);
@@ -123,9 +124,10 @@ int on_fixups(request_rec* r, Tracer& g_tracer, module* datadog_module) {
     }
 
     void* data = ap_get_module_config(r->request_config, datadog_module);
-    if (data)
+    if (data) {
       return DECLINED;  ///< `start_span` can not be called twice on the same
                         ///< request
+    }
 
     SpanConfig options = make_span_config(r, dir_conf->tags);
 
