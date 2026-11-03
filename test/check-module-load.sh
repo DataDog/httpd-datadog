@@ -8,9 +8,12 @@
 set -eu
 
 module_path=$(realpath "$1")
+# Use a port other than 80 because other containers of the CI job may use it.
+port=7777
 
 apt-get update -qq
-apt-get install -y -qq --no-install-recommends apache2 curl >/dev/null
+DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends apache2 curl >/dev/null
+sed -i "s/80/$port/" /etc/apache2/ports.conf /etc/apache2/sites-enabled/000-default.conf
 cat >/etc/apache2/conf-enabled/datadog.conf <<EOF
 LoadModule datadog_module $module_path
 DatadogTracing On
@@ -21,7 +24,7 @@ apache2ctl -t
 apache2ctl -DFOREGROUND &
 server_pid=$!
 curl --fail --silent --show-error --retry 10 --retry-connrefused --retry-delay 1 \
-    --output /dev/null http://localhost/
+    --output /dev/null "http://localhost:$port/"
 apache2ctl -k stop
 wait "$server_pid" || { echo "Apache exited with status $?" >&2; exit 1; }
 echo "mod_datadog loaded, served a request, and unloaded."
