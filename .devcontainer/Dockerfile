@@ -33,7 +33,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.9.28 /uv /usr/local/bin/uv
 COPY scripts/setup-httpd.py setup-httpd.py
 RUN python3 ./setup-httpd.py -o httpd 2.4.58 \
  && cd httpd \
- && ./configure --with-included-apr --prefix=$(pwd)/httpd-build --enable-mpms-shared="all" \
+ && CC=clang ./configure --with-included-apr --prefix=$(pwd)/httpd-build --enable-mpms-shared="all" \
  && make -j \
  && make -j install
 
