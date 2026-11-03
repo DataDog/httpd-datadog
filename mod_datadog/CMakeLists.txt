@@ -88,6 +88,8 @@ target_link_libraries(mod_datadog
     dd-trace-cpp-static
     httpd
     fmt
+    # dd-trace-cpp uses std::round, and Apache doesn't always load libm
+    m
 )
 
 if(HTTPD_DATADOG_ENABLE_COVERAGE)
