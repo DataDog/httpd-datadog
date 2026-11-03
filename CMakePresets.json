@@ -11,7 +11,7 @@
         "HTTPD_SRC_DIR": "/httpd",
         "CMAKE_BUILD_TYPE": "Debug",
         "HTTPD_DATADOG_ENABLE_COVERAGE": "1",
-        "HTTPD_DATADOG_PATCH_AWAY_LIBC": "1"
+        "HTTPD_DATADOG_VERIFY_NEEDED": "1"
       }
     },
     {
@@ -22,7 +22,7 @@
         "CMAKE_TOOLCHAIN_FILE": "/sysroot/x86_64-none-linux-musl/Toolchain.cmake",
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "HTTPD_SRC_DIR": "/httpd",
-        "HTTPD_DATADOG_PATCH_AWAY_LIBC": "1"
+        "HTTPD_DATADOG_VERIFY_NEEDED": "1"
       }
     }
   ]
