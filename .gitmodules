@@ -1,10 +1,6 @@
 [submodule "deps/dd-trace-cpp"]
 	path = deps/dd-trace-cpp
 	url = https://github.com/DataDog/dd-trace-cpp.git
-[submodule "deps/nginx-datadog"]
-	path = deps/nginx-datadog
-	url = https://github.com/DataDog/httpd-datadog.git
-	branch = mirror-nginx-datadog
 [submodule "deps/inject-browser-sdk"]
 	path = deps/inject-browser-sdk
 	url = https://github.com/DataDog/inject-browser-sdk.git

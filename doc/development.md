@@ -5,7 +5,7 @@
 When cloning the repo, initialize the submodules you need. For a standard build:
 
 ```shell
-git submodule update --init deps/dd-trace-cpp deps/nginx-datadog
+git submodule update --init deps/dd-trace-cpp
 ```
 
 The `deps/inject-browser-sdk` submodule is a private repository and is only required for RUM builds
