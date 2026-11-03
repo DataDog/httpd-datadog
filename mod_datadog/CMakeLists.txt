@@ -124,8 +124,8 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
   target_link_options(mod_datadog PRIVATE "-Wl,-exported_symbols_list" "-Wl,${EXPORTED_SYMBOLS}")
 endif()
 
-if(HTTPD_DATADOG_VERIFY_NEEDED)
-  verify_needed(mod_datadog)
+if(HTTPD_DATADOG_PATCH_AWAY_LIBC)
+  patch_away_libc(mod_datadog)
 endif()
 
 install(

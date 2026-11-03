@@ -12,7 +12,7 @@ set(ZLIB_USE_STATIC_LIBS ON)
 
 option(HTTPD_DATADOG_ENABLE_RUM "Enable RUM product" OFF)
 option(HTTPD_DATADOG_ENABLE_COVERAGE "Enable code coverage instrumentation" OFF)
-option(HTTPD_DATADOG_VERIFY_NEEDED "Verify dynamic library dependencies" OFF)
+option(HTTPD_DATADOG_PATCH_AWAY_LIBC "Patch away libc dependency" OFF)
 
 if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE ReleaseWithDeb)
