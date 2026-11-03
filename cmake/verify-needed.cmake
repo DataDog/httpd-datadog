@@ -16,6 +16,9 @@ execute_process(
     OUTPUT_VARIABLE dynamic_section
     COMMAND_ERROR_IS_FATAL ANY)
 
+# readelf prints one line per dependency, such as:
+#  0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]
+
 string(REGEX MATCHALL
     "Shared library: \\[[^]]+\\]"
     needed_entries
