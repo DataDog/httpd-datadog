@@ -24,6 +24,7 @@ add_library(
     src/common_conf.cpp
     src/tracing/conf.cpp
     src/tracing/hooks.cpp
+    src/libm_compat.cpp
 )
 
 set_property(TARGET mod_datadog PROPERTY POSITION_INDEPENDENT_CODE ON)
@@ -88,8 +89,6 @@ target_link_libraries(mod_datadog
     dd-trace-cpp-static
     httpd
     fmt
-    # dd-trace-cpp uses std::round, and Apache doesn't always load libm
-    m
 )
 
 if(HTTPD_DATADOG_ENABLE_COVERAGE)
