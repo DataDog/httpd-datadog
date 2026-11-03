@@ -16,6 +16,9 @@ if (HTTPD_DATADOG_ENABLE_RUM)
   # mod_datadog/CMakeLists.txt references ${injectbrowsersdk_SOURCE_DIR}, which
   # FetchContent used to set; replicate it for the submodule layout.
   set(injectbrowsersdk_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/inject-browser-sdk" CACHE INTERNAL "")
+  # Drop Corrosion's -lunwind -lc: the toolchain links both, and this -lc
+  # would embed musl libc statically.
+  set(Rust_CARGO_TARGET_LINK_NATIVE_LIBS "" CACHE INTERNAL "")
   add_subdirectory(inject-browser-sdk EXCLUDE_FROM_ALL)
   set(INJECT_BROWSER_SDK_VERSION "${INJECT_BROWSER_SDK_VERSION}" PARENT_SCOPE)
 
