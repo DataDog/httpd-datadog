@@ -5,7 +5,7 @@
 #     https://github.com/DataDog/musl-toolchain-glibc-support)
 #   - httpd 2.4 source code
 #   - Tools necessary to build httpd and mod_datadog
-#   - Rust toolchain for RUM (inject-browser-sdk requires Rust 1.91+)
+#   - Rust toolchain for RUM
 #   - uv (fast Python package manager for tests)
 
 FROM registry.datadoghq.com/musl-build-env:1.0.6@sha256:fd1ab35b2a51538623740c499606a0f6240947b509b39bd1c754d7a5ee4b8c6b
@@ -20,7 +20,8 @@ RUN apk add --no-cache autoconf expat expat-dev gpg gpg-agent libtool pcre-dev p
 RUN apk add --no-cache curl jq
 
 # Install Rust toolchain
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -yq --default-toolchain 1.91.0 \
+# Match deps/inject-browser-sdk/rust-toolchain.toml.
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -yq --default-toolchain 1.94.0 \
   && ln -s ~/.cargo/bin/cargo /usr/bin/cargo
 
 RUN cargo install --locked cbindgen --version 0.26.0 \

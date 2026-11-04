@@ -3,6 +3,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
 #include "http_core.h"
@@ -38,5 +39,20 @@ struct Directory final {
 
 void merge_directory_configuration(Directory& out, const Directory& parent,
                                    const Directory& child);
+
+// RUM settings of a directory, with stable configuration applied.
+struct ResolvedConfig final {
+  // True only if there is a snippet to inject.
+  bool enabled = false;
+  Snippet* snippet = nullptr;
+  std::string_view app_id_tag;
+  std::string_view remote_config_tag;
+};
+
+ResolvedConfig resolve_configuration(const Directory& dir);
+
+// Reads stable configuration and DD_RUM_ENABLED. Call from post_config, so it
+// runs once per configuration load.
+void init_stable_config(server_rec* base_server);
 
 }  // namespace datadog::rum::conf

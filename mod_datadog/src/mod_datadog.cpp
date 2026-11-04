@@ -109,6 +109,11 @@ void register_hooks(apr_pool_t*) {
 }
 
 int on_post_config(apr_pool_t*, apr_pool_t*, apr_pool_t*, server_rec* s) {
+#if defined(HTTPD_DD_RUM)
+  // Before the guard below: reload stable configuration on each restart.
+  datadog::rum::conf::init_stable_config(s);
+#endif
+
   if (!g_log_module_status) {
     return OK;
   }
@@ -319,8 +324,8 @@ int on_fixups(request_rec* r) {
 #if defined(HTTPD_DD_RUM)
   auto* dir_conf = static_cast<datadog::conf::Directory*>(
       ap_get_module_config(r->per_dir_config, &datadog_module));
-  if (dir_conf != nullptr && dir_conf->rum.enabled == true &&
-      dir_conf->rum.snippet != nullptr) {
+  if (dir_conf != nullptr &&
+      datadog::rum::conf::resolve_configuration(dir_conf->rum).enabled) {
     apr_table_set(r->headers_in, "x-datadog-rum-injection-pending", "1");
   }
 #endif
