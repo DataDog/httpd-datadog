@@ -27,7 +27,7 @@ Release artifact are generated through a Continuous Integration pipeline. Our CI
 ensures cross-platform compatibility by compiling shared libraries for both Linux `x86_64` and
 `arm64` architectures. It generates shared libaries for each HTTPD version supported.
 
-### OCI package
+### OCI Package
 
 The same modules are also published as an OCI package named `datadog-apm-library-httpd`, through
 the shared *one-pipeline* GitLab template (`.gitlab/one-pipeline.locked.yml`). This is the artifact

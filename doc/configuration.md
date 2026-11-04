@@ -156,7 +156,7 @@ When calling the `</foo>` endpoint, both the team and location tags will be adde
 ## `DatadogRum` directive
    - **Description**: Enable or disable the RUM Injection
    - **Syntax:** DatadogRum *On\|Off*
-   - **Default:** Off, or On when [stable configuration](#stable-configuration) provides a valid RUM configuration
+   - **Default:** Off, or On when [stable configuration](#stable-configuration) provides a valid RUM configuration. See [Enabling RUM](#enabling-rum).
    - **Context:** Server and Directory
 
 Directive to enable or disable RUM SDK Injection.
@@ -252,6 +252,8 @@ to apply changes. If the configuration is invalid, httpd logs a warning and igno
 A `DatadogRumSettings` section is merged on top of the stable configuration. Options set in the
 section win. If the stable configuration is invalid, the section uses only its own options, so it
 must then be complete on its own.
+
+## Enabling RUM
 
 Whether RUM is enabled is decided in this order, highest first:
 

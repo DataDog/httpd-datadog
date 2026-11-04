@@ -33,13 +33,12 @@ from aiohttp import web
 from conftest import Server
 from helper import (
     AioHTTPServer,
-    assert_rum_injected,
-    assert_rum_not_injected,
     free_port,
     make_configuration,
     relpath,
     save_configuration,
 )
+from rum_helper import assert_rum_injected, assert_rum_not_injected
 
 # Where the SDK looks for local stable configuration on Linux. Not
 # configurable: it is a compile-time constant in libdd-library-config

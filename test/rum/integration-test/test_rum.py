@@ -30,9 +30,8 @@ from helper import (
     AioHTTPServer,
     free_port,
     make_temporary_configuration,
-    assert_rum_injected,
-    assert_rum_not_injected,
 )
+from rum_helper import assert_rum_injected, assert_rum_not_injected
 
 RUM_TEST_DIR = Path(__file__).parent
 
