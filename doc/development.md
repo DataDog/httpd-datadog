@@ -5,7 +5,7 @@
 When cloning the repo, initialize the submodules you need. For a standard build:
 
 ```shell
-git submodule update --init deps/dd-trace-cpp deps/nginx-datadog
+git submodule update --init deps/dd-trace-cpp
 ```
 
 The `deps/inject-browser-sdk` submodule is a private repository and is only required for RUM builds
@@ -99,6 +99,19 @@ make dev-shell         # Interactive devcontainer shell
 
 The devcontainer image is selected for the host architecture and includes the LLVM toolchain, httpd
 source, Rust, and uv.
+
+### Unit Tests
+
+Unit tests use Catch2. The directory lifetime and RUM streaming tests use native APR pools, so
+they only build when the target matches the host. They use AddressSanitizer, which also reports
+leaks, when the toolchain supports it. From `make dev-shell`:
+
+```shell
+cmake -S . -B build-native -DHTTPD_SRC_DIR=/httpd -DHTTPD_DATADOG_ENABLE_RUM=ON
+cmake --build build-native --target tests apr_tests
+./build-native/test/unit-test/tests
+./build-native/test/unit-test/apr_tests
+```
 
 ### Running Specific Tests Inside Docker
 

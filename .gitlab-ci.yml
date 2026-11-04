@@ -13,10 +13,6 @@ variables:
   # is too slow under qemu to run any other way.
   DEVCONTAINER_REPO_NAME: httpd-datadog
   DEVCONTAINER_PER_ARCH: "true"
-  # Only build_env is hashed into the image context; nested dependencies are
-  # runtime/build-job inputs and do not belong in the image-builder checkout.
-  DEVCONTAINER_GIT_SUBMODULE_STRATEGY: normal
-  DEVCONTAINER_GIT_SUBMODULE_PATHS: deps/nginx-datadog
   # Most jobs consume build artifacts and do not need any submodules. Build
   # jobs override this with the two top-level dependencies they compile.
   GIT_SUBMODULE_STRATEGY: none
@@ -24,12 +20,8 @@ variables:
   GIT_CONFIG_COUNT: 1
   GIT_CONFIG_KEY_0: url.https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.ddbuild.io/DataDog/.insteadOf
   GIT_CONFIG_VALUE_0: https://github.com/DataDog/
-  # one-pipeline OCI publishing. All four must be set explicitly: the template
-  # otherwise derives them from REPO_LANG, which defaults to
-  # ${CI_PROJECT_NAME##*-} == "datadog" here, yielding
-  # datadog-apm-library-datadog. OCI_AGENT_REGISTRY_PACKAGE_NAME must equal
-  # OCI_PACKAGE_NAME minus the "datadog-" prefix plus "-package"
-  # (.verify-oci-variables enforces this).
+  # one-pipeline OCI publishing. Set explicitly: the template defaults derive
+  # from REPO_LANG, which is "datadog" here.
   OCI_PACKAGE_NAME: datadog-apm-library-httpd
   OCI_AGENT_REGISTRY_PACKAGE_NAME: apm-library-httpd-package
   AGENT_REPO_PRODUCT_NAME: auto_inject-httpd
@@ -49,6 +41,26 @@ stages:
   - shared-pipeline-test
   - shared-pipeline-publish
   - aws
+
+devcontainer-ghcr-policy-check:
+  stage: .pre
+  image: registry.ddbuild.io/images/dd-octo-sts-ci-base:2025.07-1
+  tags: ["arch:amd64"]
+  needs: []
+  rules:
+    - changes:
+        paths:
+          - .github/chainguard/self.gitlab.github-release.sts.yaml
+          - .gitlab/devcontainer-to-ghcr.yml
+          - .gitlab-ci.yml
+        compare_to: refs/heads/main
+    - when: never
+  script:
+    - git config --global --add safe.directory "$CI_PROJECT_DIR"
+    - >
+      dd-octo-sts check --repo "$CI_PROJECT_DIR"
+      --scope "$DEVCONTAINER_GHCR_SCOPE" --policy "$DEVCONTAINER_GHCR_POLICY"
+      --skip-token-check
 
 # Template jobs (hidden, reusable)
 .build-template:
@@ -89,20 +101,14 @@ stages:
       - artifacts/$ARCH/mod_datadog.so
       - artifacts/$ARCH/mod_datadog.so.debug
       - upload/mod_datadog-${ARCH}.zip
-      # Built as part of `all` already; published so unit-test:$ARCH can run it
-      # without repeating the build.
-      - build/test/unit-test/tests
+      - build/test/unit-test/*tests
 
 .unit-test-template:
   stage: test
-  variables:
-    GIT_SUBMODULE_STRATEGY: none
   script:
-    # The binary is linked against the musl sysroot in this image, so it runs
-    # here as-is. Run it directly rather than via ctest: configuring CMake again
-    # would mean rebuilding the whole dependency tree.
-    - chmod +x build/test/unit-test/tests
+    - chmod +x build/test/unit-test/*tests
     - ./build/test/unit-test/tests --success
+    - timeout 300 ./build/test/unit-test/apr_tests
 
 .test-rum-template:
   stage: test
@@ -120,13 +126,16 @@ stages:
 .test-integration-template:
   stage: test
   variables:
-    # The shared make entrypoint validates its devcontainer context inputs,
-    # including the nginx build_env files, before running pytest.
-    GIT_SUBMODULE_STRATEGY: normal
-    GIT_SUBMODULE_PATHS: deps/nginx-datadog
     MODULE_PATH: $CI_PROJECT_DIR/artifacts/$ARCH/mod_datadog.so
   script:
     - make test-integration
+
+# Check glibc compatibility on Debian (because we build on a musl-based image).
+.check-module-load-template:
+  stage: test
+  image: registry.ddbuild.io/images/mirror/debian:13
+  script:
+    - test/check-module-load.sh artifacts/$ARCH/mod_datadog.so
 
 .amd64:
   image: $DEVCONTAINER_IMAGE_AMD64_CI
@@ -198,6 +207,16 @@ test-integration:arm64:
     - .test-integration-template
     - .test-arm64
 
+check-module-load:amd64:
+  extends:
+    - .test-amd64
+    - .check-module-load-template
+
+check-module-load:arm64:
+  extends:
+    - .test-arm64
+    - .check-module-load-template
+
 .upload-template:
   stage: aws
   needs:
@@ -205,10 +224,14 @@ test-integration:arm64:
       artifacts: true
     - job: "build:arm64"
       artifacts: true
+    - job: "unit-test:amd64"
+    - job: "unit-test:arm64"
     - job: "test-rum:amd64"
     - job: "test-rum:arm64"
     - job: "test-integration:amd64"
     - job: "test-integration:arm64"
+    - job: "check-module-load:amd64"
+    - job: "check-module-load:arm64"
   tags: ["arch:amd64"]
   image: registry.ddbuild.io/images/aws-cli:2.33.12
   script:

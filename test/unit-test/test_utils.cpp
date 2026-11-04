@@ -1,7 +1,6 @@
 #include "utils.h"
 
 #include <catch2/catch.hpp>
-#include <string>
 
 using namespace datadog::common::utils;
 
@@ -32,8 +31,10 @@ TEST_CASE("to_lower", "[utils]") {
 }
 
 TEST_CASE("contains", "[utils]") {
-  CHECK(contains("text/html; charset=utf-8", "text/html"));
-  CHECK(contains("text/html", "text/html"));
+  SECTION("finds a media type") {
+    CHECK(contains("text/html; charset=utf-8", "text/html"));
+    CHECK(contains("text/html", "text/html"));
+  }
 
   SECTION("matches at either end") {
     CHECK(contains("abcdef", "abc"));

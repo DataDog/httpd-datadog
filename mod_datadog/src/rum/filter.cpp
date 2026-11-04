@@ -20,37 +20,105 @@ constexpr std::string_view k_injected_header = "x-datadog-sdk-injected";
 static void count_injection(const datadog::telemetry::Counter& counter,
                             const char* reason,
                             const datadog::rum::conf::ResolvedConfig& rum_conf);
-static void insert_injection_slices(apr_bucket* bucket,
-                                    const InjectorResult& result,
-                                    apr_bucket_alloc_t* allocator);
+static void init_rum_context(ap_filter_t* filter, Snippet* snippet);
+static void count_csp_header(const request_rec& request);
+static bool should_inject(rum_filter_ctx& ctx, request_rec& request,
+                          const datadog::rum::conf::ResolvedConfig& rum_conf);
+static apr_status_t inject_into_brigade(
+    rum_filter_ctx& ctx, request_rec& request,
+    const datadog::rum::conf::ResolvedConfig& rum_conf,
+    apr_bucket_brigade& brigade);
+static void end_without_injection(
+    rum_filter_ctx& ctx, request_rec& request, apr_bucket* eos_bucket,
+    const datadog::rum::conf::ResolvedConfig& rum_conf);
+static apr_status_t inject_into_bucket(
+    rum_filter_ctx& ctx, request_rec& request,
+    const datadog::rum::conf::ResolvedConfig& rum_conf, apr_bucket* bucket);
+static void record_injection(
+    rum_filter_ctx& ctx, request_rec& request,
+    const datadog::rum::conf::ResolvedConfig& rum_conf);
+static void insert_injector_output(apr_bucket* bucket,
+                                   const InjectorResult& result,
+                                   apr_bucket_alloc_t* allocator);
 
-static void init_rum_context(ap_filter_t* f, Snippet* snippet) {
-  request_rec* r = f->r;
-  f->ctx = apr_pcalloc(r->pool, sizeof(rum_filter_ctx));
-  auto* ctx = (rum_filter_ctx*)f->ctx;
+/* TODO:
+ *   - use AddOutputFilterByType. In theory the scanner can be run on
+ *     everything.
+ *   - add span for visualing the injection?
+ *   - create snippet when the directive is created.
+ */
+int rum_output_filter(ap_filter_t* filter, apr_bucket_brigade* brigade) {
+  assert(brigade != nullptr);
+
+  request_rec* const request = filter->r;
+  Directory* const dir_conf = static_cast<Directory*>(
+      ap_get_module_config(request->per_dir_config, &datadog_module));
+  const auto rum_conf =
+      datadog::rum::conf::resolve_configuration(dir_conf->rum);
+
+  if (!rum_conf.enabled) {
+    // This does not change during the request.
+    ap_remove_output_filter(filter);
+    return ap_pass_brigade(filter->next, brigade);
+  }
+
+  if (filter->ctx == nullptr) {
+    init_rum_context(filter, rum_conf.snippet);
+    count_csp_header(*request);
+  }
+
+  rum_filter_ctx* const ctx = static_cast<rum_filter_ctx*>(filter->ctx);
+  if (!should_inject(*ctx, *request, rum_conf)) {
+    return ap_pass_brigade(filter->next, brigade);
+  }
+
+  // Injection changes the body size. Clear the length before headers are sent.
+  apr_table_unset(request->headers_out, "Content-Length");
+  request->clength = -1;
+
+  const apr_status_t status =
+      inject_into_brigade(*ctx, *request, rum_conf, *brigade);
+  if (status != APR_SUCCESS) return status;
+  return ap_pass_brigade(filter->next, brigade);
+}
+
+static void init_rum_context(ap_filter_t* filter, Snippet* snippet) {
+  request_rec* const request = filter->r;
+  filter->ctx = apr_pcalloc(request->pool, sizeof(rum_filter_ctx));
+  rum_filter_ctx* const ctx = static_cast<rum_filter_ctx*>(filter->ctx);
 
   ctx->state = InjectionState::pending;
 
   ctx->injector = injector_create(snippet);
   apr_pool_cleanup_register(
-      r->pool, (void*)ctx->injector,
-      [](void* p) -> apr_status_t {
-        injector_cleanup((Injector*)p);
+      request->pool, ctx->injector,
+      [](void* injector) -> apr_status_t {
+        injector_cleanup(static_cast<Injector*>(injector));
         return 0;
       },
       apr_pool_cleanup_null);
-  ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, r,
+  ap_log_rerror(APLOG_MARK, APLOG_INFO, 0, request,
                 "[RUM] injector is correctly initialized.");
 }
 
-bool should_inject(rum_filter_ctx& ctx, request_rec& r,
-                   const datadog::rum::conf::ResolvedConfig& rum_conf) {
+static void count_csp_header(const request_rec& request) {
+  const char* const csp_header =
+      apr_table_get(request.headers_out, "Content-Security-Policy");
+  if (csp_header && !std::string_view(csp_header).empty()) {
+    datadog::telemetry::counter::increment(
+        telemetry::content_security_policy,
+        telemetry::build_tags("status:seen", "kind:header"));
+  }
+}
+
+static bool should_inject(rum_filter_ctx& ctx, request_rec& request,
+                          const datadog::rum::conf::ResolvedConfig& rum_conf) {
   if (ctx.state != InjectionState::pending) {
     return false;
   }
 
   const char* const already_injected =
-      apr_table_get(r.headers_out, k_injected_header.data());
+      apr_table_get(request.headers_out, k_injected_header.data());
   if (already_injected && std::string_view(already_injected) == "1") {
     count_injection(telemetry::injection_skipped, "reason:already_injected",
                     rum_conf);
@@ -60,10 +128,10 @@ bool should_inject(rum_filter_ctx& ctx, request_rec& r,
 
   // Apache sets the outgoing header after resource filters. Read its media
   // type from the request record.
-  const char* const content_type = r.content_type;
+  const char* const content_type = request.content_type;
   if (!is_html_content_type(content_type)) {
     ap_log_rerror(
-        APLOG_MARK, APLOG_DEBUG, 0, &r,
+        APLOG_MARK, APLOG_DEBUG, 0, &request,
         "[RUM] Skip injection: \"Content-Type: %s\" does not match text/html.",
         content_type ? content_type : "<unset>");
     count_injection(telemetry::injection_skipped, "reason:content-type",
@@ -73,7 +141,7 @@ bool should_inject(rum_filter_ctx& ctx, request_rec& r,
   }
 
   const char* const content_encoding =
-      apr_table_get(r.headers_out, "Content-Encoding");
+      apr_table_get(request.headers_out, "Content-Encoding");
   if (content_encoding) {
     count_injection(telemetry::injection_skipped, "reason:compressed_html",
                     rum_conf);
@@ -83,104 +151,83 @@ bool should_inject(rum_filter_ctx& ctx, request_rec& r,
   return true;
 }
 
-/* TODO:
- *   - use AddOutputFilterByType. In theory the scanner can be run on
- *     everything.
- *   - add span for visualing the injection?
- *   - create snippet when the directive is created.
- */
-int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb) {
-  assert(bb != nullptr);
-
-  request_rec* r = f->r;
-
-  auto* dir_conf = static_cast<Directory*>(
-      ap_get_module_config(r->per_dir_config, &datadog_module));
-
-  const auto rum_conf =
-      datadog::rum::conf::resolve_configuration(dir_conf->rum);
-
-  if (!rum_conf.enabled || rum_conf.snippet == nullptr) {
-    // Nothing about this decision can change mid-request, and the filter is
-    // inserted unconditionally, so drop out of the chain instead of being
-    // re-entered for every brigade of a response we will never touch.
-    ap_remove_output_filter(f);
-    return ap_pass_brigade(f->next, bb);
-  }
-
-  // First time the filter is being called -> Init the context
-  if (f->ctx == nullptr) {
-    init_rum_context(f, rum_conf.snippet);
-    const char* const csp_header =
-        apr_table_get(r->headers_out, "Content-Security-Policy");
-    if (csp_header && !std::string_view(csp_header).empty()) {
-      datadog::telemetry::counter::increment(
-          telemetry::content_security_policy,
-          telemetry::build_tags("status:seen", "kind:header"));
+static apr_status_t inject_into_brigade(
+    rum_filter_ctx& ctx, request_rec& request,
+    const datadog::rum::conf::ResolvedConfig& rum_conf,
+    apr_bucket_brigade& brigade) {
+  apr_bucket* bucket = APR_BRIGADE_FIRST(&brigade);
+  while (bucket != APR_BRIGADE_SENTINEL(&brigade)) {
+    if (APR_BUCKET_IS_EOS(bucket)) {
+      end_without_injection(ctx, request, bucket, rum_conf);
+      break;
     }
-  }
-
-  auto* ctx = static_cast<rum_filter_ctx*>(f->ctx);
-
-  if (!should_inject(*ctx, *r, rum_conf)) {
-    return ap_pass_brigade(f->next, bb);
-  }
-
-  // Injection changes the body size. Clear the length before headers are sent.
-  apr_table_unset(r->headers_out, "Content-Length");
-  r->clength = -1;
-
-  size_t bytes;
-  const char* buffer;
-
-  for (apr_bucket* b = APR_BRIGADE_FIRST(bb); b != APR_BRIGADE_SENTINEL(bb);
-       b = APR_BUCKET_NEXT(b)) {
-    if (APR_BUCKET_IS_EOS(b)) {
-      injector_end(ctx->injector);
-      count_injection(telemetry::injection_failed, "reason:missing_header_tag",
-                      rum_conf);
-    } else if (APR_BUCKET_IS_METADATA(b)) {
-      // TODO: Handle metadata bucket like flush
-    } else if (apr_bucket_read(b, &buffer, &bytes, APR_BLOCK_READ) ==
-               APR_SUCCESS) {
-      InjectorResult result =
-          injector_write(ctx->injector, (const uint8_t*)buffer, bytes);
-
-      insert_injection_slices(b, result, r->connection->bucket_alloc);
-      if (result.injected) {
-        ctx->state = InjectionState::done;
-        apr_table_set(r->headers_out, k_injected_header.data(), "1");
-
-        ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r,
-                      "[RUM] successfully injected the browser SDK.");
-        datadog::telemetry::counter::increment(
-            telemetry::injection_succeed,
-            telemetry::build_tags(rum_conf.app_id_tag,
-                                  rum_conf.remote_config_tag));
-
-        return ap_pass_brigade(f->next, bb);
-      }
+    if (APR_BUCKET_IS_METADATA(bucket)) {
+      bucket = APR_BUCKET_NEXT(bucket);
+      continue;
     }
-  }
+    const apr_status_t status =
+        inject_into_bucket(ctx, request, rum_conf, bucket);
+    if (status != APR_SUCCESS) return status;
 
-  ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, r,
-                "[RUM] failed to inject the browser SDK.");
-  return ap_pass_brigade(f->next, bb);
+    // Reading a bucket can add more input buckets.
+    apr_bucket* const next = APR_BUCKET_NEXT(bucket);
+    apr_bucket_delete(bucket);
+    if (ctx.state == InjectionState::done) break;
+    bucket = next;
+  }
+  return APR_SUCCESS;
 }
 
-static void insert_injection_slices(apr_bucket* bucket,
-                                    const InjectorResult& result,
-                                    apr_bucket_alloc_t* allocator) {
-  size_t offset = 0;
+static void end_without_injection(
+    rum_filter_ctx& ctx, request_rec& request, apr_bucket* eos_bucket,
+    const datadog::rum::conf::ResolvedConfig& rum_conf) {
+  const InjectorResult result = injector_end_without_padding(ctx.injector);
+  insert_injector_output(eos_bucket, result, request.connection->bucket_alloc);
+  ctx.state = InjectionState::done;
+  ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, &request,
+                "[RUM] Skip injection: no </head> tag found.");
+  count_injection(telemetry::injection_failed, "reason:missing_header_tag",
+                  rum_conf);
+}
+
+static apr_status_t inject_into_bucket(
+    rum_filter_ctx& ctx, request_rec& request,
+    const datadog::rum::conf::ResolvedConfig& rum_conf, apr_bucket* bucket) {
+  const char* data;
+  apr_size_t length;
+  const apr_status_t status =
+      apr_bucket_read(bucket, &data, &length, APR_BLOCK_READ);
+  if (status != APR_SUCCESS) return status;
+
+  const InjectorResult result = injector_write(
+      ctx.injector, reinterpret_cast<const uint8_t*>(data), length);
+  insert_injector_output(bucket, result, request.connection->bucket_alloc);
+  if (result.injected) record_injection(ctx, request, rum_conf);
+  return APR_SUCCESS;
+}
+
+static void record_injection(
+    rum_filter_ctx& ctx, request_rec& request,
+    const datadog::rum::conf::ResolvedConfig& rum_conf) {
+  ctx.state = InjectionState::done;
+  apr_table_set(request.headers_out, k_injected_header.data(), "1");
+  ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, &request,
+                "[RUM] successfully injected the browser SDK.");
+  datadog::telemetry::counter::increment(
+      telemetry::injection_succeed,
+      telemetry::build_tags(rum_conf.app_id_tag, rum_conf.remote_config_tag));
+}
+
+static void insert_injector_output(apr_bucket* bucket,
+                                   const InjectorResult& result,
+                                   apr_bucket_alloc_t* allocator) {
   for (size_t index = 0; index < result.slices_length; ++index) {
     const BytesSlice& slice = result.slices[index];
-    if (!slice.from_incoming_chunk) {
-      apr_bucket* snippet_bucket = apr_bucket_immortal_create(
-          reinterpret_cast<const char*>(slice.start), slice.length, allocator);
-      apr_bucket_split(bucket, offset);
-      APR_BUCKET_INSERT_AFTER(bucket, snippet_bucket);
-    }
-    offset += slice.length;
+    if (slice.length == 0) continue;
+    apr_bucket* output_bucket =
+        apr_bucket_heap_create(reinterpret_cast<const char*>(slice.start),
+                               slice.length, nullptr, allocator);
+    APR_BUCKET_INSERT_BEFORE(bucket, output_bucket);
   }
 }
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -29,7 +30,7 @@ namespace datadog::rum::conf {
 
 struct Directory final {
   std::optional<bool> enabled;  // nullopt = inherit from parent
-  Snippet* snippet = nullptr;
+  std::shared_ptr<Snippet> snippet;
   std::string version;
   std::unordered_map<std::string, std::string> config;
   std::string app_id_tag;
@@ -39,34 +40,19 @@ struct Directory final {
 void merge_directory_configuration(Directory& out, const Directory& parent,
                                    const Directory& child);
 
-// Everything the response filter needs, resolved from a directory configuration
-// and the process-wide stable configuration.
-//
-// Snippet and tags are resolved together: a scope with no <DatadogRumSettings>
-// of its own injects the stable-configuration snippet, and its telemetry has to
-// carry that snippet's identifiers.
+// RUM settings of a directory, with stable configuration applied.
 struct ResolvedConfig final {
+  // True only if there is a snippet to inject.
   bool enabled = false;
-  // Never freed by the caller: released with the configuration pool.
   Snippet* snippet = nullptr;
-  // Empty when `snippet` is nullptr. app_id_tag is also empty when stable
-  // configuration disables RUM without an applicationId.
   std::string_view app_id_tag;
   std::string_view remote_config_tag;
 };
 
 ResolvedConfig resolve_configuration(const Directory& dir);
 
-// Reads the Agent's stable-configuration files (local + fleet-managed
-// application_monitoring.yaml) and caches the resulting snippet, the
-// identifiers that go with it, and DD_RUM_ENABLED from the environment.
-//
-// Call once per configuration load, from post_config; `pconf` scopes the cached
-// snippet to that load. Not done during directory-config merging: httpd merges
-// per-directory configuration inside ap_location_walk, which runs *per
-// request*, so building the snippet there would read YAML off disk on every
-// request. post_config also re-runs on graceful restart, so the cache cannot go
-// stale.
-void init_stable_config(server_rec* base_server, apr_pool_t* pconf);
+// Reads stable configuration and DD_RUM_ENABLED. Call from post_config, so it
+// runs once per configuration load.
+void init_stable_config(server_rec* base_server);
 
 }  // namespace datadog::rum::conf

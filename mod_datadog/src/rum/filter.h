@@ -12,4 +12,4 @@ struct rum_filter_ctx final {
 };
 
 // Output Filter for injecting the RUM SDK
-int rum_output_filter(ap_filter_t* f, apr_bucket_brigade* bb);
+int rum_output_filter(ap_filter_t* filter, apr_bucket_brigade* brigade);
