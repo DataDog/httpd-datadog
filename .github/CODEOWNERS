@@ -1,4 +1,1 @@
-# Automatically assign the team as a reviewer.
-# https://help.github.com/en/articles/about-code-owners
-
-* @DataDog/dd-trace-cpp @DataDog/injection-platform @DataDog/squad-rum-injection
+* @DataDog/apm-proxy @DataDog/injection-platform

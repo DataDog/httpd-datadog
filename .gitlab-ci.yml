@@ -11,10 +11,6 @@ variables:
   # is too slow under qemu to run any other way.
   DEVCONTAINER_REPO_NAME: httpd-datadog
   DEVCONTAINER_PER_ARCH: "true"
-  # Only build_env is hashed into the image context; nested dependencies are
-  # runtime/build-job inputs and do not belong in the image-builder checkout.
-  DEVCONTAINER_GIT_SUBMODULE_STRATEGY: normal
-  DEVCONTAINER_GIT_SUBMODULE_PATHS: deps/nginx-datadog
   # Most jobs consume build artifacts and do not need any submodules. Build
   # jobs override this with the two top-level dependencies they compile.
   GIT_SUBMODULE_STRATEGY: none
@@ -92,6 +88,14 @@ devcontainer-ghcr-policy-check:
       - artifacts/$ARCH/mod_datadog.so
       - artifacts/$ARCH/mod_datadog.so.debug
       - upload/mod_datadog-${ARCH}.zip
+      - build/test/unit-test/*tests
+
+.unit-test-template:
+  stage: test
+  script:
+    - chmod +x build/test/unit-test/*tests
+    - ./build/test/unit-test/tests --success
+    - timeout 300 ./build/test/unit-test/apr_tests
 
 .test-rum-template:
   stage: test
@@ -109,13 +113,16 @@ devcontainer-ghcr-policy-check:
 .test-integration-template:
   stage: test
   variables:
-    # The shared make entrypoint validates its devcontainer context inputs,
-    # including the nginx build_env files, before running pytest.
-    GIT_SUBMODULE_STRATEGY: normal
-    GIT_SUBMODULE_PATHS: deps/nginx-datadog
     MODULE_PATH: $CI_PROJECT_DIR/artifacts/$ARCH/mod_datadog.so
   script:
     - make test-integration
+
+# Check glibc compatibility on Debian (because we build on a musl-based image).
+.check-module-load-template:
+  stage: test
+  image: registry.ddbuild.io/images/mirror/debian:13
+  script:
+    - test/check-module-load.sh artifacts/$ARCH/mod_datadog.so
 
 .amd64:
   image: $DEVCONTAINER_IMAGE_AMD64_CI
@@ -157,6 +164,16 @@ build:arm64:
     - .build-template
     - .arm64
 
+unit-test:amd64:
+  extends:
+    - .unit-test-template
+    - .test-amd64
+
+unit-test:arm64:
+  extends:
+    - .unit-test-template
+    - .test-arm64
+
 test-rum:amd64:
   extends:
     - .test-rum-template
@@ -177,6 +194,16 @@ test-integration:arm64:
     - .test-integration-template
     - .test-arm64
 
+check-module-load:amd64:
+  extends:
+    - .test-amd64
+    - .check-module-load-template
+
+check-module-load:arm64:
+  extends:
+    - .test-arm64
+    - .check-module-load-template
+
 .upload-template:
   stage: aws
   needs:
@@ -184,10 +211,14 @@ test-integration:arm64:
       artifacts: true
     - job: "build:arm64"
       artifacts: true
+    - job: "unit-test:amd64"
+    - job: "unit-test:arm64"
     - job: "test-rum:amd64"
     - job: "test-rum:arm64"
     - job: "test-integration:amd64"
     - job: "test-integration:arm64"
+    - job: "check-module-load:amd64"
+    - job: "check-module-load:arm64"
   tags: ["arch:amd64"]
   image: registry.ddbuild.io/images/aws-cli:2.33.12
   script:

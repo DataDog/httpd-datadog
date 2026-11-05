@@ -3,10 +3,6 @@
 DEV_CONTAINER_IMAGE_NAME := registry.ddbuild.io/ci/httpd-datadog/devcontainer
 DEV_CONTAINER_PER_ARCH := true
 
-# Fail devcontainer targets early when their toolchain input is absent.
-# The shared makefile applies this guard only to relevant targets.
-DEV_CONTAINER_REQUIRED_PATHS := deps/nginx-datadog/build_env/Toolchain.cmake.x86_64
-
 include .devcontainer/devcontainer.mk
 
 # CI supplies MODULE_PATH to reuse its architecture-specific build.
@@ -22,7 +18,7 @@ PRESET ?= ci-dev
 .PHONY: ci-build
 ci-build:
 	git config --global --add safe.directory "$(CURDIR)"
-	git submodule update --init --depth=1 deps/dd-trace-cpp deps/nginx-datadog
+	git submodule update --init --depth=1 deps/dd-trace-cpp
 	cmake --preset=$(PRESET) -B build .
 	cmake --build build -j --verbose
 	cmake --install build --prefix dist

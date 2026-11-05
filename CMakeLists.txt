@@ -3,7 +3,7 @@
 # - toolchain (msvc, llvm, gcc)
 cmake_minimum_required(VERSION 3.12)
 
-project(httpd-datadog VERSION 1.0.6)
+project(httpd-datadog VERSION 1.1.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -12,7 +12,7 @@ set(ZLIB_USE_STATIC_LIBS ON)
 
 option(HTTPD_DATADOG_ENABLE_RUM "Enable RUM product" OFF)
 option(HTTPD_DATADOG_ENABLE_COVERAGE "Enable code coverage instrumentation" OFF)
-option(HTTPD_DATADOG_PATCH_AWAY_LIBC "Patch away libc dependency" OFF)
+option(HTTPD_DATADOG_VERIFY_NEEDED "Verify dynamic library dependencies" OFF)
 
 if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE ReleaseWithDeb)
@@ -43,10 +43,9 @@ endif (UNIX)
 
 add_subdirectory(deps)
 add_subdirectory(mod_datadog)
+enable_testing()
 add_subdirectory(test/unit-test)
 
-# Integration tests
-enable_testing()
 add_test(
   NAME integration-tests
   COMMAND uv run pytest

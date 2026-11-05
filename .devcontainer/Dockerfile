@@ -1,87 +1,17 @@
 # Build image for httpd-datadog GitLab CI.
 #
 # It contains:
-#   - LLVM 17 toolchain with musl sysroot for cross-compilation
+#   - musl toolchain whose binaries also run on glibc (musl-build-env, see
+#     https://github.com/DataDog/musl-toolchain-glibc-support)
 #   - httpd 2.4 source code
 #   - Tools necessary to build httpd and mod_datadog
 #   - Rust toolchain for RUM (inject-browser-sdk requires Rust 1.91+)
 #   - uv (fast Python package manager for tests)
-#
-# Toolchain files are sourced from deps/nginx-datadog/build_env/.
-#
-# dd-repo-tools supplies the native toolchain architecture in every supported
-# entrypoint (GitLab, `make dev-image`, and VS Code initialization).
-FROM alpine:3.20.3 AS sysroot
 
-ARG LLVM_VERSION=17.0.6
-ARG ARCH
-ENV SYSROOT=/sysroot/${ARCH}-none-linux-musl
+FROM registry.datadoghq.com/musl-build-env:1.0.6@sha256:fd1ab35b2a51538623740c499606a0f6240947b509b39bd1c754d7a5ee4b8c6b
 
-COPY deps/nginx-datadog/build_env/CHECKSUMS /CHECKSUMS
-
-RUN apk --no-cache add alpine-sdk coreutils sudo bash samurai python3 linux-headers \
-	compiler-rt clang clang-extra-tools llvm lld wget cmake make binutils musl-dev git patchelf xz lit
-RUN wget https://github.com/llvm/llvm-project/releases/download/llvmorg-${LLVM_VERSION}/llvm-project-${LLVM_VERSION}.src.tar.xz && \
-    grep -F llvm-project-${LLVM_VERSION}.src.tar.xz /CHECKSUMS | sha512sum --check && \
-    tar -xvf llvm-project-${LLVM_VERSION}.src.tar.xz
-
-COPY deps/nginx-datadog/build_env/locale.h.diff /locale.h.diff
-RUN cd /usr/include && patch -p0 < /locale.h.diff
-
-COPY deps/nginx-datadog/build_env/alltypes.h.diff /alltypes.h.diff
-RUN cd /usr/include && patch -p0 < /alltypes.h.diff
-
-RUN cd llvm-project-${LLVM_VERSION}.src && mkdir -p build && cd build && \
-    cmake -G Ninja \
-    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-    -DCMAKE_INSTALL_PREFIX=/usr \
-    -DCMAKE_C_COMPILER=clang \
-    -DCMAKE_C_FLAGS="-fno-omit-frame-pointer -D_LIBCPP_HAS_NO_C11_ALIGNED_ALLOC=1" \
-    -DCMAKE_CXX_COMPILER=clang++ \
-    -DCMAKE_CXX_FLAGS="-fno-omit-frame-pointer -D_LIBCPP_HAS_NO_C11_ALIGNED_ALLOC=1" \
-    -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-    -DLIBUNWIND_ENABLE_SHARED=OFF \
-    -DLIBUNWIND_ENABLE_STATIC=ON \
-    -DLIBUNWIND_USE_COMPILER_RT=ON \
-    -DLIBCXXABI_ENABLE_SHARED=OFF \
-    -DLIBCXXABI_USE_LLVM_UNWINDER=ON \
-    -DLIBCXXABI_ENABLE_STATIC_UNWINDER=ON \
-    -DLIBCXXABI_USE_COMPILER_RT=ON \
-    -DLIBCXX_ENABLE_SHARED=OFF \
-    -DLIBCXX_HAS_MUSL_LIBC=ON \
-    -DLIBCXX_USE_COMPILER_RT=ON \
-    -DLIBCXX_ENABLE_STATIC_ABI_LIBRARY=ON \
-    -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind" \
-    -DLLVM_EXTERNAL_LIT=/usr/bin/lit ../runtimes && \
-    ninja -v install-unwind install-cxxabi install-cxx
-
-RUN cd /usr/lib && ln -s gcc/*/*/ resource_dir
-RUN cd /usr/lib && ln -s clang/${LLVM_VERSION%%.*}/lib/linux/libclang_rt.builtins-*.a libclang_rt.builtins.a
-
-RUN rm -rf /llvm-project-${LLVM_VERSION}.src
-RUN rm -f llvm-project-${LLVM_VERSION}.src.tar.xz
-
-RUN mkdir -p ${SYSROOT}/usr && \
-    ln -s /usr/lib ${SYSROOT}/usr/ && \
-    ln -s /usr/include ${SYSROOT}/usr/ && \
-    ln -s /lib ${SYSROOT}/ && \
-    ln -s /usr/lib/llvm${LLVM_VERSION%%.*}/lib/clang/${LLVM_VERSION%%.*}/lib ${SYSROOT}/usr/lib/resource_dir/lib
-
-# Select the native toolchain without storing the unused variant in a layer.
-RUN --mount=type=bind,source=deps/nginx-datadog/build_env,target=/tmp/build_env,ro \
-    cp /tmp/build_env/Toolchain.cmake.${ARCH} ${SYSROOT}/Toolchain.cmake
-
-# see https://github.com/llvm/llvm-project/issues/60572
-RUN set -- /usr/lib/gcc/*-alpine-linux-musl/13.2.1/include && \
-    gcc_include=$1 && \
-    mv ${gcc_include}/stdatomic.h ${gcc_include}/stdatomic.h_ && \
-    cp /usr/lib/llvm${LLVM_VERSION%%.*}/lib/clang/${LLVM_VERSION%%.*}/include/stdatomic.h ${gcc_include}/stdatomic.h
-
-COPY deps/nginx-datadog/build_env/glibc_compat.c /sysroot/
-RUN clang --sysroot ${SYSROOT}/ -fpie -O2 -fno-omit-frame-pointer \
-        -ggdb3 -c /sysroot/glibc_compat.c -o /tmp/glibc_compat.o && \
-    ar rcs ${SYSROOT}/usr/lib/libglibc_compat.a /tmp/glibc_compat.o && \
-    rm /tmp/glibc_compat.o
+# Install Ninja build tool and clang-tidy
+RUN apk add --no-cache clang-extra-tools samurai
 
 # Install dependencies for httpd
 RUN apk add --no-cache autoconf expat expat-dev gpg gpg-agent libtool pcre-dev pcre2-dev py-pip zip
@@ -103,7 +33,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.9.28 /uv /usr/local/bin/uv
 COPY scripts/setup-httpd.py setup-httpd.py
 RUN python3 ./setup-httpd.py -o httpd 2.4.58 \
  && cd httpd \
- && ./configure --with-included-apr --prefix=$(pwd)/httpd-build --enable-mpms-shared="all" \
+ && CC=clang ./configure --with-included-apr --prefix=$(pwd)/httpd-build --enable-mpms-shared="all" \
  && make -j \
  && make -j install
 

@@ -50,8 +50,8 @@ if [[ ! -x "$run_clang_tidy" ]]; then
 fi
 
 git config --global --add safe.directory "$repo_root" >/dev/null 2>&1 || true
-if [[ ! -f deps/dd-trace-cpp/CMakeLists.txt ]] || [[ ! -f deps/nginx-datadog/CMakeLists.txt ]]; then
-    git submodule update --init --depth=1 deps/dd-trace-cpp deps/nginx-datadog
+if [[ ! -f deps/dd-trace-cpp/CMakeLists.txt ]]; then
+    git submodule update --init --depth=1 deps/dd-trace-cpp
 fi
 
 cmake --fresh --preset=ci-dev -B "$build_dir" \
@@ -71,10 +71,10 @@ for entry in json.load(open(db_path)):
     if not relative_path.endswith((".c", ".cc", ".cpp", ".cxx")):
         continue
     command = entry.get("command") or ""
-    if "/sysroot" not in command:
+    if "-stdlib=libc++" not in command:
         sys.stderr.write(
             "BUILD_DIR was not configured with preset ci-dev; refusing to run tidy.\n"
-            "  missing /sysroot in " + relative_path + "\n"
+            "  missing -stdlib=libc++ in " + relative_path + "\n"
         )
         sys.exit(1)
     verified_source_count += 1
