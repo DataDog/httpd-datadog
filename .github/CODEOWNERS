@@ -1,3 +1,1 @@
-* @DataDog/apm-proxy
-/mod_datadog/src/rum/ @DataDog/injection-platform @DataDog/apm-proxy
-/test/rum/ @DataDog/injection-platform @DataDog/apm-proxy
+* @DataDog/injection-platform
