@@ -342,7 +342,7 @@ system_tests:
   rules:
     - when: never
 
-# The apm-ecosystems ECR repository for httpd does not exist yet. Does not gate
-# the OCI publish.
+# No apm-ecosystems-reliability-profile system-tests secret for httpd-datadog
+# yet. Only system-tests needs it. Does not gate the OCI publish.
 kubernetes-injection-test-ecr-publish:
   allow_failure: true
