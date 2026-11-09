@@ -19,9 +19,6 @@
 .ssi-assemble:
   stage: assemble
   image: $DEVCONTAINER_IMAGE_AMD64_CI
-  variables:
-    # Pure file copy: no source build, so the deps/ submodules are dead weight.
-    GIT_SUBMODULE_STRATEGY: none
   # OK to run on amd64 for both arches — this job only copies files, no native
   # compilation.
   tags: ["arch:amd64"]
