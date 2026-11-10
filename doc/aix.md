@@ -1,12 +1,16 @@
 # Experimental AIX cross-build
 
 This prototype builds the tracing module for 64-bit, big-endian AIX against
-stock Apache 2.4.66. RUM is disabled. It has not been loaded or executed on
-AIX 7.2, AIX 7.3, or IBM HTTP Server (IHS).
+stock Apache 2.4.66. RUM is disabled. Loading, HTTP requests and incoming
+trace propagation passed on AIX 7.2 TL5 SP11 under QEMU POWER7, with both
+prefork and worker MPMs. AIX 7.3 and IBM HTTP Server (IHS) remain untested.
 
 The prototype used GCC 13.4.0, an AIX 7.3 system sysroot, and IBM GCC 13.3.0
 threaded ppc64 C++ headers and runtime libraries built for AIX 7.2. The
 cross-toolchain's default C++ runtime lacked threading support.
+The tracer uses pthread keys for its AIX random generators because this
+GNU linker's hidden C++ TLS common symbols produce invalid loader metadata.
+Native thread-exit and fork-reseed regression tests pass with the workaround.
 
 Provide these external inputs:
 
@@ -34,14 +38,16 @@ Its default loader path includes `/opt/datadog-httpd/lib` and
 `/opt/freeware/lib64`; set `LIBPATH` appropriately for a test installation.
 
 The build verified XCOFF64 output and matched 7 Apache, 6 APR, and 1 APR-util
-imports against those SDK binaries. This does not establish IHS ABI
-compatibility or AIX 7.2 runtime compatibility. IHS requires matching headers,
+imports against those SDK binaries. Native testing covers the AIX level and
+Apache configuration above. IHS requires matching headers,
 module magic, exports, and APR libraries. Rebuild with an AIX 7.2 baseline
 and the actual IHS SDK, then test loading, requests, and trace propagation.
 Do not reuse AIX 7.3 feature-check caches for an AIX 7.2 sysroot.
 
 With `bin/httpd_64` in the SDK, the build script also runs the host-side
-XCOFF loader check. It can be run separately without executing AIX code:
+XCOFF loader check, including TLS relocation targets. The original broken
+TLS artifact is rejected by this check. It can be run separately without
+executing AIX code:
 
 ```sh
 python3 test/aix/check_module.py build-aix/mod_datadog/mod_datadog.so "$HTTPD_SRC_DIR"

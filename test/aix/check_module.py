@@ -10,16 +10,18 @@ def read_loader(path):
     data = path.read_bytes()
     magic, sections, _, _, optional, _, _ = struct.unpack_from('>HHIQHHI', data)
     assert magic == 0x1f7, 'Expected 64-bit big-endian AIX XCOFF'
+    section_names = set()
+    raw = None
     for index in range(sections):
         section = struct.unpack_from('>8sQQQqqqIII4x', data, 24 + optional + 72 * index)
-        if section[0].rstrip(b'\0') == b'.loader':
+        name = section[0].rstrip(b'\0').decode()
+        section_names.add(name)
+        if name == '.loader':
             raw = section[4]
-            break
-    else:
-        raise AssertionError('No XCOFF loader section')
+    assert raw is not None, 'No XCOFF loader section'
     header = struct.unpack_from('>6I4q', data, raw)
-    (_, symbol_count, _, _, import_count, _, import_offset,
-     strings_offset, symbols_offset, _) = header
+    (_, symbol_count, relocation_count, _, import_count, _, import_offset,
+     strings_offset, symbols_offset, relocations_offset) = header
     cursor = raw + import_offset
     imports = []
     for index in range(import_count):
@@ -31,10 +33,12 @@ def read_loader(path):
         imports.append(dict(zip(('path', 'base', 'member'), fields)))
     exports = []
     imported_symbols = []
+    storage_classes = []
     for index in range(symbol_count):
-        _, offset, _, kind, _, file_id, _ = struct.unpack_from(
+        _, offset, _, kind, storage, file_id, _ = struct.unpack_from(
             '>QIHBBII', data, raw + symbols_offset + index * 24
         )
+        storage_classes.append(storage)
         start = raw + strings_offset + offset
         end = data.index(b'\0', start)
         name = data[start:end].decode()
@@ -42,12 +46,32 @@ def read_loader(path):
             exports.append(name)
         if kind & 0x40:
             imported_symbols.append({'name': name, 'file_id': file_id})
-    return {"imports": imports, "exports": set(exports), "symbols": imported_symbols}
+    relocations = [
+        struct.unpack_from('>QHHi', data, raw + relocations_offset + index * 16)
+        for index in range(relocation_count)
+    ]
+    return {"imports": imports, "exports": set(exports), "symbols": imported_symbols,
+            "sections": section_names, "storage_classes": storage_classes,
+            "relocations": relocations}
+
+
+def check_tls(module):
+    for address, kind, _, symbol in module["relocations"]:
+        if not 0x20 <= kind & 0xff <= 0x25:
+            continue
+        message = f"Invalid TLS loader relocation at {address:#x}"
+        if symbol in (-1, -2):
+            section = ".tdata" if symbol == -1 else ".tbss"
+            assert section in module["sections"], message
+        else:
+            assert 3 <= symbol < len(module["storage_classes"]) + 3, message
+            assert module["storage_classes"][symbol - 3] in (20, 21), message
 
 
 def main():
     module_path, sdk = map(Path, sys.argv[1:])
     module = read_loader(module_path)
+    check_tls(module)
     required = {"datadog_module", "mod_datadog_version", "mod_datadog_version_string"}
     assert required <= module["exports"], "Missing Apache module exports"
     assert all(symbol["file_id"] for symbol in module["symbols"]), "Unbound loader import"
