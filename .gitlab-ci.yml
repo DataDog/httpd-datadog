@@ -12,6 +12,8 @@ variables:
   # (`tags: ["arch:$ARCH"]`). The cmake compile + integration-test suite
   # is too slow under qemu to run any other way.
   DEVCONTAINER_REPO_NAME: httpd-datadog
+  # Source: DataDog/dd-repo-tools#21; selected Buildx v0.38.2-dd.3 on both architectures.
+  DEVCONTAINER_BOOTSTRAP_IMAGE: registry.ddbuild.io/ci/dd-repo-tools/devcontainer:8d81915bc0b6-ci@sha256:d405dbbd27ebf0d8df9be542547d18ac3d3d6d5474e0740be720eda031fe2502
   DEVCONTAINER_PER_ARCH: "true"
   # Most jobs consume build artifacts and do not need any submodules. Build
   # jobs override this with the two top-level dependencies they compile.
