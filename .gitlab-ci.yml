@@ -1,4 +1,6 @@
 include:
+  - local: ".gitlab/ssi-package.yml"
+  - local: ".gitlab/one-pipeline.locked.yml"
   - local: .gitlab/devcontainer.yml
   - local: .gitlab/devcontainer-to-ghcr.yml
 
@@ -18,6 +20,13 @@ variables:
   GIT_CONFIG_COUNT: 1
   GIT_CONFIG_KEY_0: url.https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.ddbuild.io/DataDog/.insteadOf
   GIT_CONFIG_VALUE_0: https://github.com/DataDog/
+  # one-pipeline OCI publishing. Set explicitly: the template defaults derive
+  # from REPO_LANG, which is "datadog" here.
+  OCI_PACKAGE_NAME: datadog-apm-library-httpd
+  OCI_AGENT_REGISTRY_PACKAGE_NAME: apm-library-httpd-package
+  AGENT_REPO_PRODUCT_NAME: auto_inject-httpd
+  LIB_INJECTION_NAME: dd-lib-httpd-init
+  REPO_NOTIFICATION_CHANNEL: "#apm-proxy"
 
 default:
   id_tokens:
@@ -27,6 +36,10 @@ default:
 stages:
   - build
   - test
+  - assemble
+  - shared-pipeline-build
+  - shared-pipeline-test
+  - shared-pipeline-publish
   - aws
 
 devcontainer-ghcr-policy-check:
@@ -288,3 +301,48 @@ configure-branch-snapshot-expiry:
       echo "Lifecycle rule '$RULE_ID' configured: expire httpd/branch-snapshots/ after 30 days"
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# ── One-pipeline overrides ────────────────────────────────────────────
+#
+# These re-declare only the keys we change; everything else still comes from
+# .gitlab/one-pipeline.locked.yml (do not edit that file — it is generated).
+
+# Upstream package-oci declares no needs:, so it would wait for all earlier
+# stages. Its real inputs are the ssi-build jobs, which in turn gate
+# on test-rum:$ARCH so an untested module never reaches installtesting.
+package-oci:
+  needs:
+    - job: "ssi-build:amd64"
+      artifacts: true
+    - job: "ssi-build:arm64"
+      artifacts: true
+
+# Shared shape for the one-pipeline jobs we neutralise with a no-op script
+# rather than `rules: when: never` (other template jobs need: them).
+.stubbed-shared-pipeline-job:
+  image: registry.ddbuild.io/images/mirror/alpine:3.23.0
+  tags: ["arch:amd64"]
+  stage: shared-pipeline-test
+  needs: []
+  before_script: []
+
+# Needs metadata/requirements-{block,allow}.json fixtures and a gitlab-config
+# allowlist entry for cloning auto_inject with CI_JOB_TOKEN. Hard-fails on unset
+# REQUIREMENTS_*_JSON_PATH otherwise.
+requirements_json_test:
+  extends: .stubbed-shared-pipeline-job
+  script: ['echo "skipped: no requirements fixtures yet"']
+
+# system-tests has no docker-ssi scenario for cpp_httpd yet.
+configure_system_tests:
+  extends: .stubbed-shared-pipeline-job
+  script: ['echo "skipped: no docker-ssi scenario for cpp_httpd"']
+
+system_tests:
+  rules:
+    - when: never
+
+# No apm-ecosystems-reliability-profile system-tests secret for httpd-datadog
+# yet. Only system-tests needs it. Does not gate the OCI publish.
+kubernetes-injection-test-ecr-publish:
+  allow_failure: true

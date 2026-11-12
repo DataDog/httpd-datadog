@@ -19,22 +19,24 @@ constexpr std::string_view k_injected_header = "x-datadog-sdk-injected";
 
 static void count_injection(const datadog::telemetry::Counter& counter,
                             const char* reason,
-                            const datadog::rum::conf::Directory& rum_conf);
+                            const datadog::rum::conf::ResolvedConfig& rum_conf);
 static void init_rum_context(ap_filter_t* filter, Snippet* snippet);
 static void count_csp_header(const request_rec& request);
 static bool should_inject(rum_filter_ctx& ctx, request_rec& request,
-                          const datadog::rum::conf::Directory& rum_conf);
+                          const datadog::rum::conf::ResolvedConfig& rum_conf);
 static apr_status_t inject_into_brigade(
     rum_filter_ctx& ctx, request_rec& request,
-    const datadog::rum::conf::Directory& rum_conf, apr_bucket_brigade& brigade);
+    const datadog::rum::conf::ResolvedConfig& rum_conf,
+    apr_bucket_brigade& brigade);
 static void end_without_injection(
     rum_filter_ctx& ctx, request_rec& request, apr_bucket* eos_bucket,
-    const datadog::rum::conf::Directory& rum_conf);
+    const datadog::rum::conf::ResolvedConfig& rum_conf);
 static apr_status_t inject_into_bucket(
     rum_filter_ctx& ctx, request_rec& request,
-    const datadog::rum::conf::Directory& rum_conf, apr_bucket* bucket);
-static void record_injection(rum_filter_ctx& ctx, request_rec& request,
-                             const datadog::rum::conf::Directory& rum_conf);
+    const datadog::rum::conf::ResolvedConfig& rum_conf, apr_bucket* bucket);
+static void record_injection(
+    rum_filter_ctx& ctx, request_rec& request,
+    const datadog::rum::conf::ResolvedConfig& rum_conf);
 static void insert_injector_output(apr_bucket* bucket,
                                    const InjectorResult& result,
                                    apr_bucket_alloc_t* allocator);
@@ -51,14 +53,17 @@ int rum_output_filter(ap_filter_t* filter, apr_bucket_brigade* brigade) {
   request_rec* const request = filter->r;
   Directory* const dir_conf = static_cast<Directory*>(
       ap_get_module_config(request->per_dir_config, &datadog_module));
-  const datadog::rum::conf::Directory& rum_conf = dir_conf->rum;
+  const auto rum_conf =
+      datadog::rum::conf::resolve_configuration(dir_conf->rum);
 
-  if (rum_conf.enabled != true || rum_conf.snippet == nullptr) {
+  if (!rum_conf.enabled) {
+    // This does not change during the request.
+    ap_remove_output_filter(filter);
     return ap_pass_brigade(filter->next, brigade);
   }
 
   if (filter->ctx == nullptr) {
-    init_rum_context(filter, rum_conf.snippet.get());
+    init_rum_context(filter, rum_conf.snippet);
     count_csp_header(*request);
   }
 
@@ -107,7 +112,7 @@ static void count_csp_header(const request_rec& request) {
 }
 
 static bool should_inject(rum_filter_ctx& ctx, request_rec& request,
-                          const datadog::rum::conf::Directory& rum_conf) {
+                          const datadog::rum::conf::ResolvedConfig& rum_conf) {
   if (ctx.state != InjectionState::pending) {
     return false;
   }
@@ -148,7 +153,7 @@ static bool should_inject(rum_filter_ctx& ctx, request_rec& request,
 
 static apr_status_t inject_into_brigade(
     rum_filter_ctx& ctx, request_rec& request,
-    const datadog::rum::conf::Directory& rum_conf,
+    const datadog::rum::conf::ResolvedConfig& rum_conf,
     apr_bucket_brigade& brigade) {
   apr_bucket* bucket = APR_BRIGADE_FIRST(&brigade);
   while (bucket != APR_BRIGADE_SENTINEL(&brigade)) {
@@ -175,7 +180,7 @@ static apr_status_t inject_into_brigade(
 
 static void end_without_injection(
     rum_filter_ctx& ctx, request_rec& request, apr_bucket* eos_bucket,
-    const datadog::rum::conf::Directory& rum_conf) {
+    const datadog::rum::conf::ResolvedConfig& rum_conf) {
   const InjectorResult result = injector_end_without_padding(ctx.injector);
   insert_injector_output(eos_bucket, result, request.connection->bucket_alloc);
   ctx.state = InjectionState::done;
@@ -187,7 +192,7 @@ static void end_without_injection(
 
 static apr_status_t inject_into_bucket(
     rum_filter_ctx& ctx, request_rec& request,
-    const datadog::rum::conf::Directory& rum_conf, apr_bucket* bucket) {
+    const datadog::rum::conf::ResolvedConfig& rum_conf, apr_bucket* bucket) {
   const char* data;
   apr_size_t length;
   const apr_status_t status =
@@ -201,8 +206,9 @@ static apr_status_t inject_into_bucket(
   return APR_SUCCESS;
 }
 
-static void record_injection(rum_filter_ctx& ctx, request_rec& request,
-                             const datadog::rum::conf::Directory& rum_conf) {
+static void record_injection(
+    rum_filter_ctx& ctx, request_rec& request,
+    const datadog::rum::conf::ResolvedConfig& rum_conf) {
   ctx.state = InjectionState::done;
   apr_table_set(request.headers_out, k_injected_header.data(), "1");
   ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, &request,
@@ -225,9 +231,9 @@ static void insert_injector_output(apr_bucket* bucket,
   }
 }
 
-static void count_injection(const datadog::telemetry::Counter& counter,
-                            const char* reason,
-                            const datadog::rum::conf::Directory& rum_conf) {
+static void count_injection(
+    const datadog::telemetry::Counter& counter, const char* reason,
+    const datadog::rum::conf::ResolvedConfig& rum_conf) {
   datadog::telemetry::counter::increment(
       counter, telemetry::build_tags(reason, rum_conf.app_id_tag,
                                      rum_conf.remote_config_tag));

@@ -24,6 +24,9 @@ void increment(const Counter&, const std::vector<std::string>&) {}
 extern "C" {
 void ap_log_rerror_(const char*, int, int, int, apr_status_t,
                     const request_rec*, const char*, ...) {}
+void ap_log_error_(const char*, int, int, int, apr_status_t, const server_rec*,
+                   const char*, ...) {}
+void ap_remove_output_filter(ap_filter_t*) {}
 #ifndef ap_get_request_module_loglevel
 int ap_get_request_module_loglevel(const request_rec*, int) { return 0; }
 #endif
