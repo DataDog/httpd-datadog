@@ -15,7 +15,7 @@ APLOG_USE_MODULE(datadog);
 using namespace datadog::conf;
 using namespace datadog::rum;
 
-constexpr std::string_view k_injected_header = "x-datadog-sdk-injected";
+constexpr std::string_view k_injected_header = "x-datadog-rum-injected";
 
 static void count_injection(const datadog::telemetry::Counter& counter,
                             const char* reason,

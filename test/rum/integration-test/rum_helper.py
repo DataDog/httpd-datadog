@@ -12,9 +12,9 @@ def assert_rum_injected(response: requests.Response) -> None:
         f"Content preview: {content[:200]}"
     )
 
-    injection_header = response.headers.get("x-datadog-sdk-injected")
+    injection_header = response.headers.get("x-datadog-rum-injected")
     assert injection_header == "1", (
-        f"Expected x-datadog-sdk-injected header to be '1' but got '{injection_header}'"
+        f"Expected x-datadog-rum-injected header to be '1' but got '{injection_header}'"
     )
 
 
@@ -26,7 +26,7 @@ def assert_rum_not_injected(response: requests.Response) -> None:
         f"Content preview: {content[:500]}"
     )
 
-    injection_header = response.headers.get("x-datadog-sdk-injected")
+    injection_header = response.headers.get("x-datadog-rum-injected")
     assert injection_header != "1", (
-        f"Expected x-datadog-sdk-injected header NOT to be '1' but got '{injection_header}'"
+        f"Expected x-datadog-rum-injected header NOT to be '1' but got '{injection_header}'"
     )

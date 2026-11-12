@@ -112,10 +112,10 @@ def assert_rum_response(
         assert response.content.endswith(b"</body></html>"), name
         # Streaming proxy headers can be sent before injection.
         if not proxied:
-            assert response.headers.get("x-datadog-sdk-injected") == "1", name
+            assert response.headers.get("x-datadog-rum-injected") == "1", name
     else:
         assert response.content == expected.body, name
-        assert response.headers.get("x-datadog-sdk-injected") != "1", name
+        assert response.headers.get("x-datadog-rum-injected") != "1", name
 
 
 def lowercase(value: str | None) -> str | None:

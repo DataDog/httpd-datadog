@@ -249,3 +249,42 @@ def test_rum_proxy_injection_pending_header(server: Server, agent: AgentSession,
 
         assert server.stop(conf_path)
 
+
+@pytest.mark.requires_rum
+def test_rum_skips_already_injected_upstream(server: Server, log_dir: str, module_path: str) -> None:
+    """
+    Verify that a proxied response with x-datadog-rum-injected: 1, as sent by
+    nginx-datadog, IIS or dd-trace-java, does not get a second snippet.
+    """
+    host = "127.0.0.1"
+    port = free_port()
+    upstream_body = "<html><head><title>Upstream</title></head><body>Hello</body></html>"
+
+    async def upstream_handler(request):
+        return web.Response(
+            body=upstream_body,
+            content_type="text/html",
+            headers={"x-datadog-rum-injected": "1"},
+        )
+
+    app = web.Application()
+    app.add_routes([web.get("/", upstream_handler)])
+
+    config = {
+        "path": RUM_TEST_DIR / "conf/rum_proxy.conf",
+        "var": {"upstream_url": f"http://{host}:{port}"},
+    }
+
+    conf_path = os.path.join(log_dir, "httpd.conf")
+    save_configuration(make_configuration(config, log_dir, module_path), conf_path)
+
+    with AioHTTPServer(app, host, port):
+        assert server.check_configuration(conf_path)
+        assert server.load_configuration(conf_path)
+
+        response = requests.get(server.make_url("/proxy"), timeout=2)
+        assert response.status_code == 200
+        assert response.text == upstream_body
+        assert response.headers.get("x-datadog-rum-injected") == "1"
+
+        assert server.stop(conf_path)
