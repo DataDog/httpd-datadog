@@ -301,3 +301,35 @@ def test_trust_inbound_span_directive(server, agent, log_dir, module_path):
             assert root_span["parent_id"] == 67667974448284343
         else:
             assert root_span["parent_id"] == 0
+
+
+@pytest.mark.ci
+def test_tracing_off_in_child_location(server, agent, log_dir, module_path):
+    """
+    Verify `DatadogTracing Off` in a child `<Location>` disables tracing there.
+
+    The server scope keeps the default (on), so a request outside the
+    location must still be traced.
+    """
+    config = {
+        "path": relpath("conf/directives.conf"),
+        "var": {},
+    }
+
+    conf_path = os.path.join(log_dir, "httpd.conf")
+    save_configuration(make_configuration(config, log_dir, module_path), conf_path)
+
+    assert server.check_configuration(conf_path)
+    assert server.load_configuration(conf_path)
+
+    r = requests.get(server.make_url("/tracing-off"), timeout=2)
+    assert r.status_code == 200
+
+    r = requests.get(server.make_url("/index.html"), timeout=2)
+    assert r.status_code == 200
+
+    assert server.stop(conf_path)
+
+    traces = agent.get_traces(timeout=5)
+    assert len(traces) == 1, traces
+    assert traces[0][0]["resource"].split()[1] == "/index.html"
