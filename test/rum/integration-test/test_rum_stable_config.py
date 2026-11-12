@@ -446,7 +446,7 @@ def test_rum_graceful_restart_rereads_stable_config(
     deadline = time.monotonic() + 5
     while True:
         response = requests.get(server.make_url("/"), timeout=2)
-        if response.headers.get("x-datadog-sdk-injected") != "1":
+        if response.headers.get("x-datadog-rum-injected") != "1":
             break
         assert time.monotonic() < deadline, "graceful restart did not disable RUM"
         time.sleep(0.2)
