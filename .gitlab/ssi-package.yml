@@ -6,12 +6,16 @@
 #
 # Output (consumed by prepare-oci-package.sh):
 #   artifacts/ssi-sources/$ARCH/httpd/$SERIES/mod_datadog.so
+#   artifacts/ssi-sources/$ARCH/httpd/$SERIES/datadog.conf
 #   artifacts/ssi-sources/$ARCH/version
 #
 # $SERIES is the httpd minor series ("2.4"), not the full patch version: one
 # module per architecture serves all of 2.4.x because Apache's module magic
 # number is stable within a minor series. It is derived from the httpd built
 # into the devcontainer so it cannot drift from .devcontainer/Dockerfile.
+#
+# The injector includes datadog.conf with IncludeOptional, so a graceful
+# restart after the package is removed skips the module instead of failing.
 #
 # mod_datadog.so.debug is deliberately left out — it stays on the S3 lane and
 # would otherwise dominate the package size.
@@ -43,6 +47,7 @@
     - OUTPUT="artifacts/ssi-sources/${ARCH}"
     - mkdir -p "${OUTPUT}/httpd/${SERIES}"
     - cp "$so_file" "${OUTPUT}/httpd/${SERIES}/"
+    - cp packaging/datadog.conf "${OUTPUT}/httpd/${SERIES}/"
     - echo "${VERSION}" > "${OUTPUT}/version"
     - echo "Assembled sources:" && find "${OUTPUT}" -type f | sort
   artifacts:
