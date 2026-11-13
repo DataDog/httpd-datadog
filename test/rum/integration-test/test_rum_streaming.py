@@ -22,7 +22,7 @@ STREAMS_WITH_CLOSING_TAG = {
 }
 STREAMS_WITHOUT_CLOSING_TAG = {
     "eof": [b"<html><head><title>Page</title></he"],
-    "no-head": [b"<html><body><", b"div>Page</div></body></html>"],
+    "fragment": [b"<div>Page", b"</div>"],
 }
 STREAMS = {**STREAMS_WITH_CLOSING_TAG, **STREAMS_WITHOUT_CLOSING_TAG}
 
