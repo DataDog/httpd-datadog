@@ -28,9 +28,9 @@ static apr_status_t inject_into_brigade(
     rum_filter_ctx& ctx, request_rec& request,
     const datadog::rum::conf::ResolvedConfig& rum_conf,
     apr_bucket_brigade& brigade);
-static void end_without_injection(
-    rum_filter_ctx& ctx, request_rec& request, apr_bucket* eos_bucket,
-    const datadog::rum::conf::ResolvedConfig& rum_conf);
+static void end_injection(rum_filter_ctx& ctx, request_rec& request,
+                          apr_bucket* eos_bucket,
+                          const datadog::rum::conf::ResolvedConfig& rum_conf);
 static apr_status_t inject_into_bucket(
     rum_filter_ctx& ctx, request_rec& request,
     const datadog::rum::conf::ResolvedConfig& rum_conf, apr_bucket* bucket);
@@ -158,7 +158,7 @@ static apr_status_t inject_into_brigade(
   apr_bucket* bucket = APR_BRIGADE_FIRST(&brigade);
   while (bucket != APR_BRIGADE_SENTINEL(&brigade)) {
     if (APR_BUCKET_IS_EOS(bucket)) {
-      end_without_injection(ctx, request, bucket, rum_conf);
+      end_injection(ctx, request, bucket, rum_conf);
       break;
     }
     if (APR_BUCKET_IS_METADATA(bucket)) {
@@ -178,14 +178,20 @@ static apr_status_t inject_into_brigade(
   return APR_SUCCESS;
 }
 
-static void end_without_injection(
-    rum_filter_ctx& ctx, request_rec& request, apr_bucket* eos_bucket,
-    const datadog::rum::conf::ResolvedConfig& rum_conf) {
+// The injector may only decide at the end. For example, it holds back a short
+// page until it knows no charset declaration follows.
+static void end_injection(rum_filter_ctx& ctx, request_rec& request,
+                          apr_bucket* eos_bucket,
+                          const datadog::rum::conf::ResolvedConfig& rum_conf) {
   const InjectorResult result = injector_end_without_padding(ctx.injector);
   insert_injector_output(eos_bucket, result, request.connection->bucket_alloc);
+  if (result.injected) {
+    record_injection(ctx, request, rum_conf);
+    return;
+  }
   ctx.state = InjectionState::done;
   ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, &request,
-                "[RUM] Skip injection: no </head> tag found.");
+                "[RUM] Skip injection: no injection point found.");
   count_injection(telemetry::injection_failed, "reason:missing_header_tag",
                   rum_conf);
 }

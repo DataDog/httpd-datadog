@@ -81,18 +81,34 @@ extern "C" apr_status_t ap_pass_brigade(ap_filter_t*,
 
 namespace {
 
-std::string snippet_text(Snippet* snippet) {
-  Injector* injector = injector_create(snippet);
-  const std::string closing_tag = "</head>";
-  const InjectorResult result = injector_write(
-      injector, reinterpret_cast<const uint8_t*>(closing_tag.data()),
-      closing_tag.size());
-  std::string text;
+// With a charset declaration first, the injector holds back only a cut tag.
+const std::string k_head_start = "<html><head><meta charset=\"utf-8\">";
+
+// A head start of `size` bytes, padded with a comment.
+std::string head_start_of_size(size_t size) {
+  const std::string open = k_head_start + "<!--";
+  const std::string close = "-->";
+  return open + std::string(size - open.size() - close.size(), 'x') + close;
+}
+
+void append_slices(std::string& text, const InjectorResult& result) {
   for (size_t index = 0; index < result.slices_length; ++index) {
     text.append(reinterpret_cast<const char*>(result.slices[index].start),
                 result.slices[index].length);
   }
-  const bool injected = result.injected;
+}
+
+std::string snippet_text(Snippet* snippet) {
+  Injector* injector = injector_create(snippet);
+  const std::string closing_tag = "</head>";
+  std::string text;
+  const InjectorResult written = injector_write(
+      injector, reinterpret_cast<const uint8_t*>(closing_tag.data()),
+      closing_tag.size());
+  append_slices(text, written);
+  const InjectorResult ended = injector_end_without_padding(injector);
+  append_slices(text, ended);
+  const bool injected = written.injected || ended.injected;
   injector_cleanup(injector);
   REQUIRE(injected);
   text.resize(text.size() - closing_tag.size());
@@ -184,9 +200,12 @@ std::string check_stream(const std::vector<std::string>& chunks,
   downstream.reads = reads;
   apr_bucket_brigade* brigade =
       apr_brigade_create(pool, connection.bucket_alloc);
-  check_output(
-      write_stream(&filter, brigade, chunks, brigades, flushes, buckets),
-               snippet);
+  const std::string expected =
+      write_stream(&filter, brigade, chunks, brigades, flushes, buckets);
+  check_output(expected, snippet);
+  const bool injected = expected.find("</head>") != std::string::npos;
+  CHECK((apr_table_get(request.headers_out, "x-datadog-rum-injected") !=
+         nullptr) == injected);
   apr_pool_destroy(pool);
   apr_terminate();
   return snippet;
@@ -196,7 +215,7 @@ std::string check_stream(const std::vector<std::string>& chunks,
 
 TEST_CASE("RUM injects when the closing tag is split across buckets", "[rum]") {
   const Brigades brigades = GENERATE(Brigades::separate, Brigades::single);
-  const std::string body = "abc</head>def";
+  const std::string body = k_head_start + "</head>def";
   for (size_t split = 1; split < body.size(); ++split) {
     INFO("split at " << split
                      << (brigades == Brigades::single ? ", same brigade" : ""));
@@ -205,27 +224,32 @@ TEST_CASE("RUM injects when the closing tag is split across buckets", "[rum]") {
 }
 
 TEST_CASE("RUM keeps a false prefix of the closing tag", "[rum]") {
-  check_stream({"abc</he", "ader>def"});
+  check_stream({k_head_start + "</he", "ader></head>def"});
 }
 
 TEST_CASE("RUM keeps a partial closing tag at the end of the stream", "[rum]") {
-  check_stream({"abc</he"});
+  check_stream({k_head_start + "</he"});
 }
 
 TEST_CASE("RUM output stays valid when downstream reads later", "[rum]") {
-  check_stream({"abc</he", "ader>def</he", "ad>tail", "after"},
+  check_stream({k_head_start + "</he", "ader></he", "ad>tail", "after"},
                Brigades::separate, Reads::deferred);
 }
 
 TEST_CASE("RUM injects into a large response", "[rum]") {
   check_stream(
-      {std::string(100000, 'x') + "</head>" + std::string(100000, 'y')},
+      {head_start_of_size(100000) + "</head>" + std::string(100000, 'y')},
       Brigades::single, Reads::deferred);
+}
+
+TEST_CASE("RUM injects a short page when the response ends", "[rum]") {
+  check_stream({"<html><head><title>Page</title></he", "ad><body></body>"});
 }
 
 TEST_CASE("RUM keeps flush buckets at their position", "[rum]") {
   const std::string partial_tag = "</he";
-  const std::vector<std::string> chunks = {"abc" + partial_tag, "ad>", "def"};
+  const std::vector<std::string> chunks = {k_head_start + partial_tag, "ad>",
+                                           "def"};
   const std::string snippet = check_stream(
       chunks, Brigades::separate, Reads::immediate, Flushes::after_each_chunk);
   // The partial tag is held back until the next chunk.
@@ -237,11 +261,13 @@ TEST_CASE("RUM keeps flush buckets at their position", "[rum]") {
 }
 
 TEST_CASE("RUM handles file buckets split by reads", "[rum]") {
-  const std::string before_split(APR_BUCKET_BUFF_SIZE - 2, 'x');
-  check_stream({before_split + "</head>def"}, Brigades::separate,
-               Reads::immediate, Flushes::none, Buckets::file);
-  check_stream({before_split + "</headless>"}, Brigades::separate,
-               Reads::immediate, Flushes::none, Buckets::file);
+  check_stream({head_start_of_size(APR_BUCKET_BUFF_SIZE - 2) + "</head>def"},
+               Brigades::separate, Reads::immediate, Flushes::none,
+               Buckets::file);
+  check_stream({head_start_of_size(APR_BUCKET_BUFF_SIZE - 2) +
+                "</headless></head>def"},
+               Brigades::separate, Reads::immediate, Flushes::none,
+               Buckets::file);
 }
 
 TEST_CASE("RUM keeps an empty body", "[rum]") {
