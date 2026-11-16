@@ -169,7 +169,7 @@ std::string make_rum_json_config(
       auto b = (value == "true" ? true : false);
       rum.AddMember(rapidjson::Value(key.c_str(), allocator).Move(),
                     rapidjson::Value(b).Move(), allocator);
-    } else if (value_is_array) {
+    } else if (key == "allowedTracingUrls" || value_is_array) {
       rapidjson::Value array(rapidjson::kArrayType);
       for (const auto& e : split(value, ",")) {
         array.PushBack(rapidjson::Value(e.c_str(), allocator).Move(),
