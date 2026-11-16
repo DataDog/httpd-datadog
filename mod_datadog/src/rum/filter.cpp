@@ -119,7 +119,11 @@ static bool should_inject(rum_filter_ctx& ctx, request_rec& request,
 
   const char* const already_injected =
       apr_table_get(request.headers_out, k_injected_header.data());
-  if (already_injected && std::string_view(already_injected) == "1") {
+  // CGI headers stay in err_headers_out until the HTTP header filter.
+  const char* const err_already_injected =
+      apr_table_get(request.err_headers_out, k_injected_header.data());
+  if ((already_injected && std::string_view(already_injected) == "1") ||
+      (err_already_injected && std::string_view(err_already_injected) == "1")) {
     count_injection(telemetry::injection_skipped, "reason:already_injected",
                     rum_conf);
     ctx.state = InjectionState::done;

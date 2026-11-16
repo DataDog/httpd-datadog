@@ -190,6 +190,7 @@ std::string check_stream(const std::vector<std::string>& chunks,
   request.connection = &connection;
   request.content_type = "text/html";
   request.headers_out = apr_table_make(pool, 4);
+  request.err_headers_out = apr_table_make(pool, 4);
   void* configuration[] = {&directory};
   request.per_dir_config = reinterpret_cast<ap_conf_vector_t*>(configuration);
   ap_filter_t filter = {};
