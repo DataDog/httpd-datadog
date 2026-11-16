@@ -10,6 +10,7 @@
 #include <atomic>
 #include <memory>
 #include <string>
+#include <string_view>
 
 #include "common_conf.h"
 #include "version.h"
@@ -88,7 +89,29 @@ module AP_MODULE_DECLARE_DATA datadog_module = {
 };
 
 #if defined(HTTPD_DD_RUM)
+static constexpr const char* rum_pending_header =
+    "x-datadog-rum-injection-pending";
+static constexpr const char* rum_remote_pending_note =
+    "datadog-rum-remote-injection-pending";
+
+static int capture_rum_pending(request_rec* r) {
+  const char* pending = apr_table_get(r->headers_in, rum_pending_header);
+  if (pending && std::string_view(pending) == "1") {
+    apr_table_setn(r->notes, rum_remote_pending_note, "1");
+  }
+  return DECLINED;
+}
+
+static bool rum_pending_from_downstream(request_rec* r) {
+  // Redirects and subrequests inherit headers changed by our own fixups.
+  while (r->prev || r->main) {
+    r = r->prev ? r->prev : r->main;
+  }
+  return apr_table_get(r->notes, rum_remote_pending_note) != nullptr;
+}
+
 static void insert_datadog_filters(request_rec* r) {
+  if (rum_pending_from_downstream(r)) return;
   ap_add_output_filter(rum_filter_name, NULL, r, r->connection);
 }
 #endif
@@ -102,6 +125,7 @@ void register_hooks(apr_pool_t*) {
                           APR_HOOK_REALLY_FIRST);
 
 #if defined(HTTPD_DD_RUM)
+  ap_hook_post_read_request(capture_rum_pending, NULL, NULL, APR_HOOK_FIRST);
   ap_hook_insert_filter(insert_datadog_filters, NULL, NULL, APR_HOOK_MIDDLE);
   ap_register_output_filter(rum_filter_name, rum_output_filter, NULL,
                             AP_FTYPE_RESOURCE);
@@ -326,7 +350,10 @@ int on_fixups(request_rec* r) {
       ap_get_module_config(r->per_dir_config, &datadog_module));
   if (dir_conf != nullptr &&
       datadog::rum::conf::resolve_configuration(dir_conf->rum).enabled) {
-    apr_table_set(r->headers_in, "x-datadog-rum-injection-pending", "1");
+    apr_table_setn(r->headers_in, rum_pending_header, "1");
+  } else if (!r->main && !rum_pending_from_downstream(r)) {
+    // An internal redirect may disable a reservation made by this Apache.
+    apr_table_unset(r->headers_in, rum_pending_header);
   }
 #endif
 
