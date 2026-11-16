@@ -129,6 +129,14 @@ static bool should_inject(rum_filter_ctx& ctx, request_rec& request,
     return false;
   }
 
+  if (request.status == HTTP_PARTIAL_CONTENT ||
+      apr_table_get(request.headers_out, "Content-Range")) {
+    count_injection(telemetry::injection_skipped, "reason:partial_content",
+                    rum_conf);
+    ctx.state = InjectionState::done;
+    return false;
+  }
+
   // One table can hide a marker in the other, so check both.
   if (has_injected_marker(request.headers_out) ||
       has_injected_marker(request.err_headers_out)) {
