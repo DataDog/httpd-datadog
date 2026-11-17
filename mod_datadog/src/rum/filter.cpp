@@ -111,6 +111,13 @@ static void count_csp_header(const request_rec& request) {
   }
 }
 
+// CGI headers stay in err_headers_out until the HTTP header filter.
+static const char* response_header(const request_rec& request,
+                                   const char* name) {
+  const char* const value = apr_table_get(request.headers_out, name);
+  return value ? value : apr_table_get(request.err_headers_out, name);
+}
+
 static bool should_inject(rum_filter_ctx& ctx, request_rec& request,
                           const datadog::rum::conf::ResolvedConfig& rum_conf) {
   if (ctx.state != InjectionState::pending) {
@@ -118,12 +125,8 @@ static bool should_inject(rum_filter_ctx& ctx, request_rec& request,
   }
 
   const char* const already_injected =
-      apr_table_get(request.headers_out, k_injected_header.data());
-  // CGI headers stay in err_headers_out until the HTTP header filter.
-  const char* const err_already_injected =
-      apr_table_get(request.err_headers_out, k_injected_header.data());
-  if ((already_injected && std::string_view(already_injected) == "1") ||
-      (err_already_injected && std::string_view(err_already_injected) == "1")) {
+      response_header(request, k_injected_header.data());
+  if (already_injected && std::string_view(already_injected) == "1") {
     count_injection(telemetry::injection_skipped, "reason:already_injected",
                     rum_conf);
     ctx.state = InjectionState::done;
@@ -145,7 +148,7 @@ static bool should_inject(rum_filter_ctx& ctx, request_rec& request,
   }
 
   const char* const content_encoding =
-      apr_table_get(request.headers_out, "Content-Encoding");
+      response_header(request, "Content-Encoding");
   if (content_encoding) {
     count_injection(telemetry::injection_skipped, "reason:compressed_html",
                     rum_conf);
