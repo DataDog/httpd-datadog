@@ -16,6 +16,8 @@ from helper import make_configuration, save_configuration
 from upstream import upstream_proxy
 
 
+# Short streams stay under 68 bytes. mod_deflate skips a complete response that
+# small, but a later chunk keeps it from seeing the whole response at once.
 STREAMS_WITH_CLOSING_TAG = {
     "split": [b"<html><head><title>Page</title></he", b"ad><body>Page</body></html>"],
     "charset-split": [
@@ -26,8 +28,13 @@ STREAMS_WITH_CLOSING_TAG = {
     "large": [b"<html><head></head><body>" + b"0123456789" * 10000 + b"</body></html>"],
 }
 STREAMS_WITHOUT_CLOSING_TAG = {
-    "eof": [b"<html><head><title>Page</title></he"],
-    "charset-eof": [b'<html><head><meta charset="utf-8"></he'],
+    "eof": [b"<html><head><title>Page</title></he", b"ader></he"],
+    "eof-long": [b"<html><head><title>" + b"Page " * 20 + b"</title></he", b"ader></he"],
+    "charset-eof": [b'<html><head><meta charset="utf-8"></he', b"ader></he"],
+    "charset-eof-long": [
+        b'<html><head><meta charset="utf-8"><title>' + b"Page " * 20 + b"</title></he",
+        b"ader></he",
+    ],
     "fragment": [b"<div>Page", b"</div>"],
 }
 STREAMS = {**STREAMS_WITH_CLOSING_TAG, **STREAMS_WITHOUT_CLOSING_TAG}
@@ -48,22 +55,30 @@ class StreamingUpstream(BaseHTTPRequestHandler):
             self.send_header("Content-Encoding", "gzip")
         self.send_header("Content-Length", str(sum(map(len, chunks))))
         self.end_headers()
-        for chunk in chunks:
+        for index, chunk in enumerate(chunks):
+            if index > 0:
+                # Let Apache pass the previous chunk on its own.
+                time.sleep(0.1)
             self.wfile.write(chunk)
             self.wfile.flush()
-            time.sleep(0.4)
 
     def log_message(self, format: str, *args: object) -> None:
         pass
 
 
+@pytest.fixture(params=["no-deflate", "deflate-identity", "deflate-gzip"])
+def mode(request: pytest.FixtureRequest) -> str:
+    return request.param
+
+
 @pytest.fixture
-def streaming_proxy(server: Server, log_dir: str, module_path: str) -> Iterator[Server]:
+def streaming_proxy(server: Server, log_dir: str, module_path: str, mode: str) -> Iterator[Server]:
     conf_path = str(Path(log_dir) / "httpd.conf")
     with ExitStack() as cleanup:
         docroot = cleanup.enter_context(tempfile.TemporaryDirectory(prefix="rum-streaming-"))
         proxy = cleanup.enter_context(upstream_proxy(StreamingUpstream))
-        proxy += "\nLoadModule deflate_module modules/mod_deflate.so\nSetOutputFilter DEFLATE\n"
+        if mode != "no-deflate":
+            proxy += "\nLoadModule deflate_module modules/mod_deflate.so\nSetOutputFilter DEFLATE\n"
         cleanup.callback(server.stop, conf_path)
         configuration = {
             "path": Path(__file__).parent / "conf/rum_content_type.conf",
@@ -75,24 +90,23 @@ def streaming_proxy(server: Server, log_dir: str, module_path: str) -> Iterator[
         yield server
 
 
-def fetch_stream(proxy: Server, stream_name: str, encoding: str) -> bytes:
+def fetch_stream(proxy: Server, stream_name: str, mode: str) -> bytes:
     response = requests.get(
         proxy.make_url(f"/upstream/{stream_name}"),
-        headers={"Accept-Encoding": encoding},
+        headers={"Accept-Encoding": "identity" if mode == "deflate-identity" else "gzip"},
         timeout=3,
     )
     assert response.status_code == 200
-    assert response.headers.get("Content-Encoding") == ("gzip" if encoding == "gzip" else None)
+    assert response.headers.get("Content-Encoding") == ("gzip" if mode == "deflate-gzip" else None)
     return response.content
 
 
 @pytest.mark.requires_rum
 @pytest.mark.parametrize("stream_name", STREAMS_WITH_CLOSING_TAG)
-@pytest.mark.parametrize("encoding", ["identity", "gzip"])
 def test_rum_streaming_injects_before_closing_tag(
-    streaming_proxy: Server, stream_name: str, encoding: str
+    streaming_proxy: Server, stream_name: str, mode: str
 ) -> None:
-    content = fetch_stream(streaming_proxy, stream_name, encoding)
+    content = fetch_stream(streaming_proxy, stream_name, mode)
     body = b"".join(STREAMS[stream_name])
     closing = body.find(b"</head>")
     added = len(content) - len(body)
@@ -104,14 +118,14 @@ def test_rum_streaming_injects_before_closing_tag(
 
 @pytest.mark.requires_rum
 @pytest.mark.parametrize("stream_name", STREAMS_WITHOUT_CLOSING_TAG)
-@pytest.mark.parametrize("encoding", ["identity", "gzip"])
 def test_rum_streaming_keeps_body_without_closing_tag(
-    streaming_proxy: Server, stream_name: str, encoding: str
+    streaming_proxy: Server, stream_name: str, mode: str
 ) -> None:
-    assert fetch_stream(streaming_proxy, stream_name, encoding) == b"".join(STREAMS[stream_name])
+    assert fetch_stream(streaming_proxy, stream_name, mode) == b"".join(STREAMS[stream_name])
 
 
 @pytest.mark.requires_rum
+@pytest.mark.parametrize("mode", ["no-deflate", "deflate-gzip"], indirect=True)
 def test_rum_streaming_keeps_precompressed_body(streaming_proxy: Server) -> None:
     with requests.get(
         streaming_proxy.make_url("/upstream/precompressed"),

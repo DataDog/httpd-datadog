@@ -39,6 +39,8 @@ enum class Brigades { separate, single };
 enum class Reads { immediate, deferred };
 enum class Flushes { none, after_each_chunk };
 enum class Buckets { heap, file };
+// Like mod_deflate, a downstream filter can set Content-Encoding.
+enum class Encoding { unchanged, set_downstream };
 
 struct Downstream {
   apr_bucket_brigade* brigade = nullptr;
@@ -46,6 +48,8 @@ struct Downstream {
   std::string output;
   std::vector<size_t> flush_offsets;
   int endings = 0;
+  // Gets Content-Encoding on each pass, when set.
+  apr_table_t* encoding_headers = nullptr;
 };
 
 Downstream downstream;
@@ -76,6 +80,9 @@ void read_output() {
 extern "C" apr_status_t ap_pass_brigade(ap_filter_t*,
                                         apr_bucket_brigade* brigade) {
   APR_BRIGADE_CONCAT(downstream.brigade, brigade);
+  if (downstream.encoding_headers != nullptr) {
+    apr_table_set(downstream.encoding_headers, "Content-Encoding", "gzip");
+  }
   if (downstream.reads == Reads::immediate) read_output();
   return APR_SUCCESS;
 }
@@ -217,8 +224,12 @@ std::string check_stream(const std::vector<std::string>& chunks,
                          Brigades brigades = Brigades::separate,
                          Reads reads = Reads::immediate,
                          Flushes flushes = Flushes::none,
-                         Buckets buckets = Buckets::heap) {
+                         Buckets buckets = Buckets::heap,
+                         Encoding encoding = Encoding::unchanged) {
   RumRequest rum(reads);
+  if (encoding == Encoding::set_downstream) {
+    downstream.encoding_headers = rum.request.headers_out;
+  }
   const std::string expected = write_stream(&rum.filter, rum.brigade, chunks,
                                             brigades, flushes, buckets);
   check_output(expected, rum.snippet);
@@ -316,4 +327,14 @@ TEST_CASE("RUM finds the CGI marker when headers_out has another value",
                Flushes::none, Buckets::heap);
   CHECK(downstream.output == body);
   CHECK(downstream.endings == 1);
+}
+
+TEST_CASE("RUM keeps injecting when downstream sets Content-Encoding later",
+          "[rum]") {
+  const std::vector<std::string> chunks =
+      GENERATE(std::vector<std::string>{"<html><head><title>Page</title></he",
+                                        "ad><body></body>"},
+               std::vector<std::string>{k_head_start + "</he", "ad>def"});
+  check_stream(chunks, Brigades::separate, Reads::immediate, Flushes::none,
+               Buckets::heap, Encoding::set_downstream);
 }

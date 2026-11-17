@@ -125,7 +125,8 @@ static bool has_injected_marker(const apr_table_t* headers) {
 
 static bool should_inject(rum_filter_ctx& ctx, request_rec& request,
                           const datadog::rum::conf::ResolvedConfig& rum_conf) {
-  // Downstream filters can change the headers after the first brigade.
+  // Downstream filters can change the headers after the first brigade, so
+  // decide once, on the first brigade.
   if (ctx.state != InjectionState::init) {
     return ctx.state == InjectionState::pending;
   }
