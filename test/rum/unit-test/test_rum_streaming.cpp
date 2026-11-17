@@ -305,3 +305,15 @@ TEST_CASE("RUM reads CGI headers from err_headers_out", "[rum]") {
   CHECK(apr_table_get(rum.request.headers_out, "x-datadog-rum-injected") ==
         nullptr);
 }
+
+TEST_CASE("RUM finds the CGI marker when headers_out has another value",
+          "[rum]") {
+  RumRequest rum;
+  apr_table_set(rum.request.headers_out, "x-datadog-rum-injected", "0");
+  apr_table_set(rum.request.err_headers_out, "x-datadog-rum-injected", "1");
+  const std::string body = k_head_start + "</head>def";
+  write_stream(&rum.filter, rum.brigade, {body}, Brigades::separate,
+               Flushes::none, Buckets::heap);
+  CHECK(downstream.output == body);
+  CHECK(downstream.endings == 1);
+}

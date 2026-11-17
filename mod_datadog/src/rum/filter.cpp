@@ -118,15 +118,20 @@ static const char* response_header(const request_rec& request,
   return value ? value : apr_table_get(request.err_headers_out, name);
 }
 
+static bool has_injected_marker(const apr_table_t* headers) {
+  const char* const value = apr_table_get(headers, k_injected_header.data());
+  return value && std::string_view(value) == "1";
+}
+
 static bool should_inject(rum_filter_ctx& ctx, request_rec& request,
                           const datadog::rum::conf::ResolvedConfig& rum_conf) {
   if (ctx.state != InjectionState::pending) {
     return false;
   }
 
-  const char* const already_injected =
-      response_header(request, k_injected_header.data());
-  if (already_injected && std::string_view(already_injected) == "1") {
+  // One table can hide a marker in the other, so check both.
+  if (has_injected_marker(request.headers_out) ||
+      has_injected_marker(request.err_headers_out)) {
     count_injection(telemetry::injection_skipped, "reason:already_injected",
                     rum_conf);
     ctx.state = InjectionState::done;
