@@ -1,12 +1,12 @@
 """Check RUM output through Apache's streaming proxy."""
 
 from collections.abc import Iterator
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 import gzip
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 import tempfile
-import time
+import threading
 
 import pytest
 import requests
@@ -17,7 +17,7 @@ from upstream import upstream_proxy
 
 
 # Short streams stay under 68 bytes. mod_deflate skips a complete response that
-# small, but a later chunk keeps it from seeing the whole response at once.
+# small, so the upstream waits for the headers before the next chunk.
 STREAMS_WITH_CLOSING_TAG = {
     "split": [b"<html><head><title>Page</title></he", b"ad><body>Page</body></html>"],
     "charset-split": [
@@ -42,6 +42,11 @@ PRECOMPRESSED_BODY = gzip.compress(b"".join(STREAMS["charset-split"]), mtime=0)
 
 
 class StreamingUpstream(BaseHTTPRequestHandler):
+    # The client sets the first once it has the headers. The upstream sets the
+    # second if it gave up waiting.
+    headers_received = threading.Event()
+    missed_headers = threading.Event()
+
     def do_GET(self) -> None:
         compressed = self.path == "/precompressed"
         chunks = (
@@ -56,9 +61,10 @@ class StreamingUpstream(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(sum(map(len, chunks))))
         self.end_headers()
         for index, chunk in enumerate(chunks):
-            if index > 0:
-                # Let Apache pass the previous chunk on its own.
-                time.sleep(0.1)
+            # Once Apache sent the headers, mod_deflate has chosen to compress
+            # without seeing the end of the body.
+            if index > 0 and not self.headers_received.wait(2):
+                self.missed_headers.set()
             self.wfile.write(chunk)
             self.wfile.flush()
 
@@ -74,6 +80,8 @@ def mode(request: pytest.FixtureRequest) -> str:
 @pytest.fixture
 def streaming_proxy(server: Server, log_dir: str, module_path: str, mode: str) -> Iterator[Server]:
     conf_path = str(Path(log_dir) / "httpd.conf")
+    StreamingUpstream.headers_received = threading.Event()
+    StreamingUpstream.missed_headers = threading.Event()
     with ExitStack() as cleanup:
         docroot = cleanup.enter_context(tempfile.TemporaryDirectory(prefix="rum-streaming-"))
         proxy = cleanup.enter_context(upstream_proxy(StreamingUpstream))
@@ -90,15 +98,27 @@ def streaming_proxy(server: Server, log_dir: str, module_path: str, mode: str) -
         yield server
 
 
-def fetch_stream(proxy: Server, stream_name: str, mode: str) -> bytes:
-    response = requests.get(
-        proxy.make_url(f"/upstream/{stream_name}"),
-        headers={"Accept-Encoding": "identity" if mode == "deflate-identity" else "gzip"},
+@contextmanager
+def open_stream(proxy: Server, path: str, accept_encoding: str) -> Iterator[requests.Response]:
+    with requests.get(
+        proxy.make_url(path),
+        headers={"Accept-Encoding": accept_encoding},
+        stream=True,
         timeout=3,
-    )
-    assert response.status_code == 200
-    assert response.headers.get("Content-Encoding") == ("gzip" if mode == "deflate-gzip" else None)
-    return response.content
+    ) as response:
+        assert not StreamingUpstream.missed_headers.is_set(), "Apache held the headers"
+        StreamingUpstream.headers_received.set()
+        yield response
+    assert not StreamingUpstream.missed_headers.is_set(), "upstream gave up waiting for headers"
+
+
+def fetch_stream(proxy: Server, stream_name: str, mode: str) -> bytes:
+    accept_encoding = "identity" if mode == "deflate-identity" else "gzip"
+    with open_stream(proxy, f"/upstream/{stream_name}", accept_encoding) as response:
+        assert response.status_code == 200
+        expected_encoding = "gzip" if mode == "deflate-gzip" else None
+        assert response.headers.get("Content-Encoding") == expected_encoding
+        return response.content
 
 
 @pytest.mark.requires_rum
@@ -127,12 +147,7 @@ def test_rum_streaming_keeps_body_without_closing_tag(
 @pytest.mark.requires_rum
 @pytest.mark.parametrize("mode", ["no-deflate", "deflate-gzip"], indirect=True)
 def test_rum_streaming_keeps_precompressed_body(streaming_proxy: Server) -> None:
-    with requests.get(
-        streaming_proxy.make_url("/upstream/precompressed"),
-        headers={"Accept-Encoding": "gzip"},
-        stream=True,
-        timeout=3,
-    ) as response:
+    with open_stream(streaming_proxy, "/upstream/precompressed", "gzip") as response:
         assert response.status_code == 200
         assert response.headers.get("Content-Encoding") == "gzip"
         assert response.headers.get("x-datadog-rum-injected") != "1"
