@@ -129,8 +129,11 @@ static bool should_inject(rum_filter_ctx& ctx, request_rec& request,
     return false;
   }
 
+  // Injection shifts byte offsets, so Content-Range would be wrong.
   if (request.status == HTTP_PARTIAL_CONTENT ||
       apr_table_get(request.headers_out, "Content-Range")) {
+    ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, &request,
+                  "[RUM] Skip injection: partial content.");
     count_injection(telemetry::injection_skipped, "reason:partial_content",
                     rum_conf);
     ctx.state = InjectionState::done;
