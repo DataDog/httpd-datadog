@@ -204,7 +204,12 @@ Set options on the RUM SDK that will be injected. As of now, here is the list of
 | `defaultPrivacyLevel` | See Session reaply Privacy Options. | No | `true` or `false` |
 | `sessionSampleRate` | The percentage of sessions to track: `100` for all, `0` for none. | No | `100`, `50`, `0` |
 | `sessionReplaySampleRate` | The percentage of tracked sessions to capture: `100` for all, `0` for none. | No | `100`, `50`, `0` |
-| `allowedTracingUrls` | A list of request URLs used to inject tracing headers. For more information, see [Connect RUM and Traces](https://docs.datadoghq.com/real_user_monitoring/platform/connect_rum_and_traces/?tab=browserrum). | No | "https://api.example.com" "https:\/\/.*\.my-api-domain\.com/" |
+| `allowedTracingUrls` | A list of request URL prefixes used to inject tracing headers. Requires `service`. For more information, see [Connect RUM and Traces](https://docs.datadoghq.com/real_user_monitoring/platform/connect_rum_and_traces/?tab=browserrum). | No | "https://api.example.com" "https://backend.example.org" |
+
+Give one value per argument. Commas do not split values. These options are always sent as a list, even
+with one value: `allowedTracingUrls`, `excludedActivityUrls`, `allowedTrackingOrigins`,
+`enableExperimentalFeatures`, `trackFeatureFlagsForEvents` and `allowedGraphQlUrls`. Other options
+with more than one value are sent as a list.
 
 Example:
 ```

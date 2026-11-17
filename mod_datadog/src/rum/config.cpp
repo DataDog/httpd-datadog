@@ -12,7 +12,9 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "apr_strings.h"
 #include "common_conf.h"
@@ -135,21 +137,24 @@ double parse_sample_rate(const std::string& key, const std::string& value) {
   return rate;
 }
 
-std::vector<std::string> split(const std::string& str,
-                               const std::string& delimiter = ",") {
-  std::vector<std::string> result;
-  size_t start = 0, end;
-  while ((end = str.find(delimiter, start)) != std::string::npos) {
-    result.push_back(str.substr(start, end - start));
-    start = end + delimiter.length();
+// Browser SDK options that only accept an array, even with one value.
+const std::unordered_set<std::string_view> array_options = {
+    "allowedTracingUrls",         "excludedActivityUrls",
+    "allowedTrackingOrigins",     "enableExperimentalFeatures",
+    "trackFeatureFlagsForEvents", "allowedGraphQlUrls",
+};
+
+const std::string& single_value(const std::string& key,
+                                const std::vector<std::string>& values) {
+  if (values.size() != 1) {
+    throw std::invalid_argument(fmt::format("{} takes one value", key));
   }
-  result.push_back(str.substr(start));
-  return result;
+  return values.front();
 }
 
 std::string make_rum_json_config(
     std::string_view config_version,
-    const std::unordered_map<std::string, std::string>& config) {
+    const std::unordered_map<std::string, std::vector<std::string>>& config) {
   rapidjson::Document doc;
   doc.SetObject();
 
@@ -158,20 +163,19 @@ std::string make_rum_json_config(
   doc.AddMember("majorVersion", rapidjson::Value(major_version), allocator);
 
   rapidjson::Value rum(rapidjson::kObjectType);
-  for (const auto& [key, value] : config) {
-    auto value_is_array = datadog::common::utils::contains(value, ",");
+  for (const auto& [key, values] : config) {
     if (key == "sessionSampleRate" || key == "sessionReplaySampleRate") {
+      const double rate = parse_sample_rate(key, single_value(key, values));
       rum.AddMember(rapidjson::Value(key.c_str(), allocator).Move(),
-                    rapidjson::Value(parse_sample_rate(key, value)).Move(),
-                    allocator);
+                    rapidjson::Value(rate).Move(), allocator);
     } else if (key == "trackResources" || key == "trackLongTasks" ||
                key == "trackUserInteractions") {
-      auto b = (value == "true" ? true : false);
+      auto b = single_value(key, values) == "true";
       rum.AddMember(rapidjson::Value(key.c_str(), allocator).Move(),
                     rapidjson::Value(b).Move(), allocator);
-    } else if (key == "allowedTracingUrls" || value_is_array) {
+    } else if (values.size() > 1 || array_options.count(key) != 0) {
       rapidjson::Value array(rapidjson::kArrayType);
-      for (const auto& e : split(value, ",")) {
+      for (const auto& e : values) {
         array.PushBack(rapidjson::Value(e.c_str(), allocator).Move(),
                        allocator);
       }
@@ -179,7 +183,7 @@ std::string make_rum_json_config(
                     array.Move(), allocator);
     } else {
       rum.AddMember(rapidjson::Value(key.c_str(), allocator).Move(),
-                    rapidjson::Value(value.c_str(), allocator).Move(),
+                    rapidjson::Value(values.front().c_str(), allocator).Move(),
                     allocator);
     }
   }
@@ -215,14 +219,9 @@ const char* set_rum_option(cmd_parms* cmd, void* cfg, int argc,
     return "DatadogRumOption requires at least 2 arguments.";
   }
 
-  // NOTE(@dmehala): Workaround -> For argv > 2 join all values with ","
-  std::string value = argv[1];
-  for (int i = 2; i < argc; ++i) {
-    value += fmt::format(",{}", argv[i]);
-  }
-
   auto* dir_conf = static_cast<Directory*>(cfg);
-  dir_conf->rum.config.emplace(argv[0], value);
+  dir_conf->rum.config.emplace(argv[0],
+                               std::vector<std::string>(argv + 1, argv + argc));
   return NULL;
 }
 
@@ -294,7 +293,8 @@ const char* datadog_rum_settings_section(cmd_parms* cmd, void* cfg,
     // snippet_create_from_json does not report the ids: read the options.
     const auto& options = dir_conf.rum.config;
     if (auto it = options.find("applicationId"); it != options.end()) {
-      dir_conf.rum.app_id_tag = fmt::format("application_id:{}", it->second);
+      dir_conf.rum.app_id_tag =
+          fmt::format("application_id:{}", it->second.front());
     }
     dir_conf.rum.remote_config_tag = options.count("remoteConfigurationId")
                                          ? "remote_config_used:true"

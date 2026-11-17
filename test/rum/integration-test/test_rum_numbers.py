@@ -1,4 +1,4 @@
-"""Malformed RUM numbers must produce config errors instead of aborting Apache."""
+"""Malformed RUM numbers and flags must produce config errors instead of aborting Apache."""
 
 from pathlib import Path
 
@@ -30,14 +30,22 @@ DatadogRum On
 @pytest.mark.parametrize("option", ["sessionSampleRate", "sessionReplaySampleRate"])
 @pytest.mark.parametrize(
     "value",
-    ["invalid", "1e9999", "10junk", "nan", "inf", "", " \t ", "1 0"],
+    ["invalid", "1e9999", "10junk", "nan", "inf", "", " \t ", "1 0", '1" "0'],
     ids=[
         "invalid", "overflow", "trailing-text", "nan", "inf", "empty",
-        "whitespace", "internal-space",
+        "whitespace", "internal-space", "two-values",
     ],
 )
 def test_rum_invalid_rate_is_config_error(server, log_dir, module_path, option, value):
     result = check_settings(server, log_dir, module_path, "v6", option, value)
+    assert result.returncode == 1, result.stderr
+    assert b"Syntax error" in result.stderr
+
+
+def test_rum_flag_with_two_values_is_config_error(server, log_dir, module_path):
+    result = check_settings(
+        server, log_dir, module_path, "v6", "trackResources", 'true" "false'
+    )
     assert result.returncode == 1, result.stderr
     assert b"Syntax error" in result.stderr
 
