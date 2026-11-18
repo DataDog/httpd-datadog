@@ -87,7 +87,7 @@ static void init_rum_context(ap_filter_t* filter, Snippet* snippet) {
   filter->ctx = apr_pcalloc(request->pool, sizeof(rum_filter_ctx));
   rum_filter_ctx* const ctx = static_cast<rum_filter_ctx*>(filter->ctx);
 
-  ctx->state = InjectionState::pending;
+  ctx->state = InjectionState::init;
 
   ctx->injector = injector_create(snippet);
   apr_pool_cleanup_register(
@@ -125,8 +125,10 @@ static bool has_injected_marker(const apr_table_t* headers) {
 
 static bool should_inject(rum_filter_ctx& ctx, request_rec& request,
                           const datadog::rum::conf::ResolvedConfig& rum_conf) {
-  if (ctx.state != InjectionState::pending) {
-    return false;
+  // Downstream filters can change the headers after the first brigade, so
+  // decide once, on the first brigade.
+  if (ctx.state != InjectionState::init) {
+    return ctx.state == InjectionState::pending;
   }
 
   // One table can hide a marker in the other, so check both.
@@ -157,9 +159,11 @@ static bool should_inject(rum_filter_ctx& ctx, request_rec& request,
   if (content_encoding) {
     count_injection(telemetry::injection_skipped, "reason:compressed_html",
                     rum_conf);
+    ctx.state = InjectionState::done;
     return false;
   }
 
+  ctx.state = InjectionState::pending;
   return true;
 }
 
