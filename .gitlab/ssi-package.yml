@@ -28,8 +28,7 @@
   tags: ["arch:amd64"]
   script:
     - set -euo pipefail
-    - VERSION="${CI_COMMIT_TAG:-0.0.1-${CI_COMMIT_SHORT_SHA}}"
-    - VERSION="${VERSION#v}"
+    - VERSION="$(.gitlab/package-version.sh)"
     - |
       SERIES="$(/httpd/httpd-build/bin/httpd -v | sed -n 's#^Server version: Apache/\([0-9]*\.[0-9]*\).*#\1#p')"
       if [ -z "$SERIES" ]; then
