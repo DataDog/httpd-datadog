@@ -7,6 +7,7 @@
 
 #include <catch2/catch.hpp>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "common_conf.h"
@@ -162,53 +163,69 @@ void check_output(std::string expected, const std::string& snippet) {
   CHECK(downstream.endings == 1);
 }
 
+// An HTML request with RUM on, and a fresh downstream.
+struct RumRequest {
+  datadog::conf::Directory directory;
+  void* configuration[1] = {&directory};
+  apr_pool_t* pool = nullptr;
+  conn_rec connection = {};
+  server_rec server = {};
+  request_rec request = {};
+  ap_filter_t filter = {};
+  apr_bucket_brigade* brigade = nullptr;
+  std::string snippet;
+
+  explicit RumRequest(Reads reads = Reads::immediate) {
+    directory.rum.enabled = true;
+    directory.rum.snippet.reset(
+        snippet_create_from_json(
+            "{\"majorVersion\":6,\"rum\":{\"applicationId\":\"test\","
+            "\"clientToken\":\"test\"}}"),
+        snippet_cleanup);
+    REQUIRE(directory.rum.snippet->error_code == 0);
+    snippet = snippet_text(directory.rum.snippet.get());
+
+    apr_initialize();
+    apr_pool_create(&pool, nullptr);
+    connection.bucket_alloc = apr_bucket_alloc_create(pool);
+    request.server = &server;
+    request.pool = pool;
+    request.connection = &connection;
+    request.content_type = "text/html";
+    request.headers_out = apr_table_make(pool, 4);
+    request.err_headers_out = apr_table_make(pool, 4);
+    request.per_dir_config = reinterpret_cast<ap_conf_vector_t*>(configuration);
+    filter.r = &request;
+    filter.c = &connection;
+    downstream = {};
+    downstream.brigade = apr_brigade_create(pool, connection.bucket_alloc);
+    downstream.reads = reads;
+    brigade = apr_brigade_create(pool, connection.bucket_alloc);
+  }
+
+  ~RumRequest() {
+    apr_pool_destroy(pool);
+    apr_terminate();
+  }
+
+  RumRequest(const RumRequest&) = delete;
+  RumRequest& operator=(const RumRequest&) = delete;
+};
+
 // Returns the snippet text, so callers can check positions in the output.
 std::string check_stream(const std::vector<std::string>& chunks,
                          Brigades brigades = Brigades::separate,
                          Reads reads = Reads::immediate,
                          Flushes flushes = Flushes::none,
                          Buckets buckets = Buckets::heap) {
-  datadog::conf::Directory directory;
-  directory.rum.enabled = true;
-  directory.rum.snippet.reset(
-      snippet_create_from_json(
-          "{\"majorVersion\":6,\"rum\":{\"applicationId\":\"test\","
-          "\"clientToken\":\"test\"}}"),
-      snippet_cleanup);
-  REQUIRE(directory.rum.snippet->error_code == 0);
-  const std::string snippet = snippet_text(directory.rum.snippet.get());
-
-  apr_initialize();
-  apr_pool_t* pool = nullptr;
-  apr_pool_create(&pool, nullptr);
-  conn_rec connection = {};
-  connection.bucket_alloc = apr_bucket_alloc_create(pool);
-  request_rec request = {};
-  server_rec server = {};
-  request.server = &server;
-  request.pool = pool;
-  request.connection = &connection;
-  request.content_type = "text/html";
-  request.headers_out = apr_table_make(pool, 4);
-  void* configuration[] = {&directory};
-  request.per_dir_config = reinterpret_cast<ap_conf_vector_t*>(configuration);
-  ap_filter_t filter = {};
-  filter.r = &request;
-  filter.c = &connection;
-  downstream = {};
-  downstream.brigade = apr_brigade_create(pool, connection.bucket_alloc);
-  downstream.reads = reads;
-  apr_bucket_brigade* brigade =
-      apr_brigade_create(pool, connection.bucket_alloc);
-  const std::string expected =
-      write_stream(&filter, brigade, chunks, brigades, flushes, buckets);
-  check_output(expected, snippet);
+  RumRequest rum(reads);
+  const std::string expected = write_stream(&rum.filter, rum.brigade, chunks,
+                                            brigades, flushes, buckets);
+  check_output(expected, rum.snippet);
   const bool injected = expected.find("</head>") != std::string::npos;
-  CHECK((apr_table_get(request.headers_out, "x-datadog-rum-injected") !=
+  CHECK((apr_table_get(rum.request.headers_out, "x-datadog-rum-injected") !=
          nullptr) == injected);
-  apr_pool_destroy(pool);
-  apr_terminate();
-  return snippet;
+  return rum.snippet;
 }
 
 }  // namespace
@@ -272,4 +289,31 @@ TEST_CASE("RUM handles file buckets split by reads", "[rum]") {
 
 TEST_CASE("RUM keeps an empty body", "[rum]") {
   check_stream({});
+}
+
+TEST_CASE("RUM reads CGI headers from err_headers_out", "[rum]") {
+  const auto [name, value] = GENERATE(std::pair{"x-datadog-rum-injected", "1"},
+                                      std::pair{"Content-Encoding", "gzip"});
+  INFO(name << ": " << value);
+  RumRequest rum;
+  apr_table_set(rum.request.err_headers_out, name, value);
+  const std::string body = k_head_start + "</head>def";
+  write_stream(&rum.filter, rum.brigade, {body}, Brigades::separate,
+               Flushes::none, Buckets::heap);
+  CHECK(downstream.output == body);
+  CHECK(downstream.endings == 1);
+  CHECK(apr_table_get(rum.request.headers_out, "x-datadog-rum-injected") ==
+        nullptr);
+}
+
+TEST_CASE("RUM finds the CGI marker when headers_out has another value",
+          "[rum]") {
+  RumRequest rum;
+  apr_table_set(rum.request.headers_out, "x-datadog-rum-injected", "0");
+  apr_table_set(rum.request.err_headers_out, "x-datadog-rum-injected", "1");
+  const std::string body = k_head_start + "</head>def";
+  write_stream(&rum.filter, rum.brigade, {body}, Brigades::separate,
+               Flushes::none, Buckets::heap);
+  CHECK(downstream.output == body);
+  CHECK(downstream.endings == 1);
 }
