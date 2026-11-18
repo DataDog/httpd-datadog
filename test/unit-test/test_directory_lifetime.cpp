@@ -37,8 +37,8 @@ const char* configure_rum(apr_pool_t* pool, Directory* directory,
   parameters.pool = pool;
   parameters.cmd = &command;
   parameters.directive = &directive;
-  directory->rum.config = {{"applicationId", "test-app"},
-                           {"clientToken", "test-token"}};
+  directory->rum.config = {{"applicationId", {"test-app"}},
+                           {"clientToken", {"test-token"}}};
   return datadog_rum_settings_section(&parameters, directory,
                                       section_argument);
 }

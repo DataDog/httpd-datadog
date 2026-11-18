@@ -5,6 +5,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
 #include "http_core.h"
 #include "injectbrowsersdk.h"
@@ -32,7 +33,7 @@ struct Directory final {
   std::optional<bool> enabled;  // nullopt = inherit from parent
   std::shared_ptr<Snippet> snippet;
   std::string version;
-  std::unordered_map<std::string, std::string> config;
+  std::unordered_map<std::string, std::vector<std::string>> config;
   std::string app_id_tag;
   std::string remote_config_tag;
 };
