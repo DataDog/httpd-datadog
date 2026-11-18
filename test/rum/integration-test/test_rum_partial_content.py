@@ -63,3 +63,37 @@ def test_rum_preserves_partial_content(
         assert response.headers.get("Content-Length") == str(len(HTML))
         assert b"DD_RUM" not in response.content
         assert "x-datadog-rum-injected" not in response.headers
+
+
+@pytest.mark.requires_rum
+def test_rum_ranges_apply_to_injected_local_file(
+    server: Server, log_dir: str, module_path: str
+) -> None:
+    conf_path = str(Path(log_dir) / "httpd.conf")
+    with ExitStack() as cleanup:
+        docroot = cleanup.enter_context(tempfile.TemporaryDirectory(prefix="rum-range-"))
+        Path(docroot).chmod(0o755)
+        page = Path(docroot) / "index.html"
+        page.write_bytes(HTML)
+        page.chmod(0o644)
+        cleanup.callback(server.stop, conf_path)
+        configuration = {
+            "path": Path(__file__).parent / "conf/rum_content_type.conf",
+            "var": {"htdoc_dir": docroot, "proxy_configuration": ""},
+        }
+        save_configuration(make_configuration(configuration, log_dir, module_path), conf_path)
+        assert server.check_configuration(conf_path)
+        assert server.load_configuration(conf_path)
+
+        url = server.make_url("/index.html")
+        full = requests.get(url, timeout=5)
+        assert full.status_code == 200
+        assert b"DD_RUM" in full.content
+        size = len(full.content)
+
+        # The byterange filter runs after RUM, so offsets match the injected page.
+        for first, last in [(0, 9), (size - 20, size - 1)]:
+            response = requests.get(url, headers={"Range": f"bytes={first}-{last}"}, timeout=5)
+            assert response.status_code == 206
+            assert response.headers.get("Content-Range") == f"bytes {first}-{last}/{size}"
+            assert response.content == full.content[first : last + 1]
