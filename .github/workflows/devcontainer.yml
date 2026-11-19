@@ -1,0 +1,66 @@
+name: Devcontainer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .devcontainer/**
+      - scripts/setup-httpd.py
+      - .github/workflows/devcontainer.yml
+  pull_request:
+    paths:
+      - .devcontainer/**
+      - scripts/setup-httpd.py
+      - .github/workflows/devcontainer.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: devcontainer-ghcr-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Stage build context and compute tags
+        id: image
+        shell: bash
+        run: |
+          make -f .devcontainer/devcontainer.mk .devcontainer-stage-context
+          image_hash=$(make -f .devcontainer/devcontainer.mk -s .devcontainer-image-hash)
+          image="ghcr.io/${GITHUB_REPOSITORY,,}/devcontainer"
+          {
+            echo 'tags<<EOF'
+            echo "$image:$image_hash"
+            if [[ "$GITHUB_REF" == refs/heads/main ]]; then
+              echo "$image:main"
+            fi
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@184bdaa0721073962dff0199f1fb9940f07167d1 # v3.5.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and publish image
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          context: .devcontainer/.staged
+          file: .devcontainer/.staged/.devcontainer/Dockerfile
+          platforms: linux/amd64
+          push: ${{ github.event_name != 'pull_request' }}
+          provenance: false
+          tags: ${{ steps.image.outputs.tags }}
+          cache-from: type=gha,scope=devcontainer-amd64
+          cache-to: type=gha,scope=devcontainer-amd64,mode=max

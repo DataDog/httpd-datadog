@@ -1,4 +1,4 @@
-# Build image for httpd-datadog GitLab CI.
+# Build image for httpd-datadog CI.
 #
 # It contains:
 #   - musl toolchain whose binaries also run on glibc (musl-build-env, see

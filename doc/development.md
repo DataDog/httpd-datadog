@@ -132,6 +132,13 @@ make dev-shell
 GitLab CI status can be checked via `glab ci` on the [automated
 mirror](https://gitlab.ddbuild.io/DataDog/httpd-datadog).
 
+The [Devcontainer workflow](../.github/workflows/devcontainer.yml) builds the amd64 image
+directly in GitHub Actions and publishes it to `ghcr.io/datadog/httpd-datadog/devcontainer`.
+Changes to the build inputs on `main` publish both a content hash tag and `:main`, which the
+GitHub build and test workflows use. Pull requests build the image without publishing it.
+Run the workflow manually on `main` to bootstrap or refresh the image. Manual runs on other
+branches publish only the content hash tag.
+
 ### Key Paths Inside the CI Image
 
 - `/httpd` — httpd source
