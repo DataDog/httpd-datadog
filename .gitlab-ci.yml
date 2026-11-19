@@ -257,21 +257,24 @@ configure-branch-snapshot-expiry:
       BUCKET=rum-auto-instrumentation
       RULE_ID=expire-httpd-branch-snapshots
 
-      # Fetch existing lifecycle config (empty array if none)
-      EXISTING=$(aws s3api get-bucket-lifecycle-configuration --bucket "$BUCKET" 2>/dev/null | jq '.Rules // []' || echo '[]')
+      # The aws-cli image has no jq: use the CLI's own --query (JMESPath).
+      # Keep the other rules of the bucket. No lifecycle config yet means no rule.
+      if ! OTHERS=$(aws s3api get-bucket-lifecycle-configuration --bucket "$BUCKET" \
+          --query "Rules[?ID!='$RULE_ID']" --output json 2>/tmp/get-lifecycle.err); then
+        grep -q NoSuchLifecycleConfiguration /tmp/get-lifecycle.err || { cat /tmp/get-lifecycle.err; exit 1; }
+        OTHERS='[]'
+      fi
+      OTHERS=$(echo "$OTHERS" | tr -d '\n' | sed 's/[[:space:]]*$//')
+      [ "$OTHERS" = "null" ] && OTHERS='[]'
 
-      # Build the desired rule
-      RULE=$(jq -n '{
-        ID: $id,
-        Filter: { Prefix: "httpd/branch-snapshots/" },
-        Status: "Enabled",
-        Expiration: { Days: 30 }
-      }' --arg id "$RULE_ID")
+      RULE="{\"ID\": \"$RULE_ID\", \"Filter\": {\"Prefix\": \"httpd/branch-snapshots/\"}, \"Status\": \"Enabled\", \"Expiration\": {\"Days\": 30}}"
 
-      # Replace existing rule with same ID, or append
-      UPDATED=$(echo "$EXISTING" | jq --argjson rule "$RULE" '
-        [.[] | select(.ID != $rule.ID)] + [$rule]
-      ')
+      # Append our rule to the other ones
+      if [ "$OTHERS" = "[]" ]; then
+        UPDATED="[$RULE]"
+      else
+        UPDATED="${OTHERS%]}, $RULE]"
+      fi
 
       aws s3api put-bucket-lifecycle-configuration \
         --bucket "$BUCKET" \
