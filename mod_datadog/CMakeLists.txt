@@ -122,6 +122,16 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
   set(EXPORTED_SYMBOLS ${CMAKE_CURRENT_LIST_DIR}/symbols.ld-prime)
   set_target_properties(mod_datadog PROPERTIES LINK_DEPENDS ${EXPORTED_SYMBOLS})
   target_link_options(mod_datadog PRIVATE "-Wl,-exported_symbols_list" "-Wl,${EXPORTED_SYMBOLS}")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "AIX")
+  set(EXPORTED_SYMBOLS ${CMAKE_CURRENT_LIST_DIR}/symbols.exp)
+  set_target_properties(mod_datadog PROPERTIES LINK_DEPENDS
+    "${EXPORTED_SYMBOLS};${HTTPD_SRC_DIR}/httpd.exp;${HTTPD_SRC_DIR}/apr.exp;${HTTPD_SRC_DIR}/aprutil.exp")
+  target_link_options(mod_datadog PRIVATE
+    "-Wl,-bE:${EXPORTED_SYMBOLS}"
+    "-Wl,-bI:${HTTPD_SRC_DIR}/httpd.exp"
+    "-Wl,-bI:${HTTPD_SRC_DIR}/apr.exp"
+    "-Wl,-bI:${HTTPD_SRC_DIR}/aprutil.exp"
+    "-Wl,-blibpath:/opt/datadog-httpd/lib:/opt/freeware/lib64:/usr/lib:/lib")
 endif()
 
 if(HTTPD_DATADOG_VERIFY_NEEDED)
