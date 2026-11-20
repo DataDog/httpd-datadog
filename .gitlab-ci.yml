@@ -61,6 +61,8 @@ stages:
       artifacts: true
   script:
     - git config --global --add safe.directory $PWD
+    # Any branch pipeline can write to the cache. Release builds must not read it.
+    - if [ -n "${CI_COMMIT_TAG:-}" ]; then export SCCACHE_RECACHE=1; fi
     - >
       cmake --preset=ci-release
       -DHTTPD_DATADOG_ENABLE_RUM=ON
