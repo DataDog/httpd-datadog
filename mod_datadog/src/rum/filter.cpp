@@ -174,6 +174,9 @@ static bool should_inject(rum_filter_ctx& ctx, request_rec& request,
     return false;
   }
 
+  // Streamed responses send headers before the injector decides, so mark the
+  // response now.
+  apr_table_set(request.headers_out, k_injected_header.data(), "1");
   ctx.state = InjectionState::pending;
   return true;
 }
@@ -243,7 +246,6 @@ static void record_injection(
     rum_filter_ctx& ctx, request_rec& request,
     const datadog::rum::conf::ResolvedConfig& rum_conf) {
   ctx.state = InjectionState::done;
-  apr_table_set(request.headers_out, k_injected_header.data(), "1");
   ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, &request,
                 "[RUM] successfully injected the browser SDK.");
   datadog::telemetry::counter::increment(
