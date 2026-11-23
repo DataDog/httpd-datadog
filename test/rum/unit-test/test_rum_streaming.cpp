@@ -6,6 +6,7 @@
 #include <util_filter.h>
 
 #include <catch2/catch.hpp>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -50,6 +51,9 @@ struct Downstream {
   int endings = 0;
   // Gets Content-Encoding on each pass, when set.
   apr_table_t* encoding_headers = nullptr;
+  // Apache sends the headers with the first brigade.
+  const apr_table_t* headers_out = nullptr;
+  std::optional<bool> marked_on_first_pass;
 };
 
 Downstream downstream;
@@ -79,6 +83,11 @@ void read_output() {
 
 extern "C" apr_status_t ap_pass_brigade(ap_filter_t*,
                                         apr_bucket_brigade* brigade) {
+  if (!downstream.marked_on_first_pass && downstream.headers_out != nullptr) {
+    downstream.marked_on_first_pass =
+        apr_table_get(downstream.headers_out, "x-datadog-rum-injected") !=
+        nullptr;
+  }
   APR_BRIGADE_CONCAT(downstream.brigade, brigade);
   if (downstream.encoding_headers != nullptr) {
     apr_table_set(downstream.encoding_headers, "Content-Encoding", "gzip");
@@ -207,6 +216,7 @@ struct RumRequest {
     downstream = {};
     downstream.brigade = apr_brigade_create(pool, connection.bucket_alloc);
     downstream.reads = reads;
+    downstream.headers_out = request.headers_out;
     brigade = apr_brigade_create(pool, connection.bucket_alloc);
   }
 
@@ -233,9 +243,8 @@ std::string check_stream(const std::vector<std::string>& chunks,
   const std::string expected = write_stream(&rum.filter, rum.brigade, chunks,
                                             brigades, flushes, buckets);
   check_output(expected, rum.snippet);
-  const bool injected = expected.find("</head>") != std::string::npos;
-  CHECK((apr_table_get(rum.request.headers_out, "x-datadog-rum-injected") !=
-         nullptr) == injected);
+  // Set up front, even when no closing tag follows.
+  CHECK(downstream.marked_on_first_pass == true);
   return rum.snippet;
 }
 

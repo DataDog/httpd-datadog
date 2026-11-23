@@ -59,7 +59,7 @@ def test_rum_respects_response_content_type(
         prefix = "/upstream/" if proxied else "/"
         for name, expected in RESPONSES.items():
             response = requests.get(server.make_url(f"{prefix}{name}?v=1"), timeout=5)
-            assert_rum_response(response, name, expected, proxied)
+            assert_rum_response(response, name, expected)
 
 
 @contextmanager
@@ -98,7 +98,7 @@ class UpstreamHandler(BaseHTTPRequestHandler):
 
 
 def assert_rum_response(
-    response: requests.Response, name: str, expected: ExpectedResponse, proxied: bool
+    response: requests.Response, name: str, expected: ExpectedResponse
 ) -> None:
     assert response.status_code == 200, name
     content_length = response.headers.get("Content-Length")
@@ -110,9 +110,7 @@ def assert_rum_response(
     if expected.injected:
         assert b"DD_RUM" in response.content, name
         assert response.content.endswith(b"</body></html>"), name
-        # Streaming proxy headers can be sent before injection.
-        if not proxied:
-            assert response.headers.get("x-datadog-rum-injected") == "1", name
+        assert response.headers.get("x-datadog-rum-injected") == "1", name
     else:
         assert response.content == expected.body, name
         assert response.headers.get("x-datadog-rum-injected") != "1", name

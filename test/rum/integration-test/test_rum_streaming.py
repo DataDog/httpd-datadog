@@ -118,6 +118,7 @@ def fetch_stream(proxy: Server, stream_name: str, mode: str) -> bytes:
         assert response.status_code == 200
         expected_encoding = "gzip" if mode == "deflate-gzip" else None
         assert response.headers.get("Content-Encoding") == expected_encoding
+        assert response.headers.get("x-datadog-rum-injected") == "1"
         return response.content
 
 
