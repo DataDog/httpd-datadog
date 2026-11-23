@@ -33,9 +33,10 @@ The same modules are also published as an OCI package named `datadog-apm-library
 the shared *one-pipeline* GitLab template (`.gitlab/one-pipeline.locked.yml`). This is the artifact
 the fleet installer delivers to `/opt/datadog-packages/datadog-apm-library-httpd/`.
 
-Its version comes from the **git tag** (`$CI_COMMIT_TAG` with a leading `v` stripped), not from
-`project(... VERSION)` in `CMakeLists.txt`. Untagged pipelines publish as `0.0.1-<short-sha>`.
+Its version comes from `.gitlab/package-version.sh`, not from `project(... VERSION)` in
+`CMakeLists.txt`. A `vX.Y.Z` tag publishes `X.Y.Z`. Other pipelines publish
+`<last release>-dev.b<branch hash>.glci<pipeline>.g<sha>`.
 
 Pushing a tag that matches `^v?[0-9]+\.[0-9]+\.[0-9]+$` makes `promote-oci-to-prod` fire
-automatically. Use a suffixed tag (for example `v1.1.0-rc1`) or a plain branch pipeline for
-pre-releases.
+automatically. It also publishes the `dd-lib-httpd-init` image. Other tags run like a branch
+pipeline and do not publish to prod.
