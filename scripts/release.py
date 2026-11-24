@@ -18,6 +18,7 @@ GitLab token: GITLAB_TOKEN, or `ddtool auth gitlab token`.
 import argparse
 import json
 import os
+import re
 import shlex
 import stat
 import subprocess
@@ -189,6 +190,8 @@ def main() -> int:
         "--out-dir", type=Path, help="Keep the assets in this directory."
     )
     args = parser.parse_args()
+    if not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", args.version_tag):
+        parser.error(f"--version-tag must look like v1.2.3, got {args.version_tag!r}.")
 
     token = gitlab_token()
     pipeline_id = args.pipeline_id or find_pipeline(args.version_tag, token)
