@@ -229,6 +229,8 @@ check-module-load:arm64:
         curl -sSfI "${PUBLIC_URL}/$(basename $f)" && echo "  $(basename $f) verified" || echo "  $(basename $f) not accessible"
       done
 
+# Branch snapshots require a 30-day expiry rule in ddoghq/cloud-inventory:
+# datacenters/us1.prod.dog/rum-auto-instrumentation/main.tf
 upload-branch-snapshots:
   extends: .upload-template
   variables:
@@ -247,42 +249,6 @@ upload-snapshots-latest:
   extends: .upload-template
   variables:
     S3_PATH: s3://rum-auto-instrumentation/httpd/snapshots/latest
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-
-configure-branch-snapshot-expiry:
-  stage: aws
-  tags: ["arch:amd64"]
-  image: registry.ddbuild.io/images/aws-cli:2.33.12
-  script:
-    - |
-      BUCKET=rum-auto-instrumentation
-      RULE_ID=expire-httpd-branch-snapshots
-
-      # The aws-cli image has no jq: use the CLI's own --query (JMESPath).
-      # Keep the other rules of the bucket. No lifecycle config yet means no rule.
-      if ! OTHERS=$(aws s3api get-bucket-lifecycle-configuration --bucket "$BUCKET" \
-          --query "Rules[?ID!='$RULE_ID']" --output json 2>/tmp/get-lifecycle.err); then
-        grep -q NoSuchLifecycleConfiguration /tmp/get-lifecycle.err || { cat /tmp/get-lifecycle.err; exit 1; }
-        OTHERS='[]'
-      fi
-      OTHERS=$(echo "$OTHERS" | tr -d '\n' | sed 's/[[:space:]]*$//')
-      [ "$OTHERS" = "null" ] && OTHERS='[]'
-
-      RULE="{\"ID\": \"$RULE_ID\", \"Filter\": {\"Prefix\": \"httpd/branch-snapshots/\"}, \"Status\": \"Enabled\", \"Expiration\": {\"Days\": 30}}"
-
-      # Append our rule to the other ones
-      if [ "$OTHERS" = "[]" ]; then
-        UPDATED="[$RULE]"
-      else
-        UPDATED="${OTHERS%]}, $RULE]"
-      fi
-
-      aws s3api put-bucket-lifecycle-configuration \
-        --bucket "$BUCKET" \
-        --lifecycle-configuration "{\"Rules\": $UPDATED}"
-
-      echo "Lifecycle rule '$RULE_ID' configured: expire httpd/branch-snapshots/ after 30 days"
   rules:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
