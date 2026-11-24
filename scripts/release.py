@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-"""Create a draft GitHub release from the GitLab pipeline of a version tag.
+"""Release mod_datadog from the GitLab pipeline of a version tag.
 
 Usage:
     scripts/release.py --version-tag v1.2.3 [--pipeline-id ID] [--local-user KEYID]
     scripts/release.py --version-tag v1.2.3 --pipeline-id ID --dry-run --out-dir DIR
+    scripts/release.py --version-tag v1.2.3 --publish
 
-The script downloads the module builds of the pipeline, zips them, signs each
-zip with GPG and creates a draft release with `gh`. Publishing the release
-stays manual.
+By default, the script downloads the module builds of the pipeline, zips them,
+signs each zip with GPG and creates a draft release with `gh`.
+
+--publish (after the smoke tests) runs the manual promote-s3-latest job, then
+publishes the draft release.
 
 GitLab token: GITLAB_TOKEN, or `ddtool auth gitlab token`.
 """
@@ -19,6 +22,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.request
 import zipfile
@@ -52,10 +56,12 @@ def gitlab_token() -> str:
     return result.stdout.strip().splitlines()[-1]
 
 
-def gitlab_get(path: str, token: str) -> bytes:
+def gitlab_get(path: str, token: str, method: str = "GET") -> bytes:
     url = f"{GITLAB_API}/projects/{GITLAB_PROJECT}{path}"
-    print("+ GET", url, file=sys.stderr)
-    request = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+    print(f"+ {method}", url, file=sys.stderr)
+    request = urllib.request.Request(
+        url, headers={"Authorization": f"Bearer {token}"}, method=method
+    )
     try:
         with urllib.request.urlopen(request) as response:
             return response.read()
@@ -119,6 +125,35 @@ def prepare_assets(jobs: dict[str, dict], token: str, out_dir: Path) -> list[Pat
     return assets
 
 
+def publish(tag: str, jobs: dict[str, dict], token: str, dry_run: bool) -> None:
+    view = ["gh", "release", "view", tag, "--repo", GITHUB_REPO]
+    if subprocess.run(view, stdout=subprocess.DEVNULL).returncode != 0:
+        raise SystemExit(f"No GitHub release for {tag}. Create the draft first.")
+    job = jobs.get("promote-s3-latest")
+    if job is None:
+        raise SystemExit("Job promote-s3-latest not found.")
+    publish_command = ["gh", "release", "edit", tag, "--draft=false", "--repo", GITHUB_REPO]  # fmt: skip
+    if dry_run:
+        print(
+            f"Dry run, not playing promote-s3-latest ({job['status']}): {job['web_url']}"
+        )
+        print("Dry run, not running:", shlex.join(publish_command))
+        return
+
+    if job["status"] == "manual":
+        gitlab_get(f"/jobs/{job['id']}/play", token, method="POST")
+    print(f"Waiting for promote-s3-latest: {job['web_url']}")
+    while (
+        status := json.loads(gitlab_get(f"/jobs/{job['id']}", token))["status"]
+    ) != "success":
+        if status in ("failed", "canceled", "skipped"):
+            raise SystemExit(
+                f"promote-s3-latest is {status}. Retry it in GitLab, then run --publish again."
+            )
+        time.sleep(10)
+    run(publish_command)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -138,7 +173,12 @@ def main() -> int:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Prepare and sign the assets, but do not create the release.",
+        help="Print the release commands, but do not run them.",
+    )
+    parser.add_argument(
+        "--publish",
+        action="store_true",
+        help="After the smoke tests: update S3 latest, then publish the draft.",
     )
     parser.add_argument(
         "--out-dir", type=Path, help="Keep the assets in this directory."
@@ -158,6 +198,10 @@ def main() -> int:
             )
         print(f"Warning: pipeline {pipeline_id} is for {ref}, not {args.version_tag}.")
     jobs = pipeline_jobs(pipeline_id, token)
+
+    if args.publish:
+        publish(args.version_tag, jobs, token, args.dry_run)
+        return 0
 
     with tempfile.TemporaryDirectory() as tmp:
         out_dir = args.out_dir or Path(tmp)

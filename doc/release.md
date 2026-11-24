@@ -49,8 +49,14 @@ All release files come from the GitLab pipeline of the version tag.
    | `mod_datadog-arm64.zip`, `mod_datadog-arm64-debug.zip` | `arm64`, RUM |
 
 3. Run the smoke tests.
-4. Publish the draft, then run the manual `promote-s3-latest` job. It copies the S3 files to
-   `httpd/latest/`.
+4. Publish the release:
+
+   ```sh
+   scripts/release.py --version-tag vX.Y.Z --publish
+   ```
+
+   It runs the manual `promote-s3-latest` job, which copies the S3 files to `httpd/latest/`, then
+   publishes the draft.
 
 ### OCI Package
 

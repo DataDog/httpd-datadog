@@ -281,8 +281,8 @@ upload-release:
     - .upload-template
     - .release-s3-path
 
-# httpd/latest/ is what users download. Run it when the GitHub release is
-# published, after the smoke tests.
+# httpd/latest/ is what users download. `scripts/release.py --publish` runs it
+# after the smoke tests.
 promote-s3-latest:
   extends: .release-s3-path
   stage: aws
