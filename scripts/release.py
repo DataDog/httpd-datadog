@@ -19,6 +19,7 @@ import argparse
 import json
 import os
 import shlex
+import stat
 import subprocess
 import sys
 import tempfile
@@ -102,8 +103,12 @@ def pipeline_jobs(pipeline_id: int, token: str) -> dict[str, dict]:
 
 
 def write_zip(path: Path, name: str, data: bytes) -> None:
-    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as out:
-        out.writestr(name, data)
+    info = zipfile.ZipInfo(name, date_time=time.localtime()[:6])
+    info.compress_type = zipfile.ZIP_DEFLATED
+    # Without it, unzip creates the file with mode 0600.
+    info.external_attr = (stat.S_IFREG | 0o644) << 16
+    with zipfile.ZipFile(path, "w") as out:
+        out.writestr(info, data)
 
 
 def prepare_assets(jobs: dict[str, dict], token: str, out_dir: Path) -> list[Path]:
