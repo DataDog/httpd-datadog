@@ -27,6 +27,37 @@ Release artifact are generated through a Continuous Integration pipeline. Our CI
 ensures cross-platform compatibility by compiling shared libraries for both Linux `x86_64` and
 `arm64` architectures. It generates shared libaries for each HTTPD version supported.
 
+### GitHub Release and S3
+
+All release files come from the GitLab pipeline of the version tag.
+
+1. Push the `vX.Y.Z` tag. The `upload-release` job uploads the RUM builds to
+   `s3://rum-auto-instrumentation/httpd/<YYYY_MM_DD>_vX.Y.Z_<sha>/`.
+2. When the pipeline is green, create the draft GitHub release:
+
+   ```sh
+   scripts/release.py --version-tag vX.Y.Z
+   ```
+
+   It downloads the builds, signs each zip with your GPG key (`--local-user` to pick one) and
+   creates the draft with `gh`. Use `--dry-run --out-dir DIR` to only prepare the files.
+
+   | Asset | Build |
+   | ----- | ----- |
+   | `mod_datadog_artifact.zip`, `mod_datadog_artifact-debug.zip` | `x86_64`, RUM disabled at build time |
+   | `mod_datadog-amd64.zip`, `mod_datadog-amd64-debug.zip` | `x86_64`, RUM |
+   | `mod_datadog-arm64.zip`, `mod_datadog-arm64-debug.zip` | `arm64`, RUM |
+
+3. Run the smoke tests.
+4. Publish the release:
+
+   ```sh
+   scripts/release.py --version-tag vX.Y.Z --publish
+   ```
+
+   It runs the manual `promote-s3-latest` job, which copies the S3 files to `httpd/latest/`, then
+   publishes the draft.
+
 ### OCI Package
 
 The same modules are also published as an OCI package named `datadog-apm-library-httpd`, through
