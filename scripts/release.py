@@ -73,7 +73,7 @@ def gitlab_get(path: str, token: str, method: str = "GET") -> bytes:
 
 def find_pipeline(tag: str, token: str) -> int:
     pipelines = json.loads(
-        gitlab_get(f"/pipelines?ref={quote(tag, safe='')}&per_page=1", token)
+        gitlab_get(f"/pipelines?ref={quote(tag, safe='')}&scope=tags&per_page=1", token)
     )
     if not pipelines:
         raise SystemExit(f"No pipeline found for tag {tag}.")
@@ -195,13 +195,32 @@ def main() -> int:
     print(
         f"Pipeline: https://gitlab.ddbuild.io/DataDog/httpd-datadog/-/pipelines/{pipeline_id}"
     )
-    ref = json.loads(gitlab_get(f"/pipelines/{pipeline_id}", token))["ref"]
-    if ref != args.version_tag:
+    pipeline = json.loads(gitlab_get(f"/pipelines/{pipeline_id}", token))
+    # The tag may have moved: check GitLab built the GitHub tag commit.
+    result = subprocess.run(
+        [
+            "gh",
+            "api",
+            f"repos/{GITHUB_REPO}/commits/refs/tags/{args.version_tag}",
+            "-q",
+            ".sha",
+        ],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    tag_sha = result.stdout.strip() if result.returncode == 0 else ""
+    if not (
+        pipeline["tag"]
+        and pipeline["ref"] == args.version_tag
+        and pipeline["sha"] == tag_sha
+    ):
+        problem = (
+            f"Pipeline {pipeline_id} ({pipeline['ref']} at {pipeline['sha']}) is not"
+            f" the pipeline of tag {args.version_tag} ({tag_sha or 'not found'})."
+        )
         if not args.dry_run:
-            raise SystemExit(
-                f"Pipeline {pipeline_id} is for {ref}, not {args.version_tag}."
-            )
-        print(f"Warning: pipeline {pipeline_id} is for {ref}, not {args.version_tag}.")
+            raise SystemExit(problem)
+        print(f"Warning: {problem}")
     jobs = pipeline_jobs(pipeline_id, token)
 
     if args.publish:
