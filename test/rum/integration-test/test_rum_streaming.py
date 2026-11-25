@@ -85,7 +85,13 @@ def streaming_proxy(server: Server, log_dir: str, module_path: str, mode: str) -
     with ExitStack() as cleanup:
         docroot = cleanup.enter_context(tempfile.TemporaryDirectory(prefix="rum-streaming-"))
         proxy = cleanup.enter_context(upstream_proxy(StreamingUpstream))
-        if mode != "no-deflate":
+        if mode == "inflate-deflate":
+            proxy += (
+                "\nLoadModule deflate_module modules/mod_deflate.so"
+                "\nLoadModule filter_module modules/mod_filter.so"
+                "\nAddOutputFilterByType INFLATE;DEFLATE text/html\n"
+            )
+        elif mode != "no-deflate":
             proxy += "\nLoadModule deflate_module modules/mod_deflate.so\nSetOutputFilter DEFLATE\n"
         cleanup.callback(server.stop, conf_path)
         configuration = {
@@ -153,3 +159,13 @@ def test_rum_streaming_keeps_precompressed_body(streaming_proxy: Server) -> None
         assert response.headers.get("Content-Encoding") == "gzip"
         assert response.headers.get("x-datadog-rum-injected") != "1"
         assert response.raw.read() == PRECOMPRESSED_BODY
+
+
+@pytest.mark.requires_rum
+@pytest.mark.parametrize("mode", ["inflate-deflate"], indirect=True)
+def test_rum_streaming_injects_after_inflate(streaming_proxy: Server) -> None:
+    with open_stream(streaming_proxy, "/upstream/precompressed", "gzip") as response:
+        assert response.status_code == 200
+        assert response.headers.get("Content-Encoding") == "gzip"
+        assert response.headers.get("x-datadog-rum-injected") == "1"
+        assert b"DD_RUM" in response.content
