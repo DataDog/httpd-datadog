@@ -159,8 +159,8 @@ static bool should_inject(rum_filter_ctx& ctx, request_rec& request,
         APLOG_MARK, APLOG_DEBUG, 0, &request,
         "[RUM] Skip injection: \"Content-Type: %s\" does not match text/html.",
         content_type ? content_type : "<unset>");
-    count_injection(telemetry::injection_skipped, "reason:content-type",
-                    rum_conf);
+    count_injection(telemetry::injection_skipped,
+                    "reason:unsupported_content_type", rum_conf);
     ctx.state = InjectionState::done;
     return false;
   }
