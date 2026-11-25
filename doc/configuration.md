@@ -165,6 +165,33 @@ RUM SDK injection applies only to responses whose `Content-Type` media type is `
 The check is case-insensitive and accepts parameters, such as `text/html; charset=utf-8`.
 Responses with a missing or different media type are left unchanged.
 
+### Compressed HTML
+
+The module does not inject into a response that already has a `Content-Encoding` header, because
+it cannot read compressed HTML. The response is sent unchanged, and the `injection.skipped`
+telemetry metric gets `reason:compressed_html`. This often happens with `mod_proxy`: Apache
+forwards the client `Accept-Encoding: gzip` header, and the backend returns gzip HTML.
+
+To inject and still send compressed HTML to the client, let `mod_deflate` decompress the HTML
+before the module and compress it again after:
+
+```
+LoadModule deflate_module modules/mod_deflate.so
+LoadModule filter_module modules/mod_filter.so
+
+<Location "/app/">
+    ProxyPass "http://backend:8080/"
+    AddOutputFilterByType INFLATE;DEFLATE text/html
+</Location>
+```
+
+`INFLATE` runs before the module and `DEFLATE` runs after it. Other content types are not changed.
+Clients that do not accept gzip get uncompressed HTML.
+
+> [!NOTE]
+> `RequestHeader unset Accept-Encoding` also makes the backend send uncompressed HTML. But
+> `mod_deflate` reads the same header, so the response to the client is not compressed either.
+
 ## `DatadogRumSettings` section
 - **Description**: Container for Datadog RUM settings
    - **Syntax:**:
