@@ -186,7 +186,10 @@ LoadModule filter_module modules/mod_filter.so
 ```
 
 `INFLATE` runs before the module and `DEFLATE` runs after it. Other content types are not changed.
-Clients that do not accept gzip get uncompressed HTML.
+Clients that do not accept gzip get uncompressed HTML. Each HTML response is decompressed and
+compressed again, which uses CPU.
+
+`INFLATE` decodes only gzip. HTML compressed another way (for example `br`) is still not injected.
 
 > [!NOTE]
 > `RequestHeader unset Accept-Encoding` also makes the backend send uncompressed HTML. But

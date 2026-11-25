@@ -161,7 +161,6 @@ def test_rum_streaming_keeps_precompressed_body(streaming_proxy: Server) -> None
         assert response.raw.read() == PRECOMPRESSED_BODY
 
 
-# The workaround documented for compressed HTML.
 @pytest.mark.requires_rum
 @pytest.mark.parametrize("mode", ["inflate-deflate"], indirect=True)
 def test_rum_streaming_injects_after_inflate(streaming_proxy: Server) -> None:
