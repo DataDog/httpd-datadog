@@ -168,9 +168,9 @@ Responses with a missing or different media type are left unchanged.
 ### Compressed HTML
 
 The module does not inject into a response that already has a `Content-Encoding` header, because
-it cannot read compressed HTML. The response is sent unchanged, and the `injection.skipped`
-telemetry metric gets `reason:compressed_html`. This often happens with `mod_proxy`: Apache
-forwards the client `Accept-Encoding: gzip` header, and the backend returns gzip HTML.
+it cannot read compressed HTML. The response is sent unchanged. This often happens with
+`mod_proxy`: Apache forwards the client `Accept-Encoding: gzip` header, and the backend returns
+gzip HTML.
 
 To inject and still send compressed HTML to the client, let `mod_deflate` decompress the HTML
 before the module and compress it again after:
