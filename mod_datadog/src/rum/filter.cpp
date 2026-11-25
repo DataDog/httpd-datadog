@@ -222,7 +222,7 @@ static void end_injection(rum_filter_ctx& ctx, request_rec& request,
   ctx.state = InjectionState::done;
   ap_log_rerror(APLOG_MARK, APLOG_DEBUG, 0, &request,
                 "[RUM] Skip injection: no injection point found.");
-  count_injection(telemetry::injection_failed, "reason:missing_header_tag",
+  count_injection(telemetry::injection_failed, "reason:no_injection_point",
                   rum_conf);
 }
 
